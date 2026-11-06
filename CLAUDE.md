@@ -1,5 +1,16 @@
 # Working agreement for this project
 
+> **Origin of this file.** This file was copied word for word from the
+> working agreement of [Sleight](https://github.com/emmarion/sleight),
+> the language Pledge is loosely based on, and has not yet been adapted
+> to Pledge. Parts of it probably describe Sleight rather than
+> Pledge: it calls the project an OCaml implementation, and it names
+> files and tools (DESIGN.md, ASSUMPTIONS.md, BUGS.md, WARNINGS.md,
+> slc and others) that may not exist here. Where a rule refers to
+> something this repo lacks, ask the owner how it applies rather than
+> guessing. The owner's intent for each rule is presumably the same
+> here, but that has not been confirmed rule by rule.
+
 This is a from-scratch prototype OCaml implementation of a programming
 language design belonging to the repo owner. Ground rules below were set
 by the owner and apply to every session.
