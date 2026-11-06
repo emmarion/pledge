@@ -291,7 +291,7 @@ constructor with no constructors, Corollary 2.3 rules this out. ∎
 
 - **The checker implements part 4.** The note proves the declarative
   rules sound, not the TypeScript code. In particular it assumes that
-  entries are distinct however they are named (shadowing, §2), that
+  entries are distinct however they are named, that
   forcing and canonicalization follow part 3, and that rules leave the
   scope with the entries they mention (§7).
 - **The evaluator** computes the semantics of part 5. The facts a

@@ -22,35 +22,40 @@ and shares none of its code.
 
 Source text is ASCII. `--` starts a comment that runs to the end of the
 line. Blocks are delimited by braces; layout is not significant.
-Statements end with `;`.
+Statements, constructor declarations and match branches end with `;`.
 
 A binder is written `name : T`, or `name is e` (§6). A telescope is a
 parenthesized, comma-separated list of binders, each of which may refer
 to the binders before it. `_` as a binder name binds nothing.
 
 Every application is saturated and written `f(a1, ..., an)`; there is no
-currying. A nullary constructor is written without parentheses.
+currying. A nullary application is written `f()`, so `Nat()` and
+`Zero()`.
 
 ```
-data Nat : Type {
-  Zero : Nat
-  Succ(pred : Nat) : Nat
+data Nat() : Type {
+  Zero() : Nat();
+  Succ(pred : Nat()) : Nat();
 }
 
-data Vec(A : Type, n : Nat) : Type {
-  VNil(A : Type) : Vec(A, Zero)
-  VCons(A : Type, n : Nat, head : A, rest : Vec(A, n)) : Vec(A, Succ(n))
+data Vec(A : Type, n : Nat()) : Type {
+  VNil(A : Type) : Vec(A, Zero());
+  VCons(A : Type, n : Nat(), head : A, rest : Vec(A, n)) : Vec(A, Succ(n));
 }
 
-fn vhead(A : Type, n : Nat, v : Vec(A, Succ(n))) -> (x : A) {
+fn vhead(A : Type, n : Nat(), v : Vec(A, Succ(n))) -> (x : A) {
   let-match VCons(_, _, hd, _) = v;
   hd
 }
 ```
 
+The parameters of a type constructor are in scope only in its own
+telescope (§5), so `VNil` and `VCons` each declare their own `A`.
+
 ## 2. Names
 
-There is one namespace, and any name may be shadowed. A name refers to
+There is one namespace, and no name may be shadowed: a binder may not
+reuse a name that is in scope where it is written. A name refers to
 a value, a function, a type constructor or a value constructor. Only a
 value may be passed, returned, bound or stored.
 
@@ -83,7 +88,7 @@ class. They are applied, never passed or stored.
 
 ```
 data T(params) : Type {
-  C(fields) : T(args)
+  C(fields) : T(args);
   ...
 }
 ```
@@ -117,7 +122,8 @@ an `is` rule, a rewrite from the entry to a term of §3's grammar.
 Canonicalizing a term rewrites it by these rules to a fixed point.
 
 The checker knows only what it can infer from the text. `let x =
-Cons(Nat, Zero, Nil(Nat));` gives `x is Cons(Nat, Zero, Nil(Nat))`. The
+Cons(Nat(), Zero(), Nil(Nat()));` gives
+`x is Cons(Nat(), Zero(), Nil(Nat()))`. The
 results of a function call are new entries known only by their types,
 except where the function's return telescope states an `is` (§6).
 
@@ -174,13 +180,13 @@ call is accepted when the caller has slots 1 to `k` and:
   `subterm` parameter at its slot.
 
 ```
-fn ack(subterm m : Nat, subterm n : Nat) -> (r : Nat) {
-  match m : (r : Nat) {
-    Zero => Succ(n)
-    Succ(m1) => match n : (r : Nat) {
-      Zero => ack(subterm m1, Succ(Zero))
-      Succ(n1) => ack(subterm m1, ack(same m, subterm n1))
-    }
+fn ack(subterm m : Nat(), subterm n : Nat()) -> (r : Nat()) {
+  match m : (r : Nat()) {
+    Zero() => Succ(n);
+    Succ(m1) => match n : (r : Nat()) {
+      Zero() => ack(subterm m1, Succ(Zero()));
+      Succ(n1) => ack(subterm m1, ack(same m, subterm n1));
+    };
   }
 }
 ```
@@ -191,7 +197,7 @@ Code at the top level calls any function, with no annotation.
 
 ```
 match e : (telescope) {
-  C(x1, ..., xn) => body
+  C(x1, ..., xn) => body;
   ...
 }
 ```
@@ -301,8 +307,7 @@ Pledge has no uniqueness, no `at` and no coercions, in any phase.
 Phase 2 adds erasure. Every binder has a multiplicity, `many` or
 `erased`: function parameters and returns, constructor fields, the
 binders of every kind of `let`, and match annotation entries.
-A binder whose type is `Type` is erased unless written `many`; any
-other binder is `many` unless written `erased`.
+A binder is `many` unless written `erased`.
 Type-constructor arguments are always erased. Constructors themselves
 are never erased, and every value carries its constructor's tag.
 
