@@ -66,7 +66,7 @@ For a telescope `Delta = (x1 j1, ..., xn jn)`, each `ji` being `: A` or
 - if `ji` is `is e`, then `vi = e s`, and `|- vi : B s` for the type
   `B` the checker gave `e`.
 
-Here `A s` is the substitution of values for variables in a term,
+Here `A s` is the substitution of values for variables in a skeleton term,
 which, types containing no calls, is again a value. The judgment
 `|- v : V` is defined by recursion on `v`:
 
@@ -93,7 +93,7 @@ clauses give type `Type`, not an application of `T`; the third gives
 **Corollary 2.3.** No value has type `T(...)` for a `T` with no
 constructors.
 
-**Lemma 2.4 (subtrees).** For terms `t'` and `t` and any substitution
+**Lemma 2.4 (subtrees).** For skeleton terms `t'` and `t` and any substitution
 `s` of values for their variables, if `t'` is a strict subterm of `t`
 through applications (§9), then `t' s` is a strict subtree of `t s`.
 *Proof:* substitution maps `F(t1..tn)` to `F(t1 s, ..., tn s)`, so each
@@ -105,13 +105,13 @@ are finite.
 ## 3. Contexts, facts and valuations
 
 The checker's scope `Gamma` (§7) is a sequence of entries, each with a
-type `A_x`, a term, and possibly a rule `x -> e_x`. A **valuation**
+type `A_x`, a skeleton term, and possibly a rule `x -> e_x`. A **valuation**
 `rho` maps entries to values. `rho |= Gamma` when, for every entry `x`:
 
 - `|- rho(x) : A_x rho`, and
 - if `x` has a rule, `rho(x) = e_x rho`.
 
-Write `t rho` for the value of term `t`. The rules of `Gamma` are
+Write `t rho` for the value of skeleton term `t`. The rules of `Gamma` are
 **acyclic**: no entry reaches itself by following rules. Write
 `canon(t)` for `t` rewritten by the rules to a fixed point, which
 exists by acyclicity.
@@ -120,12 +120,12 @@ exists by acyclicity.
 `canon(t) rho = t rho`. *Proof:* each rewrite replaces an entry `x` by
 `e_x`, and `rho(x) = e_x rho`; substitution is compositional. ∎
 
-**Corollary 3.2.** If `rho |= Gamma`, two terms with the same canonical
-form have equal values, and a term that is a strict subterm of another
+**Corollary 3.2.** If `rho |= Gamma`, two skeleton terms with the same canonical
+form have equal values, and a skeleton term that is a strict subterm of another
 after canonicalization has a value that is a strict subtree of the
 other's (with Lemma 2.4).
 
-**Lemma 3.3 (forcing).** Let `rho |= Gamma`, let `s` be a term with
+**Lemma 3.3 (forcing).** Let `rho |= Gamma`, let `s` be a skeleton term with
 type `S` in `Gamma`, and let `s rho = C(w1..wn)`. Forcing `s` against
 `C(f1..fn)`, the `fi` fresh entries with `C`'s field types, succeeds,
 and the context `Gamma'` it produces satisfies
@@ -147,7 +147,7 @@ canonicalizes both sides (Lemma 3.1 keeps the equation true) and then:
 - **Different heads**: the two sides are trees with different roots,
   which cannot be equal. So this case does not arise, and forcing does
   not fail here.
-- **An entry `x` with no rule against a term `e`**: if `x` occurs in `e`
+- **An entry `x` with no rule against a skeleton term `e`**: if `x` occurs in `e`
   at a strict position, `rho'(x)` would be a strict subtree of itself
   by Lemma 2.4, so this does not arise either. If `e` is `x`, the
   equation is dropped. Otherwise the rule `x -> e` is added; it holds,
@@ -176,7 +176,7 @@ reading of §6 to §12.
 - **Calls.** At a call `f(a1..an)`, the arguments' canonical types match
   `f`'s parameter telescope instantiated by the earlier arguments, and an
   argument for an `is` parameter canonicalizes to the instantiated `is`
-  term. The results are fresh entries typed by `f`'s return telescope,
+  skeleton term. The results are fresh entries typed by `f`'s return telescope,
   with rules for its `is` returns.
 - **Bodies.** A function's body checks against its return telescope: its
   results' types and `is` rules canonicalize to the instantiated
@@ -188,7 +188,7 @@ reading of §6 to §12.
   type that forcing does not refute, checks each branch in the context
   forcing produced, and checks each branch's results against the
   annotation.
-- **`let-match`** is a `match` with one branch whose body is the rest of
+- **A pattern `let`** is a `match` with one branch whose body is the rest of
   the enclosing body.
 - **Termination** follows §9.
 
@@ -221,9 +221,9 @@ the entries `e`'s statements add satisfies the extended context.
   induction hypothesis on the branch body gives results satisfying the
   annotation in that context, and the annotation mentions only entries
   outside the branch.
-- **`let-match`.** As `match`, with the rest of the body as the branch.
-- **`comptime let-match`.** The evaluator's result is headed by the
-  written `C`; the rest is as `let-match`. This rests on the evaluator
+- **Pattern `let`.** As `match`, with the rest of the body as the branch.
+- **`comptime` pattern `let`.** The evaluator's result is headed by the
+  written `C`; the rest is as a pattern `let`. This rests on the evaluator
   computing what this semantics computes (part 9).
 
 ∎
@@ -295,7 +295,7 @@ constructor with no constructors, Corollary 2.3 rules this out. ∎
   forcing and canonicalization follow part 3, and that rules leave the
   scope with the entries they mention (§7).
 - **The evaluator** computes the semantics of part 5. The facts a
-  `comptime let-match` adds depend on it.
+  `comptime` pattern `let` adds depend on it.
 - **Phase 2.** Erasure is argued only in outline: evaluation that skips
   an erased computation uses its declared results, which by Theorems 5.1
   and 6.2 would have been produced and would have satisfied them. An
@@ -310,7 +310,7 @@ If any of these changed, the argument would need revisiting:
 - a call, or any evaluation, inside a type or in canonicalization;
 - first-class functions, or a function type in a type, which would add a
   value whose typing does not recurse on a smaller tree;
-- the subterm check accepting a term that is not a strict subterm, or
+- the subterm check accepting a skeleton term that is not a strict subterm, or
   looking through anything but constructor and type-constructor
   applications;
 - recursion by any route other than a call under §9's rule;
