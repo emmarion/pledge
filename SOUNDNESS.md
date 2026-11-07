@@ -9,11 +9,12 @@ values, states its lemmas precisely, and proves each by a written
 induction. It is not machine-checked, and part 9 lists what it takes on
 trust: chiefly that the checker implements §3 to §12 as the declarative
 rules of part 4 describe them. It follows the shape of Sleight's
-SOUNDNESS.md, which argues the same points for a larger language.
+[SOUNDNESS.md](https://github.com/emmarion/sleight/blob/main/SOUNDNESS.md),
+which argues the same points for a larger language.
 
 ## In short
 
-Pledge has `Type : Type` and no positivity requirement (§3). The usual
+Pledge has `Type() : Type()` and no positivity requirement (§3). The usual
 paradoxes seem not to reach it:
 
 1. **Types never compute.** A type contains no call (§3), and the
@@ -24,10 +25,10 @@ paradoxes seem not to reach it:
    parameters (§9), and neither looks at a type.
 3. **Functions are not first class** (§4). No type mentions a function,
    so no datatype holds one. Curry's paradox, and Girard's in Hurkens'
-   form, seem to need function types over `Type`, which cannot be
+   form, seem to need function types over `Type()`, which cannot be
    written.
 4. **Value typing recurses on the value.** Whether a value has a type is
-   decided by recursion on the value's tree (part 2), so `Type : Type`
+   decided by recursion on the value's tree (part 2), so `Type() : Type()`
    creates no circularity in what a type means.
 
 ## 1. What is claimed
@@ -51,12 +52,13 @@ why reporting it for the whole program suffices (§12).
 
 Fix the program's declarations. A **value** is a finite tree:
 
-    v ::= Type | T(v1, ..., vn) | C(v1, ..., vn)
+    v ::= T(v1, ..., vn) | C(v1, ..., vn)
 
 with `T` a type constructor and `C` a value constructor, applied to as
-many values as they have parameters or fields. Values of type `Type`
-are exactly the trees built from `Type` and type-constructor
-applications; values of other types are value-constructor applications.
+many values as they have parameters or fields; `Type()` is the
+application of the type constructor `Type` to no values. Values of type
+`Type()` are exactly the trees built from type-constructor applications;
+values of other types are value-constructor applications.
 
 For a telescope `Delta = (x1 j1, ..., xn jn)`, each `ji` being `: A` or
 `is e`, write `(v1, ..., vn) |= Delta` when for every i, with
@@ -70,28 +72,27 @@ Here `A s` is the substitution of values for variables in a skeleton term,
 which, types containing no calls, is again a value. The judgment
 `|- v : V` is defined by recursion on `v`:
 
-- `|- Type : V` iff `V = Type`;
-- `|- T(v1..vn) : V` iff `V = Type` and `(v1..vn) |= Delta_T`;
+- `|- T(v1..vn) : V` iff `V = Type()` and `(v1..vn) |= Delta_T`;
 - `|- C(v1..vn) : V` iff `(v1..vn) |= Delta_C` and
   `V = T(u1..um) [fields := v1..vn]`, where `T(u1..um)` is `C`'s
   declared return.
 
 Each clause refers to `|-` only at the strict subtrees `vi`, so the
 definition is well-founded by the size of `v`, whatever `V` is. This is
-where `Type : Type` costs nothing: the judgment never recurses on a
+where `Type() : Type()` costs nothing: the judgment never recurses on a
 type.
 
-**Lemma 2.1 (inversion).** If `|- v : T(u1..um)` then `v = C(w1..wn)`
-for a value constructor `C` declared under `T`. *Proof:* the first two
-clauses give type `Type`, not an application of `T`; the third gives
-`C`'s declared return, which is an application of the type under which
-`C` is declared (§5). ∎
+**Lemma 2.1 (inversion).** If `|- v : T(u1..um)` for a data type `T`
+then `v = C(w1..wn)` for a value constructor `C` declared under `T`.
+*Proof:* the first clause gives type `Type()`, and `Type` is not a data
+type (§2); the second gives `C`'s declared return, which is an
+application of the type under which `C` is declared (§5). ∎
 
 **Lemma 2.2 (unique types).** If `|- v : V` and `|- v : V'` then
 `V = V'`. *Proof:* each clause determines `V` from `v`. ∎
 
-**Corollary 2.3.** No value has type `T(...)` for a `T` with no
-constructors.
+**Corollary 2.3.** No value has type `T(...)` for a data type `T` with
+no constructors.
 
 **Lemma 2.4 (subtrees).** For skeleton terms `t'` and `t` and any substitution
 `s` of values for their variables, if `t'` is a strict subterm of `t`
@@ -132,7 +133,7 @@ and the context `Gamma'` it produces satisfies
 `rho' = rho[f1 := w1, ..., fn := wn] |= Gamma'`, with `Gamma'`'s rules
 acyclic.
 
-*Proof.* First, `rho' |= Gamma, f1..fn`: by Lemma 2.1 and the third
+*Proof.* First, `rho' |= Gamma, f1..fn`: by Lemma 2.1 and the second
 clause of part 2, `(w1..wn) |= Delta_C`, which is what the fields' types
 ask. Forcing processes a set of equations `t = t'`. Its invariant is
 that every pending equation holds under `rho'`, that is, `t rho' =
@@ -206,7 +207,7 @@ the entries `e`'s statements add satisfies the extended context.
 
 - **Constructor application.** The arguments' values satisfy the
   constructor's telescope by the induction hypothesis and Corollary 3.2,
-  so the application has the instantiated return type by the third
+  so the application has the instantiated return type by the second
   clause of part 2.
 - **Call.** The same argument gives `args |= Delta_params`, the
   precondition of the induction hypothesis for the body, whose results
@@ -214,7 +215,7 @@ the entries `e`'s statements add satisfies the extended context.
 - **`let`.** Immediate from the right-hand side, with Corollary 3.2 for a
   written type or `is` clause.
 - **`match`.** The scrutinee's value has the scrutinee's type, an
-  application of some `T` (a value of type `Type` is never matched, §4),
+  application of some `T` (a value of type `Type()` is never matched, §4),
   so by Lemma 2.1 it is `C(w...)` for a constructor `C` of `T`. By Lemma
   3.3, `C` is not refuted, so the match has a branch for `C`, and the
   valuation extended by the fields satisfies the branch's context. The
@@ -246,11 +247,13 @@ well-founded and there are k + 1 of them, so the order is.
 **Lemma 6.1.** Under a valuation satisfying the caller's context, the
 callee's measure is below the caller's at every call in a body.
 *Proof.* A call to an earlier group has a smaller first component. A
-call within the group at slot `k` (§9) keeps the first component, passes
-to each callee slot before `k` a `same` argument canonically identical
-to the caller's parameter there, hence equal by Corollary 3.2, and
-passes to callee slot `k` a canonical strict subterm of the caller's
-`k`-th parameter, hence a strict subtree. Later slots may hold anything,
+call within the group that marks the callee's `k`-th `subterm`
+parameter `subterm` (§9) keeps the first component, passes to each of
+the callee's earlier `subterm` parameters a `same` argument canonically
+identical to the caller's parameter at that position, hence equal by
+Corollary 3.2, and passes to the callee's `k`-th a canonical strict
+subterm of the caller's `k`-th, hence a strict subtree. Later
+`subterm` parameters may hold anything,
 which lexicographic order allows. §9 makes the marked arguments those
 for the callee's own `subterm` parameters, which is what lets these
 values be the callee's measure. ∎
@@ -275,7 +278,7 @@ Canonicalization ends because the rules are acyclic (part 3). Forcing
 ends (Lemma 3.3), and so does comparison for identity. `_` in place of
 an annotation copies a telescope the position already has. Compile-time
 evaluation, by `comptime` and `print`, ends by Theorem 6.2. Nothing
-here looks at whether `Type` contains itself.
+here looks at whether `Type()` contains itself.
 
 ## 8. Consistency (K)
 
@@ -284,8 +287,8 @@ statements before the `qed` evaluate (Theorem 6.2) to a valuation
 `rho` satisfying the top-level context (Theorem 5.1); this is the full
 semantics, in which ordinary top-level `let`s are evaluated too,
 although Pledge never evaluates them (§11). Then `e` evaluates to a
-value `v` with `|- v : T rho`. If `T` is an application of a type
-constructor with no constructors, Corollary 2.3 rules this out. ∎
+value `v` with `|- v : T rho`. If `T` is an application of a data type
+with no constructors, Corollary 2.3 rules this out. ∎
 
 ## 9. What is taken on trust
 
@@ -316,4 +319,4 @@ If any of these changed, the argument would need revisiting:
 - recursion by any route other than a call under §9's rule;
 - a way to build a telescope by evaluation, which would remove the
   bound k;
-- matching on a value of type `Type`.
+- matching on a value of type `Type()`.

@@ -86,8 +86,8 @@ by the owner and apply to every session.
     change the file only after the owner confirms that wording. All
     DESIGN.md edits from one discussion land as a single commit; if
     the wording is revised after that commit, squash the revisions
-    into it. Keep the wording succinct: DESIGN.md states what the language is, not
-    how an implementation does it. A decision the owner made in chat is not yet permission to
+    into it. Keep the wording succinct: DESIGN.md states what the language is,
+    and describes the implementation only in its own section (§14). A decision the owner made in chat is not yet permission to
     write it into one of these files: the words are the owner's to
     confirm, and a session's paraphrase of a decision can smuggle in a
     claim the owner never made. (Rule 11 governs whether a decision is
