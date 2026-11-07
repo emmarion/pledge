@@ -112,13 +112,27 @@ Each value constructor declares its own telescope of fields, and returns
 skeleton terms (§3) and may refer to the constructor's fields. The
 parameters of `T` are in scope only in its own telescope: a constructor
 that constrains an index declares its own field for it. A data type may
-have no constructors. Mutually recursive data types are declared
-together in a `mutual` block; a data type outside any `mutual` block is
-a group of its own, and no `mutual` block declares both data types and
-functions. Within a group, a type constructor's telescope may mention
-the group's earlier type constructors, and a value constructor's fields
-and return may mention every type constructor of the group and the
-group's earlier value constructors.
+have no constructors.
+
+Mutually recursive data types are declared together in a `mutual` block;
+a data type outside any `mutual` block is a group of its own, and no
+`mutual` block declares both data types and functions. Within a group, a
+type constructor's telescope may mention the group's earlier type
+constructors, and a value constructor's fields and return may mention
+every type constructor of the group and the group's earlier value
+constructors.
+
+```
+mutual {
+  data Even(n : Nat()) : Type {
+    EvenZero() : Even(Zero());
+    EvenSucc(n : Nat(), p : Odd(n)) : Even(Succ(n));
+  }
+  data Odd(n : Nat()) : Type {
+    OddSucc(n : Nat(), p : Even(n)) : Odd(Succ(n));
+  }
+}
+```
 
 ## 6. `is`
 
