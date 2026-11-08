@@ -142,3 +142,9 @@ by the owner and apply to every session.
     marker, with a bounded loop. Never poll with `pgrep -f`/`pkill -f`
     on a pattern: the polling shell's own command line contains the
     pattern, so it matches itself and the loop never ends.
+
+21. **Vetted mode.** When the owner starts vetted mode ("start
+    vetted mode"), follow WORKFLOW.md until the owner ends it ("end
+    vetted mode"); at other times, don't. In either mode, DECISIONS.md
+    is an exception to rule 11: it records open questions together with
+    proposed answers, each marked as not approved.
