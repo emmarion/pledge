@@ -15,9 +15,8 @@ Soundness is essential: no program may prove `False`. Pledge has
 restrictions: types never contain function calls (§3), functions are not
 first class (§4), and termination comes from definition order and
 structural decrease, not from types (§9). SOUNDNESS.md argues that
-these suffice. Since no type mentions a function, a data type cannot
-occur negatively in its own fields, so Pledge needs no positivity
-requirement.
+these suffice. Since functions are not first class, positivity does
+not arise.
 
 Pledge is loosely based on [Sleight](https://github.com/emmarion/sleight)
 and shares none of its code. Sleight's design is described in its
@@ -29,7 +28,7 @@ Source text is ASCII. `--` starts a comment that runs to the end of the
 line. A name is a letter followed by any number of letters, digits and
 `_`; names are case-sensitive. Keywords (§18) are written like names.
 Blocks are delimited by braces; layout is not significant.
-Statements, constructor declarations and match branches end with `;`.
+Statements, value-constructor declarations and match branches end with `;`.
 A `;` may also follow a `}` that needs none, and a `;` may be repeated.
 
 A binder is written `name : T`, or `name is e` (§6). A telescope is a
@@ -67,14 +66,14 @@ There is one namespace, and no name may be shadowed: a binder may not
 reuse a name that is in scope where it is written, or a keyword. A name
 refers to a value, a function, a type constructor or a value
 constructor. `Type` is a built-in type constructor with no parameters,
-and not a data type (§5); `Type()` is the type of every type, itself
-included (§3, §4). Only a value may be passed, returned, bound or
+and not a data type constructor (§5); `Type()` is the type of every
+type, itself included (§3, §4). Only a value may be passed, returned, bound or
 stored.
 
 Names come into scope in the order they are written. A function's own
 name is in scope in its body, and every function a `mutual` block
-declares is in scope throughout the block. §5 says where a data type's
-names are in scope.
+declares is in scope throughout the block. §5 says where the names a
+`data` declaration introduces are in scope.
 
 ## 3. Skeleton terms and types
 
@@ -84,8 +83,8 @@ A skeleton term is built only from:
 2. applications of a type constructor, `Type` among them (§2);
 3. applications of a value constructor.
 
-Each application in a skeleton term must check against its constructor's
-telescope (§8). A type is a skeleton term of type `Type()`. Type checking
+Each application in a skeleton term must check against the telescope of
+the type constructor or value constructor it applies (§8). A type is a skeleton term of type `Type()`. Type checking
 is: canonicalize both sides by the `is` facts in force (§7), then
 compare for identity.
 
@@ -95,7 +94,7 @@ requirement. Uniqueness of identity proofs (Axiom K) is derivable.
 ## 4. First-class values
 
 Types are first class: a value of type `Type()` may be passed, returned,
-bound and stored in a constructor field. A value of type `Type()` cannot
+bound and stored in a field of a value constructor. A value of type `Type()` cannot
 be the scrutinee of a `match` or pattern `let`; forcing may still equate
 it with another type (§7).
 
@@ -113,18 +112,20 @@ data T(params) : Type() {
 
 Each value constructor declares its own telescope of fields, and returns
 `T` applied to one argument per parameter of `T`. The arguments are
-skeleton terms (§3) and may refer to the constructor's fields. The
-parameters of `T` are in scope only in its own telescope: a constructor
-that constrains an index declares its own field for it. A data type may
-have no constructors.
+skeleton terms (§3) and may refer to the value constructor's fields. The
+parameters of `T` are in scope only in its own telescope: a value constructor
+that constrains an index declares its own field for it. A type
+constructor declared by `data` is a data type constructor, and an
+application of one is a data type. A `data` declaration is allowed to
+declare no value constructors.
 
-Mutually recursive data types are declared together in a `mutual` block;
-a data type outside any `mutual` block is a group of its own, and no
-`mutual` block declares both data types and functions. Within a group, a
-type constructor's telescope may mention the group's earlier type
-constructors, and a value constructor's fields and return may mention
-every type constructor of the group and the group's earlier value
-constructors.
+Mutually recursive `data` declarations are written together in a
+`mutual` block; a `data` declaration outside any `mutual` block is a
+group of its own, and no `mutual` block holds both `data` declarations
+and functions. Within a group, a type constructor's telescope is allowed
+to mention the group's earlier type constructors, and a value
+constructor's fields and return are allowed to mention every type
+constructor of the group and the group's earlier value constructors.
 
 ```
 mutual {
@@ -141,7 +142,7 @@ mutual {
 ## 6. `is`
 
 `x is e` may be written in place of `x : T` in function parameters and
-returns, constructor fields, match annotations and `let` binders, but
+returns, value-constructor fields, match annotations and `let` binders, but
 not in type-constructor parameters. The type of `x` is then the type of
 `e`, and `e` must be a skeleton term (§3). An entry bound by `x is e`
 has the rule `x is e`, with each parameter or field in `e` standing for
@@ -167,14 +168,14 @@ The checker knows only what it can infer from the text. After
 to `VCons(Nat(), Zero(), Zero(), VNil(Nat()))`. The results of a function call are new entries known only by their types,
 except where the function's return telescope states an `is` (§6).
 
-Every constructor application and every result of a call is an entry of
-its own, usually anonymous.
+Every application of a type constructor or value constructor, and every
+result of a call, is an entry of its own, usually anonymous.
 
 **Forcing.** Entering a match branch equates the scrutinee with the
-branch's constructor applied to fresh fields, and the scrutinee's type
+branch's value constructor applied to fresh fields, and the scrutinee's type
 with that application's type. Both sides of an equation are
-canonicalized first. Two applications of the same constructor are
-equated argument by argument, and an equation between a term and itself
+canonicalized first. Two applications of the same type constructor, or
+of the same value constructor, are equated argument by argument, and an equation between a term and itself
 is dropped. A variable is given the rule `x is e`; when `e` is a
 variable too, the newer of the two takes the rule. Whenever a variable
 is equated with a term, their types are equated too. The facts last
@@ -182,8 +183,8 @@ until the branch ends, or, for a pattern `let`, to the end of the
 enclosing body (§10). Forcing fails, refuting the branch, when:
 
 1. a variable is equated with a skeleton term that strictly contains it;
-2. two applications of different constructors are equated: two type
-   constructors, two value constructors, or one of each.
+2. two applications of different type constructors, of different value
+   constructors, or one of each, are equated.
 
 ## 8. Functions
 
@@ -197,9 +198,21 @@ together in a `mutual` block, their **group**; a function outside any
 `mutual` block is a group of its own.
 
 A function returns zero or more values. The return telescope may
-depend on the parameters and on earlier returns. A body is a sequence of
-statements followed by a final expression; `(a, b)` produces several
-values, and `let (h, t) = vuncons(A, n, v);` binds them, for
+depend on the parameters and on earlier returns; its names are in scope
+in its later entries, not in the body.
+
+A block, `{ s1; ...; sn; e }`, is an expression: statements followed by
+a final expression, whose results are the block's. A function's body is
+a block, and a block may stand wherever an expression may, such as a
+match branch. `(a1, ..., an)` produces `n` values, so `()` produces none
+and `(a)` is `a`. An expression that produces no values may stand as a
+statement, `e;`.
+
+Only the final expression of a block, a match branch's body and the
+right-hand side of a `let` may produce other than one value. The first
+two produce what their position expects, and the last as many values as
+the `let` has binders. Every other expression, each argument of a call
+or application included, produces one value.
 
 ```
 fn vuncons(A : Type(), n : Nat(), v : Vec(A, Succ(n)))
@@ -208,6 +221,8 @@ fn vuncons(A : Type(), n : Nat(), v : Vec(A, Succ(n)))
   (h, t)
 }
 ```
+
+`let (h, t) = vuncons(A, n, v);` binds its two results.
 
 The arguments of a call are checked in order. Each argument is an entry
 (§7), and in the types and `is` skeleton terms after a parameter, the
@@ -218,7 +233,7 @@ results are new entries typed by `f`'s returns, which mention the
 arguments' entries through the parameters. An application of a type
 constructor or a value constructor is checked the same way. A
 type-constructor application has type `Type()`. A value-constructor
-application has its constructor's return as its type, with each field
+application has its value constructor's return as its type, with each field
 standing for its argument's entry. For example, `VCons(Nat(), Zero(), x,
 VNil(Nat()))` needs `x : Nat()` and `VNil(Nat()) : Vec(Nat(), Zero())`,
 and its type canonicalizes to `Vec(Nat(), Succ(Zero()))`.
@@ -242,11 +257,17 @@ and the argument for each of its earlier `subterm` parameters `same e`;
 every other argument is unmarked. The call is accepted when the caller
 has at least `k` `subterm` parameters and:
 
-- after canonicalization, the `subterm` argument is a strict subterm of
-  the caller's own `k`-th `subterm` parameter;
+- the `subterm` argument is a strict subterm of the caller's own `k`-th
+  `subterm` parameter;
 - each `same` argument for the callee's `i`-th `subterm` parameter is
   canonically identical to the caller's own `i`-th `subterm`
   parameter.
+
+In a scope, a term `s` is a strict subterm of a term `t` when,
+canonicalized by the facts in force, `t` is an application
+`F(t1, ..., tn)` of a type constructor or a value constructor, and `s`
+is canonically identical to one of `t1` to `tn` or is a strict subterm
+of one. The marks are always written; none is inferred.
 
 ```
 fn ack(subterm m : Nat(), subterm n : Nat()) -> (r : Nat()) {
@@ -260,6 +281,11 @@ fn ack(subterm m : Nat(), subterm n : Nat()) -> (r : Nat()) {
 }
 ```
 
+In `ack(subterm m1, Succ(Zero()))` the second argument is unmarked,
+since only the callee's `subterm` parameters up to the one marked
+`subterm` are marked. In the `Succ(m1)` branch, `m` canonicalizes to
+`Succ(m1)`, so `m1` is a strict subterm of it.
+
 Code at the top level calls any function, with no annotation.
 
 ## 10. Matching
@@ -271,22 +297,59 @@ match e : (telescope) {
 }
 ```
 
+In a `match`, and in a pattern `let` (below), the type of `e` must
+canonicalize to a data type (§5).
+
 The annotation is mandatory; it is the telescope the match produces, so
-a match may return several values. It is checked in the scope before the
-match. Each branch's results are checked against it in the branch's
+a match may return several values. Its names are in scope in its later
+entries, as a return telescope's are (§8). It is checked in the scope
+before the match. Each branch's results are checked against it in the branch's
 scope, where forcing has refined it. The match's results are new entries
 typed by the annotation as it stands before the match. `_` in its place
-reuses the telescope the position expects. A branch binds one name per
-field of its constructor. Every constructor has at most one branch. A
-constructor is **refuted** when its forcing fails (§7); a refuted
-constructor has no branch, and every other constructor has one. A
-branch for a refuted constructor is an error. Refutation comes only
-from forcing, never from a proof. A match on a value of a data type with
-no constructors has no branches.
+reuses the telescope the position expects.
+
+A branch binds one name per field of its value constructor; its body is
+an expression, often a block (§8). Patterns do not nest: each field is
+bound to a name, or to `_`. Every value constructor has at most one
+branch. A value constructor is **refuted** when its forcing fails (§7);
+a refuted value constructor has no branch, and every other value
+constructor has one. So a match whose scrutinee's data type constructor
+declares no value constructors has no branches. A branch for a refuted
+value constructor is an error.
+
+A value constructor is refuted only at a `match` or pattern `let`, and only by
+what is known about the scrutinee and its type (§7). Suppose a value in
+scope is a proof that rules out `C` for the scrutinee. That value does
+not automatically refute `C`, so the match must still have a branch for
+`C`. In that branch, the program can match on the proof. If every value
+constructor of the proof's type is refuted there, that match has no
+branches:
+
+```
+data IsZero(n : Nat()) : Type() {
+  IsZeroHere() : IsZero(Zero());
+}
+
+fn f(n : Nat(), p : IsZero(n)) -> (r : Nat()) {
+  match n : (r : Nat()) {
+    Zero() => Zero();
+    Succ(m) => match p : (r : Nat()) {};
+  }
+}
+```
+
+Here the scrutinee is `n`, and `p` is a proof that rules out `Succ` for
+`n`. `p` does not automatically refute `Succ`, so the match on `n` has a
+branch for `Succ`. In that branch, `p : IsZero(Succ(m))`, while
+`IsZeroHere()` has type `IsZero(Zero())`, so `IsZeroHere` is refuted
+and the match on `p` has no branches.
 
 A pattern `let`, `let C(x1, ..., xn) = e;`, is a statement. Exactly one
-constructor of `e`'s type may survive forcing, and it must be `C`; its
-fields and facts stay in scope for the rest of the enclosing body.
+value constructor of `e`'s type must survive forcing, and it must be `C`; its
+fields and facts stay in scope for the rest of the enclosing block. A
+pattern `let` is not allowed at the top level in phase 1, where
+`comptime let` (§11) takes its place. A later phase might allow it once
+programs can be built as executables (§16).
 
 ## 11. Compile time
 
@@ -298,8 +361,10 @@ statements:
   knows of `x` exactly what it would know after `let x = e;`.
 - `comptime let C(x1, ..., xn) = e;` evaluates `e` during
   checking and requires the result to be headed by `C`; otherwise it is
-  an error showing the value. It is then checked as a pattern `let`, except
-  that the run, not forcing, rules out the other constructors.
+  an error showing the value. It is then checked as a pattern `let`
+  (§10), except that the run, not forcing, rules out the other
+  value constructors, and its fields and facts stay in scope for the rest of
+  the program.
 
 This is how a proof by reflection is written, given
 
@@ -319,8 +384,9 @@ comptime let Some(_, p) = decideEven(Succ(Succ(Zero())));
 
 After it, `p : Even(Succ(Succ(Zero())))`.
 
-A `comptime` expression may refer only to functions, constructors and
-earlier `comptime` bindings.
+In both forms of `comptime let`, `e` is allowed to refer only to
+functions, type constructors, value constructors and earlier `comptime`
+bindings.
 
 ## 12. `sorry`, `print`, `goal` and `qed`
 
@@ -332,9 +398,10 @@ program evaluates nothing more: from there on, every `print` shows
 check.
 
 `print e;` is a top-level statement that evaluates `e` at compile time
-and shows its value, as a tree of constructor applications, beside the
-statement. Like a `comptime` expression, `e` may refer only to
-functions, constructors and `comptime` bindings.
+and shows its value, as a tree of applications of type constructors and
+value constructors, beside the statement. As in a `comptime let` (§11), `e` is allowed to
+refer only to functions, type constructors, value constructors and
+`comptime` bindings.
 
 `goal T;` sets the program's goal, a type. `qed e;` checks `e` against
 it. Each is a top-level statement and appears at most once in a program,
@@ -357,11 +424,15 @@ At any position in a program, the interface shows:
   and the functions of its group.
 - **Scope**: the local entries, each with its type and `is` rule, and,
   in phase 2, whether it is erased.
-- **Refutations**, at a `match` or pattern `let`: the refuted
+- **Refutations**, at a `match` or pattern `let`: the refuted value
   constructors. Clicking one shows why its forcing fails (§7), as a
   derivation with the fewest steps.
-- **Globals**, behind a switch: functions, data types and top-level
-  bindings, each binding marked `comptime` or not.
+
+Hidden until the learner opens them, the **Globals** are the top-level
+names in scope at that position: each function, with its parameters and
+returns; each type constructor, with its parameters and its value
+constructors, each with its fields and return; and each top-level
+binding, with its type and `is` rule, marked `comptime` or not.
 
 Types and skeleton terms are shown canonicalized. An anonymous entry is
 shown by a marker giving what kind of entry it is and where it was
@@ -375,8 +446,9 @@ In the interface's interactive mode, a type or an expression typed in is
 checked in the scope at the selected position, and its type and `is`
 rule are shown, both as inferred and canonicalized.
 
-The interface lists functions apart from values because they are not
-first class (§4); they are still in the one namespace (§2).
+Functions appear under Termination and among the Globals, never under
+Scope, because they are not first class (§4); they are still in the one
+namespace (§2).
 
 The statement `inspect;` reports the same information as text.
 
@@ -390,18 +462,20 @@ that tree.
 
 Every binder has multiplicity `many`; no multiplicity is written. There
 are no literals, strings, characters or input. `_` is inferred only in
-place of a match annotation.
+place of a match annotation. A pattern `let` without `comptime` is not
+allowed at the top level (§10).
 
 Pledge has no uniqueness, no `at` and no coercions, in any phase.
 
 ## 16. Later phases
 
 Phase 2 adds erasure. Every binder has a multiplicity, `many` or
-`erased`: function parameters and returns, constructor fields, the
+`erased`: function parameters and returns, value-constructor fields, the
 binders of every kind of `let`, and match annotation entries.
 A binder is `many` unless written `erased`.
-Type-constructor arguments are always erased. Constructors themselves
-are never erased, and every value carries its constructor's tag.
+Type-constructor arguments are always erased. Value constructors
+themselves are never erased, and every value built by one carries its
+tag.
 
 An erased name may be used only in an erased position: a type, an
 argument for an erased parameter or field, the result for an erased
