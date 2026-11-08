@@ -40,8 +40,8 @@ For every phase 1 program the checker accepts that contains no `sorry`:
 - **(P)** Every evaluation produces values of the types, and satisfying
   the `is` rules, that the checker assigned (part 5).
 - **(K)** If the program has `goal T;` and `qed e;`, then `T` has a
-  value. In particular, no `qed` proves a type with no constructors,
-  such as `False` (part 8).
+  value. In particular, no `qed` proves a type whose data type
+  constructor declares no value constructors, such as `False()` (part 8).
 
 A program that contains `sorry` anywhere is outside the claims. Since
 nothing runs at compile time that the program's text does not ask for
@@ -82,21 +82,22 @@ definition is well-founded by the size of `v`, whatever `V` is. This is
 where `Type() : Type()` costs nothing: the judgment never recurses on a
 type.
 
-**Lemma 2.1 (inversion).** If `|- v : T(u1..um)` for a data type `T`
-then `v = C(w1..wn)` for a value constructor `C` declared under `T`.
-*Proof:* the first clause gives type `Type()`, and `Type` is not a data
-type (§2); the second gives `C`'s declared return, which is an
-application of the type under which `C` is declared (§5). ∎
+**Lemma 2.1 (inversion).** If `|- v : T(u1..um)` for a data type
+constructor `T` then `v = C(w1..wn)` for a value constructor `C`
+declared under `T`. *Proof:* the first clause gives type `Type()`, and
+`Type` is not a data type constructor (§2); the second gives `C`'s
+declared return, which is an application of the data type constructor
+under which `C` is declared (§5). ∎
 
 **Lemma 2.2 (unique types).** If `|- v : V` and `|- v : V'` then
 `V = V'`. *Proof:* each clause determines `V` from `v`. ∎
 
-**Corollary 2.3.** No value has type `T(...)` for a data type `T` with
-no constructors.
+**Corollary 2.3.** No value has type `T(...)` for a data type
+constructor `T` that declares no value constructors.
 
 **Lemma 2.4 (subtrees).** For skeleton terms `t'` and `t` and any substitution
 `s` of values for their variables, if `t'` is a strict subterm of `t`
-through applications (§9), then `t' s` is a strict subtree of `t s`.
+in a scope with no facts (§9), then `t' s` is a strict subtree of `t s`.
 *Proof:* substitution maps `F(t1..tn)` to `F(t1 s, ..., tn s)`, so each
 argument position of `t` is an argument position of `t s`. ∎
 
@@ -123,7 +124,7 @@ exists by acyclicity.
 
 **Corollary 3.2.** If `rho |= Gamma`, two skeleton terms with the same canonical
 form have equal values, and a skeleton term that is a strict subterm of another
-after canonicalization has a value that is a strict subtree of the
+in `Gamma` (§9) has a value that is a strict subtree of the
 other's (with Lemma 2.4).
 
 **Lemma 3.3 (forcing).** Let `rho |= Gamma`, let `s` be a skeleton term with
@@ -182,10 +183,11 @@ reading of §6 to §12.
 - **Bodies.** A function's body checks against its return telescope: its
   results' types and `is` rules canonicalize to the instantiated
   returns.
-- **`let` and constructor application** forward what the right-hand
+- **`let` and the application of a type constructor or value
+  constructor** forward what the right-hand
   side's checking produced; a written type or `is` clause is
   canonically identical to it.
-- **`match`** lists a branch for every constructor of the scrutinee's
+- **`match`** lists a branch for every value constructor of the scrutinee's
   type that forcing does not refute, checks each branch in the context
   forcing produced, and checks each branch's results against the
   annotation.
@@ -205,18 +207,18 @@ the entries `e`'s statements add satisfies the extended context.
 
 *Proof,* by induction on the derivation of `rho |- e => vs`, by cases:
 
-- **Constructor application.** The arguments' values satisfy the
-  constructor's telescope by the induction hypothesis and Corollary 3.2,
-  so the application has the instantiated return type by the second
-  clause of part 2.
+- **Application of a type constructor or value constructor.** The
+  arguments' values satisfy the telescope by the induction hypothesis
+  and Corollary 3.2, so the application has the instantiated return type
+  by the first or the second clause of part 2.
 - **Call.** The same argument gives `args |= Delta_params`, the
   precondition of the induction hypothesis for the body, whose results
   then satisfy the return telescope, `is` returns included.
 - **`let`.** Immediate from the right-hand side, with Corollary 3.2 for a
   written type or `is` clause.
-- **`match`.** The scrutinee's value has the scrutinee's type, an
-  application of some `T` (a value of type `Type()` is never matched, §4),
-  so by Lemma 2.1 it is `C(w...)` for a constructor `C` of `T`. By Lemma
+- **`match`.** The scrutinee's value has the scrutinee's type, a data
+  type (§10), an application of some data type constructor `T`, so by
+  Lemma 2.1 it is `C(w...)` for a value constructor `C` of `T`. By Lemma
   3.3, `C` is not refuted, so the match has a branch for `C`, and the
   valuation extended by the fields satisfies the branch's context. The
   induction hypothesis on the branch body gives results satisfying the
@@ -265,7 +267,7 @@ inside it by induction on the syntax of `e`. Every construct other than
 a call evaluates its parts, finitely many and syntactically smaller.
 A call's arguments satisfy the callee's context by Theorem 5.1, and its
 measure is smaller by Lemma 6.1, so its body evaluates by the outer
-induction. A `match` has a branch for its scrutinee's constructor by the
+induction. A `match` has a branch for its scrutinee's value constructor by the
 `match` case of Theorem 5.1. The top level is not a function and runs
 straight through its statements. ∎
 
@@ -287,8 +289,9 @@ statements before the `qed` evaluate (Theorem 6.2) to a valuation
 `rho` satisfying the top-level context (Theorem 5.1); this is the full
 semantics, in which ordinary top-level `let`s are evaluated too,
 although Pledge never evaluates them (§11). Then `e` evaluates to a
-value `v` with `|- v : T rho`. If `T` is an application of a data type
-with no constructors, Corollary 2.3 rules this out. ∎
+value `v` with `|- v : T rho`. If `T` is a data type whose data type
+constructor declares no value constructors, Corollary 2.3 rules this
+out. ∎
 
 ## 9. What is taken on trust
 
