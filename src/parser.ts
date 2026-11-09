@@ -28,8 +28,12 @@ export function parse(source: string, phase: Phase): { program: Program } | { er
     prevEnd = token.span.end;
     return token;
   };
-  const fail = (expected: string, token = peek()): never => {
-    throw new ParseError({ span: token.span, message: () => `expected ${expected}, found ${describe(token)}` });
+  const failAt = (token: Token, message: () => string): never => {
+    throw new ParseError({ span: token.span, message });
+  };
+  const fail = (expected: string): never => {
+    const token = peek();
+    return failAt(token, () => `expected ${expected}, found ${describe(token)}`);
   };
   const isText = (token: Token, text: string): boolean => token.kind !== "name" && token.text === text;
   const at = (text: string): boolean => isText(peek(), text);
@@ -228,13 +232,12 @@ export function parse(source: string, phase: Phase): { program: Program } | { er
     const datas: Data[] = [];
     const fns: Fn[] = [];
     while (!at("}")) {
-      const token = peek();
       if (at("data") && fns.length === 0) datas.push(data());
       else if (at("fn") && datas.length === 0) fns.push(fn());
-      else if (at("data") || at("fn")) throw new ParseError({ span: token.span, message: () => "a `mutual` block holds either `data` declarations or functions, not both" });
+      else if (at("data") || at("fn")) failAt(peek(), () => "a `mutual` block holds either `data` declarations or functions, not both");
       else fail("`data` or `fn`");
     }
-    if (datas.length === 0 && fns.length === 0) fail("`data` or `fn`: a `mutual` block is not empty");
+    if (datas.length === 0 && fns.length === 0) failAt(peek(), () => "a `mutual` block declares at least one `data` declaration or function");
     expect("}");
     const result: Top = { kind: "mutual", decls: datas.length > 0 ? datas : fns, span: spanFrom(begin) };
     skipExtraSemis();
