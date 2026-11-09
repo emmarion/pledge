@@ -18,6 +18,9 @@ const keywords = (phase: Phase): Set<string> =>
 const puncts = ["=>", "->", "(", ")", "{", "}", ",", ";", ":", "="];
 const isWordChar = (c: string): boolean => /[A-Za-z0-9_]/.test(c);
 
+export const hasKeyword = (source: string, phase: Phase, word: string): boolean =>
+  lex(source, phase).some(t => t.kind === "keyword" && t.text === word);
+
 export function lex(source: string, phase: Phase): Token[] {
   const reserved = keywords(phase);
   const tokens: Token[] = [];

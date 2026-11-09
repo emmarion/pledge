@@ -1,15 +1,13 @@
 import type { CheckResult, EntryId, EntryInfo, GlobalInfo, PositionInfo } from "../api.ts";
 import { check } from "../check.ts";
-import { lex } from "../lexer.ts";
+import { hasKeyword, lex } from "../lexer.ts";
 import type { Phase, Span } from "../syntax.ts";
-import { fill, h, lineCol, load, save, type Child } from "./dom.ts";
+import { lineCol } from "../render.ts";
+import { fill, h, load, save, type Child } from "./dom.ts";
 import { Editor, highlight, type NameKind } from "./editor.ts";
 import { entryTip, evalView, explainView, globalTip, infoView, inspectView, statusView, verdict, type Ctx } from "./panels.ts";
 
-export interface Box { text: string; key: string | null; holdsQed?: boolean }
-
-const holdsQed = (text: string, phase: Phase): boolean =>
-  lex(text, phase).some(t => t.kind === "keyword" && t.text === "qed");
+interface Box { text: string; key: string | null; holdsQed?: boolean }
 
 const nameKinds = (globals: GlobalInfo[]): Map<string, NameKind> => new Map<string, NameKind>([["Type", "type"],
   ...globals.flatMap(g => g.kind === "binding" ? [] : [[g.name, g.kind] as const, ...(g.ctors ?? []).map(c => [c.name, "ctor"] as const)])]);
@@ -138,7 +136,7 @@ export class Workspace implements Ctx {
         return at ? [{ line: lineCol(editor.text, at.start).line, node }] : [];
       }), this.kinds);
     });
-    fill(this.status, statusView(r, error, this.boxes.some((box, i) => box.holdsQed && !holdsQed(this.editors[i]!.text, this.phase())), this));
+    fill(this.status, statusView(r, error, this.boxes.some((box, i) => box.holdsQed && !hasKeyword(this.editors[i]!.text, this.phase(), "qed")), this));
     this.refresh();
   }
 

@@ -2,7 +2,7 @@ import type { EntryInfo, Rendered, Rewrite } from "./api.ts";
 import { canon, entry, rewrites } from "./terms.ts";
 import type { Binder, EntryId, OpenTerm, Scope, Signature, Telescope, Term } from "./terms.ts";
 
-export type Piece = string | Rendered;
+type Piece = string | Rendered;
 
 export function cat(...pieces: readonly Piece[]): Rendered {
   let text = "";
@@ -34,7 +34,7 @@ export function entryRef(scope: Scope, id: EntryId): Rendered {
   return { text, refs: [{ span: { start: 0, end: text.length }, entry: id }] };
 }
 
-export interface RenderOptions { canonical?: boolean; bound?: readonly (string | null)[] }
+interface RenderOptions { canonical?: boolean; bound?: readonly (string | null)[] }
 
 export function render(scope: Scope, t: OpenTerm, opts: RenderOptions = {}): Rendered {
   const go = (u: OpenTerm): Rendered =>

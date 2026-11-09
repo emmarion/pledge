@@ -18,7 +18,7 @@ const link = (text: Child, title: string, onclick: () => void): HTMLElement =>
 const goto = (ctx: Ctx, offset: number, text: Child = ctx.where(offset)): HTMLElement =>
   link(text, `Go to ${ctx.where(offset)}`, () => ctx.goto(offset));
 
-export function rendered(r: Rendered, ctx: Ctx): HTMLElement {
+function rendered(r: Rendered, ctx: Ctx): HTMLElement {
   const out = h("code", { class: "term" });
   let at = 0;
   for (const { span, entry } of [...r.refs].sort((a, b) => a.span.start - b.span.start)) {
@@ -36,6 +36,8 @@ export function rendered(r: Rendered, ctx: Ctx): HTMLElement {
   out.append(r.text.slice(at));
   return out;
 }
+
+const row = (term: string, value: Child): Child => [h("dt", {}, term), h("dd", {}, value)];
 
 const tag = (text: string, show: boolean): Child => show && h("span", { class: "tag" }, text);
 
@@ -72,9 +74,9 @@ export function infoView(info: PositionInfo, ctx: Ctx): HTMLElement[] {
     section("Termination", termination === null
       ? muted("Not inside a function.")
       : h("dl", {},
-        h("dt", {}, "Function"), h("dd", {}, h("code", {}, termination.fn)),
-        h("dt", {}, "subterm parameters"), h("dd", {}, termination.subtermParams.length ? h("code", {}, termination.subtermParams.join(", ")) : muted("none")),
-        h("dt", {}, "Group"), h("dd", {}, h("code", {}, termination.group.join(", "))))),
+        row("Function", h("code", {}, termination.fn)),
+        row("subterm parameters", termination.subtermParams.length ? h("code", {}, termination.subtermParams.join(", ")) : muted("none")),
+        row("Group", h("code", {}, termination.group.join(", "))))),
     section("Scope", list(info.scope.map(e =>
       binding(ctx, entryName(e, ctx), e.type, e.rule, tag("erased", ctx.showErased && e.erased))), "No local entries.")),
     ...refutations === null ? [] : [section("Refutations", list(refutations.map(r => {
@@ -116,14 +118,12 @@ export const explainView = (result: ReturnType<CheckResult["explainAt"]>, ctx: C
     : [h("p", {}, "Canonical form: ", rendered(result.canonical, ctx)),
       result.rewrites.length ? h("ol", { class: "rewrites" }, result.rewrites.map(r => rewriteView(r, ctx))) : muted("Already canonical.")];
 
-export const evalView = (result: ReturnType<CheckResult["evalAt"]>, ctx: Ctx): Child =>
-  "error" in result
-    ? h("p", { class: "bad" }, `Column ${result.error.span.start + 1}: ${result.error.message()}`)
-    : h("dl", {},
-      h("dt", {}, "Type"), h("dd", {}, rendered(result.type, ctx)),
-      h("dt", {}, "canonical"), h("dd", {}, rendered(result.canonicalType, ctx)),
-      h("dt", {}, "is"), h("dd", {}, result.rule ? rendered(result.rule, ctx) : muted("no rule")),
-      h("dt", {}, "canonical"), h("dd", {}, result.canonicalRule ? rendered(result.canonicalRule, ctx) : muted("no rule")));
+export const evalView = (result: ReturnType<CheckResult["evalAt"]>, ctx: Ctx): Child => {
+  if ("error" in result) return h("p", { class: "bad" }, `Column ${result.error.span.start + 1}: ${result.error.message()}`);
+  const rule = (r: Rendered | null): Child => r ? rendered(r, ctx) : muted("no rule");
+  return h("dl", {}, row("Type", rendered(result.type, ctx)), row("canonical", rendered(result.canonicalType, ctx)),
+    row("is", rule(result.rule)), row("canonical", rule(result.canonicalRule)));
+};
 
 export const verdict = (good: boolean | null, ...text: Child[]): HTMLElement =>
   h("span", { class: good === null ? "verdict" : good ? "verdict good" : "verdict bad" }, text);

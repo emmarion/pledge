@@ -25,16 +25,18 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
   telescope, applications), the persistent scope of entries, their
   types and `is` rules, canonicalization, identity, the strict-subterm
   relation (§9) and shortest rewrite sequences (§13). `src/telescope.ts`:
-  opening and instantiating telescopes, applications, and forcing with
-  refutation derivations (§7). `src/render.ts`: display of terms,
+  opening and instantiating telescopes, applications, forcing with
+  refutation derivations (§7), the unifier that solves `_` arguments
+  (§16) by giving rules only to their own entries, and the comparison of
+  a function's telescopes with a function goal's (DECISIONS.md D43). `src/render.ts`: display of terms,
   entries and signatures as `Rendered`.
 - `src/check.ts`: the top level of the checker: `data` groups, function
   groups with the taint fixed point (§12), top-level statements,
   evaluation of each statement as it is checked (§11), `goal` and
   `qed`. `src/expr.ts`: expressions, statements, telescopes, what a
   position is given (§8), `match` and pattern `let` (§10), the §9
-  marks, per-result taint, and the tree the interpreter evaluates
-  (§14). `src/context.ts`: shared checker state, the first-error
+  marks, per-result taint and erasure (§12, §16), `_` arguments, and
+  the tree the interpreter evaluates (§14). `src/context.ts`: shared checker state, the first-error
   exception and the snapshots behind §13. `src/info.ts`: `infoAt`,
   `explainAt`, `evalAt`.
 - `src/ui/`: the page (§13) and the tutorial page (§12); `src/tutorial/pages.ts`

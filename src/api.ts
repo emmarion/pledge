@@ -41,7 +41,7 @@ export interface PositionInfo {
   expected: ExpectedInfo | null;
   termination: TerminationInfo | null;
   scope: EntryInfo[];
-  refutations: RefutationInfo[] | null; // null away from a match or pattern `let`
+  refutations: RefutationInfo[] | null;
   globals: GlobalInfo[];
 }
 

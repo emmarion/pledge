@@ -10,10 +10,10 @@ import type { Ctx, FnCtx, FnSig, Given, Hole, Local, Result, Snapshot, Want } fr
 
 type App = Expr & { kind: "app" };
 type Match = Expr & { kind: "match" };
-export interface Out { local: Local; results: Result[]; tree: Expr }
-export interface Named { name: string; id: EntryId }
-export interface StmtOut { local: Local; poison: boolean; tree: Stmt; bound: Named[] }
-export type Comptime = (tree: Expr, tainted: boolean) => void;
+interface Out { local: Local; results: Result[]; tree: Expr }
+interface Named { name: string; id: EntryId }
+interface StmtOut { local: Local; poison: boolean; tree: Stmt; bound: Named[] }
+type Comptime = (tree: Expr, tainted: boolean) => void;
 interface Forcing { name: string; forced: Forced; pat: Pattern | undefined }
 interface Binderish { name: Id; ann: Ann; mult: Mult | null; span: Span }
 
@@ -147,8 +147,8 @@ function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snaps
     case "match": return match(ctx, local, e, given, snap);
     case "sorry": {
       const ann = annotation(ctx, local, e.tele, given, e.span);
-      const opened = open(local.scope, ann.tele, ann.env, (b, i) => ({ origin: { kind: `sorry.${b.name ?? i + 1}`, span: e.span }, tainted: true }));
-      return produced(ctx, { ...local, scope: opened.scope }, given, resultsOf(opened, () => true), e.span, e);
+      const o = opened(local, ann.tele, ann.env, "sorry", e.span, () => true);
+      return produced(ctx, o.local, given, o.results, e.span, e);
     }
     case "removed": return fail(e.span, () => "internal: a removed expression was checked");
   }
@@ -165,8 +165,10 @@ function unmarked(e: App, why: string): void {
   if (m) fail(m.span, () => `only a call within its group has marks (§9), and ${why}`);
 }
 
-const resultsOf = (opened: { scope: Scope; entries: readonly EntryId[] }, tainted: (i: number) => boolean): Result[] =>
-  opened.entries.map((id, i) => ({ id, tainted: tainted(i), erased: entry(opened.scope, id).erased }));
+function opened(local: Local, tele: Telescope, env: readonly Term[], kind: string, span: Span, tainted: (i: number) => boolean): { local: Local; results: Result[] } {
+  const o = open(local.scope, tele, env, (b, i) => ({ origin: { kind: `${kind}.${b.name ?? i + 1}`, span }, tainted: tainted(i) }));
+  return { local: { ...local, scope: o.scope }, results: o.entries.map((id, i) => ({ id, tainted: tainted(i), erased: entry(o.scope, id).erased })) };
+}
 
 function args(ctx: Ctx, local: Local, name: string, params: Telescope, e: App, erasedArgs: boolean): { local: Local; results: Result[]; trees: Arg[]; mark: number } {
   if (e.args.length !== params.length)
@@ -219,8 +221,8 @@ function call(ctx: Ctx, local: Local, e: App, name: string, sig: FnSig | null, g
   const a = args(ctx, local, name, sig.params, e, false);
   if (fn && plan) decrease(a.local.scope, e, a.results, fn, plan);
   const tainted = sig.tainted || a.results.some(r => r.tainted);
-  const opened = open(a.local.scope, sig.returns, trees(a.local.scope, a.results), (b, i) => ({ origin: { kind: `${name}.${b.name ?? i + 1}`, span: e.span }, tainted }));
-  return applied(ctx, { ...a.local, scope: opened.scope }, given, resultsOf(opened, () => tainted), e, a);
+  const o = opened(a.local, sig.returns, trees(a.local.scope, a.results), name, e.span, () => tainted);
+  return applied(ctx, o.local, given, o.results, e, a);
 }
 
 interface Plan { subs: number[]; k: number }
@@ -274,8 +276,8 @@ function match(ctx: Ctx, local: Local, e: Match, given: Given | null, snap: Snap
     return expr({ ...ctx, holes: [] }, bind({ ...inner, scope: won.scope }, br.pat.fields, won.fields).local, br.body, { wants, env: ann.env, whole: true });
   });
   const taint = (i: number) => s.tainted || bodies.some(b => b.results[i]?.tainted === true);
-  const opened = open(inner.scope, ann.tele, ann.env, (b, i) => ({ origin: { kind: `match.${b.name ?? i + 1}`, span: e.span }, tainted: taint(i) }));
-  return produced(ctx, { ...inner, scope: opened.scope }, given, resultsOf(opened, taint), e.span,
+  const o = opened(inner, ann.tele, ann.env, "match", e.span, taint);
+  return produced(ctx, o.local, given, o.results, e.span,
     { ...e, scrut: scrut.tree, branches: e.branches.map((br, j) => ({ ...br, body: bodies[j]!.tree })) });
 }
 
@@ -391,7 +393,7 @@ export function term(ctx: Ctx, local: Local, t: Written): Result & { local: Loca
   return { local: out.local, ...single(out, t.span) };
 }
 
-export function isType(scope: Scope, id: EntryId, span: Span): void {
+function isType(scope: Scope, id: EntryId, span: Span): void {
   if (!identical(scope, entry(scope, id).type, TYPE))
     fail(span, () => `${show(scope, ref(id))} is not a type: its type is ${show(scope, entry(scope, id).type)}, not Type() (§3)`);
 }
@@ -403,7 +405,7 @@ export function annotate(ctx: Ctx, local: Local, ann: Ann): { local: Local; type
   return { local: t.local, type: it, is: null, tainted: t.tainted };
 }
 
-export interface Checked { local: Local; ids: EntryId[]; tele: Telescope; tainted: boolean }
+interface Checked { local: Local; ids: EntryId[]; tele: Telescope; tainted: boolean }
 
 export function telescope(ctx: Ctx, local: Local, binders: readonly Binderish[], kind: string, outer: readonly EntryId[] = []): Checked {
   const seen = new Set<string>(), ids: EntryId[] = [];

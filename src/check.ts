@@ -1,14 +1,14 @@
-import type { Check, CheckResult, Diagnostic, PositionInfo } from "./api.ts";
+import type { Check, CheckResult, PositionInfo } from "./api.ts";
 import type { Data, Expr, Fn, Span, Top } from "./syntax.ts";
 import { parse } from "./parser.ts";
-import { lex } from "./lexer.ts";
+import { hasKeyword } from "./lexer.ts";
 import { TYPE, abstract, declare, emptyScope, ref, signature } from "./terms.ts";
 import type { Telescope, Term } from "./terms.ts";
 import { difference } from "./telescope.ts";
 import { renderBinder } from "./render.ts";
 import { bindPattern, evalOne, evalStmt, showValue } from "./eval.ts";
 import type { Env, FnDef, Value } from "./eval.ts";
-import { Failure, declareGlobal, fail, fresh, global, record } from "./context.ts";
+import { Failure, attempt, declareGlobal, fail, fresh, global, record } from "./context.ts";
 import type { Ctx, FnCtx, FnSig, Given, Global, Local, Snapshot, State } from "./context.ts";
 import { annotate, expr, header, plural, single, stmt, telescope, term } from "./expr.ts";
 import { info, queries } from "./info.ts";
@@ -28,7 +28,7 @@ function run<T>(span: Span, f: () => T): T {
 
 export const check: Check = (source, phase) => {
   const parsed = parse(source, phase);
-  const containsSorry = lex(source, phase).some(t => t.kind === "keyword" && t.text === "sorry");
+  const containsSorry = hasKeyword(source, phase, "sorry");
   if ("error" in parsed)
     return {
       phase, error: parsed.error, containsSorry, qedChecks: null, goalProved: null, prints: [], inspects: [],
@@ -41,14 +41,16 @@ export const check: Check = (source, phase) => {
   const ctx: Ctx = { st, fn: null, skeleton: false, limit: null, erased: false, holes: [] };
   const prints: CheckResult["prints"] = [], gaps: Snapshot[] = [];
   const fns = new Map<string, FnDef>();
-  let env: Env = new Map(), poisoned = false, proved = false, error: Diagnostic | null = null;
+  let env: Env = new Map(), poisoned = false, proved = false;
   let goal: { type: Term | Telescopes; tainted: boolean; span: Span } | null = null;
   const hasQed = tops.some(t => t.kind === "qed");
   let qedChecks: boolean | null = hasQed ? false : null, qedSeen = false;
 
+  const here = (span: Span, given: Given | "none" = "none"): Snapshot => record(ctx, top, span, given);
+
   const dataGroup = (ds: readonly Data[]): void => {
     const types = ds.map(d => {
-      record(ctx, top, d.span, "none");
+      here(d.span);
       fresh(ctx, top, d.name, new Set());
       const name = d.name.name ?? "_";
       const params = telescope(ctx, top, d.params.map(p => ({ name: p.name, ann: { kind: "type" as const, term: p.type }, mult: null, span: p.span })), "binder").tele;
@@ -60,7 +62,7 @@ export const check: Check = (source, phase) => {
     ds.forEach((d, i) => {
       const owner = types[i]!;
       for (const c of d.ctors) {
-        record(ctx, top, c.span, "none");
+        here(c.span);
         fresh(ctx, top, c.name, new Set());
         const name = c.name.name ?? "_";
         const fields = telescope(ctx, top, c.fields, "binder");
@@ -121,7 +123,7 @@ export const check: Check = (source, phase) => {
   const named = (e: Expr): Global | undefined => e.kind === "var" && e.name.name !== null ? global(ctx, e.name.name) : undefined;
 
   const proves = (goalFn: Telescopes, e: Expr, given: Given): boolean => {
-    record(ctx, top, e.span, given);
+    here(e.span, given);
     const f = named(e);
     if (f?.kind !== "fn" || !f.sig) return fail(e.span, () => "the goal is a function goal, so `qed` names a function declared before it, as in `qed f;`");
     const sig = f.sig, mine = [...sig.params, ...sig.returns], theirs = [...goalFn.params, ...goalFn.returns];
@@ -137,7 +139,7 @@ export const check: Check = (source, phase) => {
   const checks = (e: Expr, given: Given, span: Span): boolean => {
     const f = named(e);
     if (f?.kind === "fn") {
-      record(ctx, top, e.span, given);
+      here(e.span, given);
       fail(e.span, () => `${f.name} is a function, and naming a function proves only a function goal, \`goal fn (...) -> (...);\`; this goal is a type`);
     }
     const out = expr(ctx, top, e, given), tainted = out.results.some(r => r.tainted);
@@ -153,7 +155,7 @@ export const check: Check = (source, phase) => {
       case "data": return dataGroup([t]);
       case "fn": return fnGroup([t]);
       case "mutual":
-        record(ctx, top, t.span, "none");
+        here(t.span);
         return t.decls[0]?.kind === "data" ? dataGroup(t.decls as Data[]) : fnGroup(t.decls as Fn[]);
       case "let": case "patlet": case "inspect": {
         const ran: { value: Value | null } = { value: null };
@@ -171,14 +173,14 @@ export const check: Check = (source, phase) => {
         return;
       }
       case "print": {
-        record(ctx, top, t.span, "none");
+        here(t.span);
         const out = expr(ctx, top, t.expr, null);
         const v = evaluated(t.span, out.tree, single(out, t.expr.span).tainted);
         prints.push({ span: t.span, value: v ? showValue(v) : "sorry" });
         return;
       }
       case "goal": {
-        record(ctx, top, t.span, "none");
+        here(t.span);
         if (goal) fail(t.span, () => "a program has at most one `goal` (§12)");
         if ("params" in t.type) {
           const { params, returns } = header(ctx, top, t.type);
@@ -191,7 +193,7 @@ export const check: Check = (source, phase) => {
         return;
       }
       case "qed": {
-        record(ctx, top, t.span, "none");
+        here(t.span);
         if (qedSeen) fail(t.span, () => "a program has at most one `qed` (§12)");
         qedSeen = true;
         if (!goal) return fail(t.span, () => "`qed` comes after `goal`, and no `goal` is set before this `qed` (§12)");
@@ -204,18 +206,15 @@ export const check: Check = (source, phase) => {
   };
 
   let last = 0;
-  const gap = (end: number) => { gaps.push(record(ctx, top, { start: last, end }, "none")); };
-  try {
+  const gap = (end: number) => { gaps.push(here({ start: last, end })); };
+  const error = attempt(() => {
     for (const t of tops) {
       gap(t.span.start);
       statement(t);
       last = t.span.end;
     }
     gap(source.length);
-  } catch (e) {
-    if (!(e instanceof Failure)) throw e;
-    error = e.diag;
-  }
+  })?.error ?? null;
   const fallback = (offset: number): Snapshot =>
     gaps.filter(g => g.span.start <= offset).at(-1) ?? gaps[0] ?? record({ ...ctx, st: { ...st, record: false } }, top, { start: 0, end: 0 }, "none");
   return {

@@ -4,7 +4,7 @@ import { addRule, app, canon, create, entry, identical, occurs, ref, rewrites, s
 import type { App, Binder, EntryId, Fresh, Head, OpenTerm, Origin, Ref, Scope, Signature, Telescope, Term } from "./terms.ts";
 import { cat, entryRef, join, render } from "./render.ts";
 
-export interface Opened { scope: Scope; entries: EntryId[]; env: Term[] }
+interface Opened { scope: Scope; entries: EntryId[]; env: Term[] }
 
 export function open(scope: Scope, tele: Telescope, env: readonly Term[], fresh: (b: Binder, i: number) => Fresh): Opened {
   const out: Opened = { scope, entries: [], env: [...env] };
@@ -18,15 +18,15 @@ export function open(scope: Scope, tele: Telescope, env: readonly Term[], fresh:
   return out;
 }
 
-export interface Mismatch { index: number; kind: "arity" | "type" | "is"; message: () => string }
-export type Instantiated = { ok: true; env: Term[] } | { ok: false; mismatch: Mismatch };
+interface Mismatch { index: number; kind: "arity" | "type" | "is"; message: () => string }
+type Instantiated = { ok: true; env: Term[] } | { ok: false; mismatch: Mismatch };
 
-export function instantiate(scope: Scope, tele: Telescope, given: readonly EntryId[], env: readonly Term[] = []): Instantiated {
+export function instantiate(scope: Scope, tele: Telescope, given: readonly EntryId[]): Instantiated {
   if (given.length !== tele.length) {
     const message = () => `${tele.length} expected, ${given.length} given`;
     return { ok: false, mismatch: { index: Math.min(given.length, tele.length), kind: "arity", message } };
   }
-  const out = [...env];
+  const out: Term[] = [];
   for (const [index, b] of tele.entries()) {
     const id = given[index] ?? -1;
     const fail = (kind: "type" | "is", want: Term, have: Term): Instantiated => ({
@@ -47,12 +47,12 @@ export function instantiate(scope: Scope, tele: Telescope, given: readonly Entry
 
 export function difference(scope: Scope, a: Telescope, b: Telescope, origin: Origin): number {
   const { scope: s, env } = open(scope, a, [], () => ({ origin }));
-  const same = (x: OpenTerm | null, y: OpenTerm | null): boolean => x === null || y === null ? x === y : identical(s, subst(x, env), subst(y, env));
-  const i = a.findIndex((x, j) => { const y = b[j]; return !y || x.mult !== y.mult || !same(x.type, y.type) || !same(x.is, y.is); });
+  const agree = (x: OpenTerm | null, y: OpenTerm | null): boolean => x === null || y === null ? x === y : identical(s, subst(x, env), subst(y, env));
+  const i = a.findIndex((x, j) => { const y = b[j]; return !y || x.mult !== y.mult || !agree(x.type, y.type) || !agree(x.is, y.is); });
   return i >= 0 ? i : a.length < b.length ? a.length : -1;
 }
 
-export type Applied = { ok: true; scope: Scope; id: EntryId } | { ok: false; mismatch: Mismatch };
+type Applied = { ok: true; scope: Scope; id: EntryId } | { ok: false; mismatch: Mismatch };
 
 export function apply(scope: Scope, sig: Signature, args: readonly EntryId[], fresh: Fresh): Applied {
   const inst = instantiate(scope, sig.params, args);

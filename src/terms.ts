@@ -5,7 +5,7 @@ export type { EntryId };
 
 export interface Head { kind: "type" | "ctor"; name: string }
 export interface Ref { tag: "entry"; id: EntryId }
-export interface Bound { tag: "bound"; index: number }
+interface Bound { tag: "bound"; index: number }
 export interface App<B = never> { tag: "app"; head: Head; args: readonly Term<B>[] }
 export type Term<B = never> = Ref | App<B> | B;
 export type OpenTerm = Term<Bound>;
@@ -15,7 +15,7 @@ export type Telescope = readonly Binder[];
 export interface Signature { head: Head; params: Telescope; ret: OpenTerm }
 
 export interface Origin { kind: string; span: Span }
-export interface Rule { term: Term; at: Span }
+interface Rule { term: Term; at: Span }
 export interface Entry {
   readonly id: EntryId;
   readonly names: readonly string[];
@@ -29,7 +29,7 @@ export interface Fresh { origin: Origin; erased?: boolean; tainted?: boolean }
 
 type Key = string | number;
 interface PNode<V> { readonly bucket: readonly (readonly [Key, V])[]; readonly l: PMap<V>; readonly r: PMap<V> }
-export type PMap<V> = PNode<V> | null;
+type PMap<V> = PNode<V> | null;
 interface Cons { readonly id: EntryId; readonly prev: Cons | null }
 
 export interface Scope {
@@ -111,7 +111,7 @@ export const mark = (scope: Scope, id: EntryId, flags: { erased?: boolean; taint
 export const addRule = (scope: Scope, id: EntryId, term: Term, at: Span): Scope =>
   put(scope, { ...entry(scope, id), rule: { term, at } });
 
-const mapLeaves = <B extends Bound, C extends Bound>(t: Term<B>, leaf: (u: Ref | B) => Term<C>): Term<C> =>
+export const mapLeaves = <B extends Bound, C extends Bound>(t: Term<B>, leaf: (u: Ref | B) => Term<C>): Term<C> =>
   t.tag === "app" ? { ...t, args: t.args.map(a => mapLeaves(a, leaf)) } : leaf(t);
 
 export const subst = (t: OpenTerm, env: readonly Term[]): Term => mapLeaves(t, u => {
@@ -164,7 +164,7 @@ export function isStrictSubterm(scope: Scope, s: Term, t: Term): boolean {
   return below(canon(scope, t));
 }
 
-export interface Step { by: EntryId; at: Span; from: Term; to: Term }
+interface Step { by: EntryId; at: Span; from: Term; to: Term }
 
 const replace = (t: Term, id: EntryId, by: Term): Term => mapLeaves(t, u => u.id === id ? by : u);
 

@@ -1,6 +1,7 @@
 import type { Phase, Span } from "../syntax.ts";
 import { lex, type Token } from "../lexer.ts";
-import { fill, h, lineCol, type Child } from "./dom.ts";
+import { lineCol } from "../render.ts";
+import { fill, h, type Child } from "./dom.ts";
 
 export type NameKind = "type" | "ctor" | "fn";
 
@@ -62,13 +63,13 @@ const columns = (line: string): number => [...line].reduce((col, c) => col + (c 
 
 const segments = (text: string, decorations: Decoration[]): (HTMLElement | string)[] => {
   const cuts = [...new Set([0, text.length, ...decorations.flatMap(d => [d.start, d.end])])].sort((a, b) => a - b);
-  const span = (start: number, end: number, covering: (d: Decoration) => boolean, content: string): HTMLElement | string => {
+  const span = (start: number, covering: (d: Decoration) => boolean, content: string): HTMLElement | string => {
     const cls = decorations.filter(covering).map(d => d.cls).join(" ");
     return cls ? h("span", { class: cls, "data-at": `${start}` }, content) : content;
   };
   return cuts.flatMap((start, i) => [
-    ...decorations.some(d => d.start === start && d.end === start) ? [span(start, start, d => d.start === start && d.end === start, " ")] : [],
-    ...i + 1 < cuts.length ? [span(start, cuts[i + 1]!, d => d.start <= start && cuts[i + 1]! <= d.end, text.slice(start, cuts[i + 1]))] : [],
+    ...decorations.some(d => d.start === start && d.end === start) ? [span(start, d => d.start === start && d.end === start, " ")] : [],
+    ...i + 1 < cuts.length ? [span(start, d => d.start <= start && cuts[i + 1]! <= d.end, text.slice(start, cuts[i + 1]))] : [],
   ]);
 };
 

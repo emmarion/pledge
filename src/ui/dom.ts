@@ -18,11 +18,6 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<s
 
 export const fill = (el: Element, ...children: Child[]): void => el.replaceChildren(...flat(children));
 
-export const lineCol = (text: string, offset: number): { line: number; col: number } => {
-  const before = text.slice(0, offset).split("\n");
-  return { line: before.length, col: before[before.length - 1]!.length + 1 };
-};
-
 export const load = (key: string): string | null => {
   try { return localStorage.getItem(`pledge:${key}`); } catch { return null; }
 };

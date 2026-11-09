@@ -1,11 +1,7 @@
 import type { Ann, Arg, Binder, Branch, Ctor, Data, Expr, Fn, Header, Id, LetBinder, Mult, Param, Pattern, Phase, Program, Span, Stmt, Tele, Term, Top, TypedParam } from "./syntax.ts";
 import type { Diagnostic } from "./api.ts";
 import { lex, type Token } from "./lexer.ts";
-
-class ParseError {
-  readonly diag: Diagnostic;
-  constructor(diag: Diagnostic) { this.diag = diag; }
-}
+import { attempt, fail as failAt } from "./context.ts";
 
 type Block = Expr & { kind: "block" };
 
@@ -31,7 +27,7 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
 
   const peek = (k = 0): Token => {
     const token = tokens[Math.min(pos + k, tokens.length - 1)]!;
-    if (token.kind === "error") throw new ParseError(token.diag);
+    if (token.kind === "error") failAt(token.diag.span, token.diag.message);
     return token;
   };
   const next = (): Token => {
@@ -40,12 +36,9 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
     prevEnd = token.span.end;
     return token;
   };
-  const failAt = (token: Token, message: () => string): never => {
-    throw new ParseError({ span: token.span, message });
-  };
   const fail = (expected: string): never => {
     const token = peek();
-    return failAt(token, () => `expected ${expected}, found ${describe(token)}`);
+    return failAt(token.span, () => `expected ${expected}, found ${describe(token)}`);
   };
   const isText = (token: Token, text: string): boolean => token.kind !== "name" && token.text === text;
   const at = (text: string): boolean => isText(peek(), text);
@@ -86,7 +79,7 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
     return token.kind === "name" ? (next(), { name: token.text, span: token.span }) : fail("a name");
   };
   const id = (): Id => (peek().kind === "underscore" ? { name: null, span: next().span } : peek().kind === "name" ? name() : fail("a name or `_`"));
-  const isMult = (token: Token): boolean => phase >= 2 && token.kind === "keyword" && (token.text === "erased" || token.text === "many");
+  const isMult = (token: Token): boolean => token.kind === "keyword" && (token.text === "erased" || token.text === "many");
   const mult = (): Mult | null => (isMult(peek()) ? (next().text as Mult) : null);
 
   const term = (): Term => {
@@ -245,10 +238,10 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
     braces((): void => {
       if (at("data") && fns.length === 0) datas.push(data());
       else if (at("fn") && datas.length === 0) fns.push(fn());
-      else if (at("data") || at("fn")) failAt(peek(), () => "a `mutual` block holds either `data` declarations or functions, not both");
+      else if (at("data") || at("fn")) failAt(peek().span, () => "a `mutual` block holds either `data` declarations or functions, not both");
       else fail("`data` or `fn`");
     });
-    if (datas.length === 0 && fns.length === 0) failAt(tokens[pos - 1]!, () => "a `mutual` block declares at least one `data` declaration or function");
+    if (datas.length === 0 && fns.length === 0) failAt(tokens[pos - 1]!.span, () => "a `mutual` block declares at least one `data` declaration or function");
     return declaration({ kind: "mutual", decls: datas.length > 0 ? datas : fns, span: spanFrom(begin) });
   };
 
@@ -278,10 +271,5 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
     return peek().kind === "eof" ? e : fail("end of input");
   };
 
-  try {
-    return { value: root({ program, expression }) };
-  } catch (e) {
-    if (e instanceof ParseError) return { error: e.diag };
-    throw e;
-  }
+  return attempt(() => ({ value: root({ program, expression }) }));
 }
