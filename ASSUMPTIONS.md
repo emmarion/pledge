@@ -315,3 +315,20 @@ and never renumbered (rule 15); a removed item leaves a gap.
 58. **Panels.** At the `qed`'s name, Expected shows the goal's
     parameters, then its returns; inside the goal's telescopes the
     panels work as inside a function's, with no enclosing function.
+59. **The arithmetic pages** state everything relationally: `Plus(m,
+    n, r)` as on the proof-by-recursion page, and `Times(m, n, r)`
+    with recursion on the first argument, `TimesSucc` needing
+    `Times(m, n, r)` and `Plus(r, n, s)` for `Times(Succ(m), n, s)`.
+    Existential witnesses are extra returns. Distributivity is proved
+    through an `exchange` lemma, (w + y) + (x + z) = (w + x) + (y + z),
+    whose steps carry `--` comments giving each proof's type, since a
+    tuple `let` binder's type cannot mention an earlier binder of the
+    same `let` (item 30). The shown proofs sit in the learner's box with
+    one branch missing, since a function cannot be split between a
+    read-only box and the learner's box.
+60. **The phase 2 pages** erase, in the example types, `VNil`'s and
+    `VCons`'s `A`, `VCons`'s `n` and both fields of `Refl`, as the
+    phase 2 example programs under `tests/` do; §16 does not say which
+    fields should be erased. Where their prose describes behaviour
+    DESIGN.md is silent on, it cites the item here and says "in this
+    implementation".
