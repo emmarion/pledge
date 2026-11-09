@@ -18,7 +18,8 @@ test("facts-escape: after the block, v's rule and the anonymous tail remain, and
   const after = scopeOf(r.infoAt(source.indexOf("inspect;")));
   assert.ok(after.some(e => /^v : .* is VCons\(Nat\(\), n, h, \?VCons\.rest@/.test(e)), after.join("; "));
   assert.ok(after.includes("?VCons.rest : Vec(Nat(), n)"), after.join("; "));
-  assert.ok(!after.some(e => /^(hd|tl)\b/.test(e)));
+  const tail = r.infoAt(source.indexOf("inspect;")).scope.find(e => e.origin.kind === "VCons.rest")!;
+  assert.equal(source.slice(tail.origin.span.start, tail.origin.span.end), "tl");  assert.ok(!after.some(e => /^(hd|tl)\b/.test(e)));
   assert.match(run("facts-escape", `let k = tl;\n${page("facts-escape").solution}`).r.error?.message() ?? "", /`tl` is not in scope/);
   const p = page("facts-escape");
   const noEscape = check(program(p.boxes.map(b => b.replace("{ let VCons(_, _, hd, tl) = v; hd }", "Zero()")), p.solution), p.phase);
