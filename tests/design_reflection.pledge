@@ -1,0 +1,34 @@
+data Nat() : Type() {
+  Zero() : Nat();
+  Succ(pred : Nat()) : Nat();
+}
+
+mutual {
+  data Even(n : Nat()) : Type() {
+    EvenZero() : Even(Zero());
+    EvenSucc(n : Nat(), p : Odd(n)) : Even(Succ(n));
+  }
+  data Odd(n : Nat()) : Type() {
+    OddSucc(n : Nat(), p : Even(n)) : Odd(Succ(n));
+  }
+}
+
+data Option(A : Type()) : Type() {
+  None(A : Type()) : Option(A);
+  Some(A : Type(), x : A) : Option(A);
+}
+
+fn decideEven(subterm n : Nat()) -> (r : Option(Even(n))) {
+  match n : (r : Option(Even(n))) {
+    Zero() => Some(Even(n), EvenZero());
+    Succ(m) => match m : (r : Option(Even(n))) {
+      Zero() => None(Even(n));
+      Succ(k) => match decideEven(subterm k) : (r : Option(Even(n))) {
+        None(_) => None(Even(n));
+        Some(_, q) => Some(Even(n), EvenSucc(m, OddSucc(k, q)));
+      };
+    };
+  }
+}
+
+comptime let Some(_, p) = decideEven(Succ(Succ(Zero())));

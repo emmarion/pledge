@@ -1,0 +1,7 @@
+data Nat() : Type() {
+  Zero() : Nat();
+  Succ(pred : Nat()) : Nat();
+}
+
+let y = sorry(x is Zero());
+print y;

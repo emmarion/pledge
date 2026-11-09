@@ -1,0 +1,11 @@
+data Nat() : Type() {
+  Zero() : Nat();
+  Succ(pred : Nat()) : Nat();
+}
+
+data Vec(A : Type(), n : Nat()) : Type() {
+  VNil(A : Type()) : Vec(A, Zero());
+  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n)) : Vec(A, Succ(n));
+}
+
+let x = VCons(Nat(), Zero(), Zero(), VNil(Nat()));

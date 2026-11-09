@@ -1,0 +1,15 @@
+data Nat() : Type() {
+  Zero() : Nat();
+  Succ(pred : Nat()) : Nat();
+}
+
+mutual {
+  data Even(n : Nat()) : Type() {
+    EvenZero() : Even(Zero());
+    EvenSucc(n : Nat(), p : Odd(n)) : Even(Succ(n));
+  }
+  data Odd(n : Nat()) : Type() {
+    OddSucc(n : Nat(), p : Even(n)) : Odd(Succ(n));
+  }
+}
+

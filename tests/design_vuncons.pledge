@@ -1,0 +1,20 @@
+data Nat() : Type() {
+  Zero() : Nat();
+  Succ(pred : Nat()) : Nat();
+}
+
+data Vec(A : Type(), n : Nat()) : Type() {
+  VNil(A : Type()) : Vec(A, Zero());
+  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n)) : Vec(A, Succ(n));
+}
+
+fn vuncons(A : Type(), n : Nat(), v : Vec(A, Succ(n)))
+    -> (hd : A, tl : Vec(A, n)) {
+  let VCons(_, _, h, t) = v;
+  (h, t)
+}
+
+let A = Nat();
+let n = Zero();
+let v = VCons(A, n, Zero(), VNil(A));
+let (h, t) = vuncons(A, n, v);

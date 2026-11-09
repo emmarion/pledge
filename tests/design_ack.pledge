@@ -1,0 +1,14 @@
+data Nat() : Type() {
+  Zero() : Nat();
+  Succ(pred : Nat()) : Nat();
+}
+
+fn ack(subterm m : Nat(), subterm n : Nat()) -> (r : Nat()) {
+  match m : (r : Nat()) {
+    Zero() => Succ(n);
+    Succ(m1) => match n : (r : Nat()) {
+      Zero() => ack(subterm m1, Succ(Zero()));
+      Succ(n1) => ack(subterm m1, ack(same m, subterm n1));
+    };
+  }
+}

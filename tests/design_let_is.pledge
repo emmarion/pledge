@@ -1,0 +1,8 @@
+data Nat() : Type() {
+  Zero() : Nat();
+  Succ(pred : Nat()) : Nat();
+}
+
+let n = Zero();
+let e = Succ(n);
+let y is Succ(n) = e;

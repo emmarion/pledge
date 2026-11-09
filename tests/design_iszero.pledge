@@ -1,0 +1,15 @@
+data Nat() : Type() {
+  Zero() : Nat();
+  Succ(pred : Nat()) : Nat();
+}
+
+data IsZero(n : Nat()) : Type() {
+  IsZeroHere() : IsZero(Zero());
+}
+
+fn f(n : Nat(), p : IsZero(n)) -> (r : Nat()) {
+  match n : (r : Nat()) {
+    Zero() => Zero();
+    Succ(m) => match p : (r : Nat()) {};
+  }
+}
