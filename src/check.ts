@@ -155,7 +155,7 @@ export const check: Check = (source, phase, where = position(source)) => {
       }
       case "print": {
         here(t.span);
-        const out = expr(ctx, top, t.expr, null);
+        const out = expr(ctx, top, t.expr, null, "the expression of a `print`");
         top = out.local;
         const v = evaluated(t.span, out.tree, single(out, t.expr.span).tainted);
         prints.push({ span: t.span, value: v ? showValue(v) : "sorry" });

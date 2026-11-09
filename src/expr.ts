@@ -36,10 +36,9 @@ const reach = (local: Local, scrutinee: Result, span: Span): Span | null =>
 const erasedAt = (given: Given | null, i: number): boolean => given?.wants[i]?.mult === "erased";
 const erase = (given: Given): Given => ({ ...given, wants: given.wants.map(w => ({ ...w, mult: "erased" as const })) });
 
-const PRINT = "the expression of a `print`";
 const ELSEWHERE = "this position";
 
-export function expr(ctx: Ctx, local: Local, e: Expr, given: Given | null, where = PRINT): Out {
+export function expr(ctx: Ctx, local: Local, e: Expr, given: Given | null, where = ELSEWHERE): Out {
   const whole = ctx.erased || (given !== null && given.wants.every(w => w.mult === "erased"));
   const g = ctx.erased && given ? erase(given) : given, c = whole === ctx.erased ? ctx : { ...ctx, erased: whole };
   const built = build(c, local, e, g, record(c, local, e.span, g), where);
@@ -473,7 +472,7 @@ export function stmt(ctx: Ctx, local: Local, s: Stmt, comptime?: Comptime): Stmt
         "a `comptime` pattern `let` evaluates its right-hand side (§11), so it cannot be erased (§16)");
       names(ctx, local, s.pat.fields);
       const out = expr(erased ? { ...ctx, erased } : ctx, local, s.rhs, null,
-    "the right-hand side of a `many` pattern `let`"), r = single(out, s.rhs.span);
+        "the right-hand side of a `many` pattern `let`"), r = single(out, s.rhs.span);
       const fs = forcings(ctx, out.local, r.id, s.rhs.span, [s.pat], s.span, erased);
       snap.refutations = refutations(fs);
       if (s.comptime) comptime?.(out.tree, r.tainted);
@@ -497,7 +496,7 @@ const skeleton = (t: WrittenTerm): Expr => t.args === null
 
 export function term(ctx: Ctx, local: Local, t: WrittenTerm): Result & { local: Local } {
   const out = expr({ ...ctx, skeleton: true, erased: ctx.erased || ctx.st.phase >= 2, holes: [] }, local, skeleton(t),
-    null, ELSEWHERE);
+    null);
   return { local: out.local, ...single(out, t.span) };
 }
 
