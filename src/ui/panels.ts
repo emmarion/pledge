@@ -1,12 +1,12 @@
 import type { CheckResult, EntryId, EntryInfo, ExpectedEntry, PositionInfo, Rendered, Rewrite } from "../api.ts";
 import { h, type Child } from "./dom.ts";
-import { linked, marked } from "./links.ts";
+import { linked, marked, unbroken } from "./links.ts";
 
 export interface Host {
   goto(offset: number): void;
-  explain(offset: number): void;
   entry(id: EntryId): EntryInfo | undefined;
   where(offset: number): string;
+  spot(offset: number): string;
   showErased: boolean;
   globalsOpen: boolean;
 }
@@ -25,16 +25,12 @@ function rendered(r: Rendered, ctx: Host): HTMLElement {
   for (const { span, entry } of [...r.refs].sort((a, b) => a.span.start - b.span.start)) {
     if (span.start < at) continue;
     const info = ctx.entry(entry);
-    const text = r.text.slice(span.start, span.end);
-    out.append(r.text.slice(at, span.start), info
-      ? link(text, `${info.origin.kind} at ${ctx.where(info.origin.span.start)}`, () => {
-        ctx.goto(info.origin.span.start);
-        ctx.explain(info.origin.span.start);
-      })
-      : text);
+    const text = unbroken(r.text.slice(span.start, span.end));
+    out.append(...unbroken(r.text.slice(at, span.start)), ...info ? [link(text,
+      `${info.origin.kind} at ${ctx.where(info.origin.span.start)}`, () => ctx.goto(info.origin.span.start))] : text);
     at = span.end;
   }
-  out.append(r.text.slice(at));
+  out.append(...unbroken(r.text.slice(at)));
   return out;
 }
 
@@ -54,7 +50,7 @@ const signed = (name: string, signature: Child): HTMLElement =>
 const globalLine = (kind: string, name: string, signature: Child): Child =>
   [h("span", { class: "kind" }, kind), " ", signed(name, signature)];
 
-const section = (title: string, ...body: Child[]): HTMLElement =>
+export const section = (title: string, ...body: Child[]): HTMLElement =>
   h("section", { class: "panel" }, h("h3", {}, title), body);
 
 const list = (items: Child[], empty: string): Child =>
@@ -64,8 +60,8 @@ const names = (e: EntryInfo): Child =>
   e.names.map((name, i) => [i > 0 && ", ", name, tag("tainted", e.tainted.includes(name))]);
 
 const entryName = (e: EntryInfo, ctx: Host): Child =>
-  e.names.length ? names(e) : h("span", { class: "anon" }, `‹${e.origin.kind} `,
-    goto(ctx, e.origin.span.start), "›");
+  e.names.length ? names(e) : goto(ctx, e.origin.span.start,
+    h("span", { class: "marker" }, `?${e.origin.kind}@${ctx.spot(e.origin.span.start)}`));
 
 const expectedList = (entries: readonly ExpectedEntry[], ctx: Host): Child =>
   list(entries.map(e => binding(ctx, e.name ?? "_", e.type, e.rule, tag("erased", ctx.showErased && e.erased),
@@ -103,26 +99,28 @@ export function infoView(info: PositionInfo, ctx: Host): HTMLElement[] {
         ontoggle: () => { if (!steps.hasChildNodes()) steps.append(derivation(r.derivation, ctx)); },
       }, h("summary", {}, h("code", {}, r.ctor)), steps));
     }), "No value constructor is refuted here."))],
-    h("details", {
-      class: "panel globals", open: ctx.globalsOpen,
-      ontoggle: (e: Event) => { ctx.globalsOpen = (e.currentTarget as HTMLDetailsElement).open; },
-    }, h("summary", {}, `Globals (${info.globals.length})`),
-      list(info.globals.map(g => h("li", { class: "global" }, globalLine(g.kind, g.name, rendered(g.signature, ctx)),
-        g.ctors && h("ul", {}, g.ctors.map(c => h("li", {}, signed(c.name, rendered(c.signature, ctx))))))),
-        "No top-level names in scope.")),
   ];
 }
 
+export const globalsView = (info: PositionInfo, ctx: Host): HTMLElement => h("details", {
+  class: "panel globals", open: ctx.globalsOpen,
+  ontoggle: (e: Event) => { ctx.globalsOpen = (e.currentTarget as HTMLDetailsElement).open; },
+}, h("summary", {}, `Globals (${info.globals.length})`),
+  list(info.globals.map(g => h("li", { class: "global" }, globalLine(g.kind, g.name, rendered(g.signature, ctx)),
+    g.ctors && h("ul", {}, g.ctors.map(c => h("li", {}, signed(c.name, rendered(c.signature, ctx))))))),
+    "No top-level names in scope."));
+
 export const entryTip = (e: EntryInfo, showErased: boolean): Child =>
-  [h("code", {}, typed(names(e), e.type.text, e.rule?.text)), tag("erased", showErased && e.erased)];
+  [h("code", {}, typed(names(e), unbroken(e.type.text), e.rule && unbroken(e.rule.text))),
+    tag("erased", showErased && e.erased)];
 
 export const globalTip = (kind: string, name: string, signature: Rendered): Child =>
-  globalLine(kind, name, signature.text);
+  globalLine(kind, name, unbroken(signature.text));
 
 export const inspectView = (info: PositionInfo, ctx: Host): HTMLElement => {
   const body = h("div", { class: "inspect-body" });
   return h("details", { class: "inspect",
-    ontoggle: () => { if (!body.hasChildNodes()) body.append(...infoView(info, ctx)); } },
+    ontoggle: () => { if (!body.hasChildNodes()) body.append(...infoView(info, ctx), globalsView(info, ctx)); } },
     h("summary", {}, "inspect"), body);
 };
 
@@ -134,7 +132,7 @@ const rewriteView = (r: Rewrite, ctx: Host): HTMLElement => {
 
 export const explainView = (result: ReturnType<CheckResult["explainAt"]>, ctx: Host): Child =>
   result === null
-    ? muted("No skeleton term here.")
+    ? muted("No term at the caret.")
     : [h("p", {}, "Canonical form: ", rendered(result.canonical, ctx)),
       result.rewrites.length ? h("ol", { class: "rewrites" }, result.rewrites.map(r => rewriteView(r, ctx)))
         : muted("Already canonical.")];
@@ -142,9 +140,10 @@ export const explainView = (result: ReturnType<CheckResult["explainAt"]>, ctx: H
 export const evalView = (result: ReturnType<CheckResult["evalAt"]>, ctx: Host): Child => {
   if ("error" in result) return h("p", { class: "bad" },
     `Column ${result.error.span.start + 1}: `, marked(result.error.message()));
-  const rule = (r: Rendered | null): Child => r ? rendered(r, ctx) : muted("no rule");
-  return h("dl", {}, row("Type", rendered(result.type, ctx)), row("canonical", rendered(result.canonicalType, ctx)),
-    row("is", rule(result.rule)), row("canonical", rule(result.canonicalRule)));
+  const rows = (term: string, inferred: Rendered | null, canonical: Rendered | null): Child =>
+    [row(term, inferred ? rendered(inferred, ctx) : muted("no rule")),
+      canonical && canonical.text !== inferred?.text && row("canonical", rendered(canonical, ctx))];
+  return h("dl", {}, rows("type", result.type, result.canonicalType), rows("is", result.rule, result.canonicalRule));
 };
 
 export const verdict = (good: boolean | null, ...text: Child[]): HTMLElement =>

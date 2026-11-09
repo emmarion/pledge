@@ -5,8 +5,46 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Pledge</title>
+<meta name="description" content="Pledge is a small language for learning restricted dependent types,
+built so that you can see what its type checker knows at every point of a program.">
+<meta property="og:title" content="Pledge">
+<meta property="og:description" content="Pledge is a small language for learning restricted dependent types,
+built so that you can see what its type checker knows at every point of a program.">
 <link rel="stylesheet" href="style.css">
 <script type="module" src="js/ui/main.js"></script>
 </head>
-<body></body>
+<body>
+<noscript>
+<main class="fallback">
+<h1>Pledge</h1>
+<p>Pledge is a small language for learning restricted dependent types. This page is an editor that checks a
+Pledge program as you type and shows what the type checker knows at the caret. It needs JavaScript to run the
+checker.</p>
+<p>Other pages: <a href="tutorial.html">the tutorial</a>,
+<a href="https://github.com/emmarion/pledge/blob/main/DESIGN.md">the specification</a> and
+<a href="https://github.com/emmarion/pledge">the repository</a>.</p>
+<p>The program the editor starts with:</p>
+<pre>data Nat() : Type() {
+  Zero() : Nat();
+  Succ(pred : Nat()) : Nat();
+}
+
+data Vec(A : Type(), n : Nat()) : Type() {
+  VNil(A : Type()) : Vec(A, Zero());
+  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))
+    : Vec(A, Succ(n));
+}
+
+fn vhead(A : Type(), n : Nat(), v : Vec(A, Succ(n)))
+    -&gt; (x : A) {
+  let VCons(_, _, hd, _) = v;
+  hd
+}
+
+let x = VCons(Nat(), Zero(), Zero(), VNil(Nat()));
+print vhead(Nat(), Zero(), x);
+</pre>
+</main>
+</noscript>
+</body>
 </html>

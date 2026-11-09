@@ -22,7 +22,12 @@ export const linked = (text: string): Child => text.split(cited).map((part, i) =
   return href ? h("a", { href, target: "_blank", rel: "noopener" }, part) : part;
 });
 
+const marker = /(\?[^\s@(),`]+@(?:box\d+:)?\d+:\d+)/;
+
+export const unbroken = (text: string): (HTMLElement | string)[] =>
+  text.split(marker).map((part, i) => i % 2 ? h("span", { class: "marker" }, part) : part);
+
 export const marked = (text: string): Child => text.split(/(`[^`]*`|\*(?:[^*`]|`[^`]*`)+\*)/).map((part, i) => {
   const inner = part.slice(1, -1);
-  return !(i % 2) ? linked(part) : part[0] === "`" ? h("code", {}, inner) : h("dfn", {}, marked(inner));
+  return !(i % 2) ? linked(part) : part[0] === "`" ? h("code", {}, unbroken(inner)) : h("dfn", {}, marked(inner));
 });

@@ -18,8 +18,10 @@ const brackets: Record<string, string> = { "(": ")", "{": "}" };
 
 const tip = h("div", { class: "hover-tip", role: "tooltip", hidden: true });
 
-const tokenClass = (t: Token, kinds: Map<string, NameKind>): string | null =>
-  t.kind === "name" ? `hl-name ${kinds.has(t.text) ? `hl-${kinds.get(t.text)}` : ""}`
+type Kinds = (t: Token) => NameKind | null | undefined;
+
+const tokenClass = (t: Token, kinds: Kinds): string | null =>
+  t.kind === "name" ? `hl-name ${kinds(t) ? `hl-${kinds(t)}` : ""}`
     : t.kind === "keyword" ? "hl-keyword"
       : t.kind === "punct" ? "hl-punct"
         : t.kind === "underscore" ? "hl-hole"
@@ -71,7 +73,7 @@ const segments = (text: string, decorations: Decoration[]): (HTMLElement | strin
   ]);
 };
 
-export const highlight = (text: string, tokens: Token[], kinds: Map<string, NameKind>,
+export const highlight = (text: string, tokens: Token[], kinds: Kinds,
   extra: Decoration[] = []): (HTMLElement | string)[] =>
   segments(text, [
     ...tokens.flatMap(t => {
@@ -95,20 +97,19 @@ export class Editor {
   private tokens: Token[] = [];
   private pairs = new Map<Token, Token>();
   private mark: Span | null = null;
-  private kinds = new Map<string, NameKind>();
   private hovered: Token | null = null;
   private hoverTimer = 0;
 
-  constructor(text: string, editable: boolean, private readonly phase: () => Phase, onEdit: () => void,
-    onCaret: (clicked: boolean) => void, private readonly describe: (offset: number, name: string) => Child) {
+  constructor(text: string, editable: boolean, label: string | null, private readonly phase: () => Phase,
+    onEdit: () => void, onCaret: () => void, private readonly describe: (offset: number) => Child,
+    private readonly kinds: (offset: number, name: string) => NameKind | null | undefined) {
     this.area = h("textarea", {
       class: "source", wrap: "off", spellcheck: "false", autocomplete: "off", autocapitalize: "off",
       readonly: !editable, "aria-label": editable ? "Your program" : "Read-only source",
     });
     this.area.value = text;
-    this.area.addEventListener("input", () => { this.show(null, null); onEdit(); });
-    for (const event of ["keyup", "click", "focus", "select"]) this.area.addEventListener(event,
-      () => onCaret(event === "click"));
+    this.area.addEventListener("input", () => { onEdit(); this.show(null, null); });
+    for (const event of ["keyup", "click", "focus", "select"]) this.area.addEventListener(event, onCaret);
     for (const event of ["focus", "blur"]) this.area.addEventListener(event, () => this.paint());
     document.addEventListener("selectionchange", () => { if (document.activeElement === this.area) this.paint(); });
     this.area.addEventListener("scroll", () => this.scrolled());
@@ -117,7 +118,8 @@ export class Editor {
     for (const event of ["mouseleave", "keydown", "mousedown"]) this.area.addEventListener(event,
       () => this.hover(null));
     this.code.append(this.area);
-    this.root = h("div", { class: editable ? "editor" : "editor readonly" }, this.gutter, this.code, this.outputs);
+    this.root = h("div", { class: "box" }, label && h("div", { class: "box-label" }, label),
+      h("div", { class: editable ? "editor" : "editor readonly" }, this.gutter, this.code, this.outputs));
     this.show(null, []);
   }
 
@@ -133,9 +135,8 @@ export class Editor {
     this.paint();
   }
 
-  show(mark: Span | null, outputs: Output[] | null, kinds = this.kinds): void {
+  show(mark: Span | null, outputs: Output[] | null): void {
     this.mark = mark;
-    this.kinds = kinds;
     this.tokens = lex(this.text, this.phase());
     this.pairs = partners(this.tokens);
     const lines = this.text.split("\n");
@@ -159,7 +160,7 @@ export class Editor {
     const paired = [...this.pairs.keys()];
     const bracket = caret === null ? undefined : paired.find(t => t.span.start === caret)
       ?? paired.find(t => t.span.end === caret);
-    fill(this.layer, highlight(text, this.tokens, this.kinds, [
+    fill(this.layer, highlight(text, this.tokens, t => this.kinds(t.span.start, t.text), [
       ...this.mark ? errorMarks(text, this.mark) : [],
       ...bracket ? [bracket, this.pairs.get(bracket)!].map(t => ({ ...t.span, cls: "hl-bracket" })) : [],
     ]), "\n");
@@ -190,7 +191,7 @@ export class Editor {
     tip.hidden = true;
     if (!token || !at) return;
     this.hoverTimer = setTimeout(() => {
-      const content = this.describe(token.span.start, token.text);
+      const content = this.describe(token.span.start);
       if (!content) return;
       fill(tip, content);
       if (!tip.isConnected) document.body.append(tip);

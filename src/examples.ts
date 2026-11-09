@@ -16,3 +16,7 @@ export const vheadBy = (mult: string): string => `fn vhead(${mult}A : Type(), ${
   let VCons(_, _, hd, _) = v;
   hd
 }`;
+
+export const example = `${[nat, vec, vheadBy(""), `let x = VCons(Nat(), Zero(), Zero(), VNil(Nat()));
+print vhead(Nat(), Zero(), x);`].join("\n\n")}
+`;

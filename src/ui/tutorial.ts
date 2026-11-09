@@ -23,11 +23,17 @@ const workspace = new Workspace(
     boxes: [...fixed, fixed.length + 1] }]);
 
 const next = pages[index + 1];
+const toc = h("details", { class: "toc" }, h("summary", {}, "Pages"),
+  h("nav", { "aria-label": "Pages" }, [...new Set(pages.map(p => p.section))].map(section =>
+    [h("h2", {}, section, pages.find(p => p.section === section)!.appendix && h("span", { class: "note" }, "optional")),
+      h("ol", {}, pages.map((p, i) => p.section === section && h("li", {},
+        h("a", { href: href(i), "aria-current": i === index && "page" }, p.title,
+          p.phase > 1 && h("span", { class: "tag" }, `phase ${p.phase}`)))))])));
 document.title = `${page.title} — Pledge tutorial`;
 workspace.mount(
   [h("h1", {}, h("a", { href: "index.html" }, "Pledge"), " tutorial"),
     h("span", { class: "muted" }, `Phase ${page.phase}`)],
-  "Reset your box",
+  { label: "Reset your box", question: "Replace your text with the starting text? This cannot be undone." },
   [h("div", { class: "about" },
     h("details", { class: "disclaimer" }, h("summary", {}, "Disclaimer"), h("p", {}, linked(disclaimer))),
     h("details", { class: "glossary" }, h("summary", {}, "Glossary"), h("dl", {}, glossary.map(g => [
@@ -41,8 +47,9 @@ workspace.mount(
     index > 0 && h("a", { href: href(index - 1) }, `← ${pages[index - 1]!.title}`),
     next && h("a", { href: href(index + 1), class: "next" },
       `${next.appendix && !page.appendix ? "Appendix: " : ""}${next.title} →`))],
-  h("nav", { class: "toc", "aria-label": "Pages" }, [...new Set(pages.map(p => p.section))].map(section =>
-    [h("h2", {}, section, pages.find(p => p.section === section)!.appendix && h("span", { class: "note" }, "optional")),
-      h("ol", {}, pages.map((p, i) => p.section === section && h("li", {},
-      h("a", { href: href(i), "aria-current": i === index && "page" }, p.title,
-        p.phase > 1 && h("span", { class: "tag" }, `phase ${p.phase}`)))))])));
+  toc);
+
+const wide = matchMedia("(min-width: 1440px)");
+const sync = (): void => { toc.open = wide.matches; };
+wide.addEventListener("change", sync);
+sync();
