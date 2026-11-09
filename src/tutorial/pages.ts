@@ -62,6 +62,13 @@ const isZero = `data IsZero(n : Nat()) : Type() {
   IsZeroHere() : IsZero(Zero());
 }`;
 
+const isZeroEq = (succBranch: string): string => `fn f(n : Nat(), p : IsZero(n)) -> (e : Eq(Nat(), n, Zero())) {
+  match n : _ {
+    Zero() => Refl(Nat(), n);${succBranch}
+  }
+}
+`;
+
 const ack = `fn ack(subterm m : Nat(), subterm n : Nat()) -> (r : Nat()) {
   match m : (r : Nat()) {
     Zero() => Succ(n);
@@ -69,6 +76,13 @@ const ack = `fn ack(subterm m : Nat(), subterm n : Nat()) -> (r : Nat()) {
       Zero() => ack(subterm m1, Succ(Zero()));
       Succ(n1) => ack(subterm m1, ack(same m, subterm n1));
     };
+  }
+}`;
+
+const plusFn = (mark: string): string => `fn plus(${mark}m : Nat(), n : Nat()) -> (r : Nat()) {
+  match m : (r : Nat()) {
+    Zero() => n;
+    Succ(k) => Succ(plus(${mark}k, n));
   }
 }`;
 
@@ -154,16 +168,15 @@ const exchange = `fn exchange(w : Nat(), y : Nat(), x : Nat(), z : Nat(), wy : N
     s : Plus(wy, xz, r))
     -> (wx : Nat(), yz : Nat(), p1 : Plus(w, x, wx),
         q1 : Plus(y, z, yz), s1 : Plus(wx, yz, r)) {
-  -- s2 : Plus(y, xz, yxz), s3 : Plus(w, yxz, r)
-  let (yxz, s2, s3) = plusAssoc(w, y, xz, wy, r, p, s);
-  -- s4 : Plus(y, x, yx), s5 : Plus(yx, z, yxz)
-  let (yx, s4, s5) = plusAssocRev(y, x, z, xz, yxz, q, s2);
-  -- s6 : Plus(x, y, yx)
-  let s6 = plusComm(y, x, yx, s4);
-  -- s7 : Plus(y, z, yz), s8 : Plus(x, yz, yxz)
-  let (yz, s7, s8) = plusAssoc(x, y, z, yx, yxz, s6, s5);
-  -- s9 : Plus(w, x, wx), s10 : Plus(wx, yz, r)
-  let (wx, s9, s10) = plusAssocRev(w, x, yz, yxz, r, s8, s3);
+  let (yxz : Nat(), s2 : Plus(y, xz, yxz), s3 : Plus(w, yxz, r)) =
+    plusAssoc(w, y, xz, wy, r, p, s);
+  let (yx : Nat(), s4 : Plus(y, x, yx), s5 : Plus(yx, z, yxz)) =
+    plusAssocRev(y, x, z, xz, yxz, q, s2);
+  let (s6 : Plus(x, y, yx)) = plusComm(y, x, yx, s4);
+  let (yz : Nat(), s7 : Plus(y, z, yz), s8 : Plus(x, yz, yxz)) =
+    plusAssoc(x, y, z, yx, yxz, s6, s5);
+  let (wx : Nat(), s9 : Plus(w, x, wx), s10 : Plus(wx, yz, r)) =
+    plusAssocRev(w, x, yz, yxz, r, s8, s3);
   (wx, yz, s9, s7, s10)
 }`;
 
@@ -221,6 +234,17 @@ fn decideEven(n : Nat()) -> (r : Option(Even(n))) {
   decideEvenRec(n)
 }`;
 
+const hundred = box(plusFn("subterm "), `fn times(subterm m : Nat(), n : Nat()) -> (r : Nat()) {
+  match m : (r : Nat()) {
+    Zero() => Zero();
+    Succ(k) => plus(times(subterm k, n), n);
+  }
+}`, `let five = Succ(Succ(Succ(Succ(Succ(Zero())))));
+let ten = plus(five, five);
+let n = times(ten, ten);
+print n;
+goal Even(n);`);
+
 const four = `let four = Succ(Succ(Succ(Succ(Zero()))));
 goal Even(four);`;
 
@@ -277,6 +301,63 @@ const castUse = `print cast(_, _, Refl(_, Succ(Zero())), VCons(_, _, Zero(), VNi
 qed cast;
 `;
 
+const pair = `fn pair(x : Nat()) -> (n : Nat(), v : Vec(Nat(), Succ(n))) {
+  (Zero(), VCons(Nat(), Zero(), x, VNil(Nat())))
+}`;
+
+const escaped = `let (n, v) = pair(Succ(Zero()));
+let h = { let VCons(_, _, hd, tl) = v; hd };
+inspect;`;
+
+const escapedGoal = "goal Eq(Vec(Nat(), Succ(n)), v, VCons(Nat(), n, h, t));";
+
+const poisonedLet = (scrutinee: string): string => `let v = ${scrutinee};
+let h = { let VCons(_, _, hd, _) = v; hd };
+print n;
+qed Refl(Nat(), n);
+`;
+
+const inBranch = `let (n, w) = pair(Zero());
+goal Eq(Nat(), n, n);
+let c = match n : (r : Nat()) {
+  Zero() => Zero();
+  Succ(k) => {
+    let VCons(_, _, hd, _) = sorry(u : Vec(Nat(), n));
+    hd
+  };
+};
+print c;
+print n;`;
+
+const throughBlock = (a: string, n: string): string => `print vhead(${a}, ${n}, { v });
+print vhead(${a}, ${n}, { let w = v; w });
+`;
+
+const taintedHole = (a: string): string => `let A = ${a};
+fn count(v : Vec(A, Zero())) -> (r : Nat()) {
+  Zero()
+}
+print count(VNil(_));
+qed count(VNil(_));
+`;
+
+const succEq = (ret: string): string => `goal fn (a : Nat(), b is Succ(a)) -> (e : Eq(Nat(), b, Succ(a)));
+fn succEq(subterm x : Nat(), y is Succ(x))
+    -> (e : Eq(Nat(), ${ret})) {
+  Refl(Nat(), y)
+}
+qed succEq;
+`;
+
+const absurdHead = `fn f(erased n : Nat(), p : IsZero(n)) -> (r : Nat()) {
+  match erased n : (r : Nat()) {
+    Zero() => Zero();`;
+
+const absurdUse = `  }
+}
+print f(Zero(), IsZeroHere());
+`;
+
 export const disclaimer = "This tutorial was written by a Claude session, not by Pledge's owner. DESIGN.md is the specification; where the two disagree, DESIGN.md is right and this tutorial is wrong. Section numbers (§) point to the DESIGN.md text a claim is based on.";
 
 export const pages: Page[] = [
@@ -311,7 +392,7 @@ print three;
       "The program is rejected as it stands. Put the caret on the `match` and read the error and the Expected panel.",
       "Task: add the missing branch so that `isZero` returns `False()` for any `Succ`."),
     boxes: [box(nat, bool)],
-    initial: `-- Add the branch for Succ.
+    initial: `-- Add the branch for Succ, returning False().
 fn isZero(n : Nat()) -> (b : Bool()) {
   match n : (b : Bool()) {
     Zero() => True();
@@ -336,13 +417,13 @@ print isZero(Succ(Zero()));
     prose: paragraphs(
       "The checker keeps a scope of entries, each with a type and possibly an `is` rule (§7). After `let two = Succ(one);`, `two` names the entry of the application `Succ(one)`, whose rule is that it is `Succ(one)` (§7, §8). Put the caret on the last line and look at the Scope panel, which shows rules canonicalized (§13).",
       "Two types are compared by canonicalizing them, rewriting by the `is` rules to a fixed point, and then comparing for identity (§3, §7). Click a term, or press \"Explain the term at the caret\", to see its canonical form and the rewrites that produce it. The \"At the caret\" field checks a type or an expression you type, in the scope at the caret. `inspect;` reports the same panels beside the statement; click its disclosure.",
-      "A binder written `y is e` in a tuple `let` asserts a fact the checker must already know (§6).",
-      "Task: the assertion on the last line is wrong. Fix it so that it checks."),
+      "In `let y is e = e2;`, the binder `y is e` asserts a fact the checker must already know: `e2` must canonicalize to the same term as `e` (§6).",
+      "Task: the assertion on the last line is wrong. Fix the term after `is` so that the line checks."),
     boxes: [nat],
     initial: `let one = Succ(Zero());
 let two = Succ(one);
 inspect;
--- This assertion is wrong: fix it.
+-- This assertion is wrong: fix the term after is.
 let y is Succ(Zero()) = two;
 `,
     requireQed: false,
@@ -419,7 +500,7 @@ print t;
       "A return is allowed to be written `m is e` instead of `m : T` (§6). Its type is then the type of `e`. When the binder is opened, at a call's results, its entry gets the rule that it is `e`; when it is instantiated, as the body's result is checked against it, that result must canonicalize to `e`.",
       "Task: change `m`'s binder in `cons`'s returns so that the last line checks."),
     boxes: [box(nat, vec, vhead)],
-    initial: `-- Change m's binder so that the last line checks.
+    initial: `-- Change m : Nat() to an is binder, so that the last line checks.
 fn cons(A : Type(), n : Nat(), x : A, v : Vec(A, n))
     -> (m : Nat(), w : Vec(A, m)) {
   (Succ(n), VCons(A, n, x, v))
@@ -441,11 +522,11 @@ print vhead(Nat(), Zero(), w);
     title: "Pattern let",
     phase: 1,
     prose: paragraphs(
-      "A pattern `let`, such as `let VCons(_, _, h, t) = v;`, is a statement (§10). Exactly one value constructor of `v`'s type must survive forcing, and it must be the one written. Its fields and facts stay in scope to the end of the enclosing block.",
+      "A pattern `let`, such as `let VCons(_, _, h, t) = v;`, is a statement (§10). Exactly one value constructor of `v`'s type must survive forcing, and it must be the one written. Its names are in scope for the rest of the enclosing block; its fields and facts last longer, to the end of the enclosing match branch or function body, or of the program (§7, §10).",
       "Inside `vsecond`, `v` has type `Vec(A, Succ(Succ(n)))`, so the first pattern `let` gives a `rest` whose type canonicalizes to `Vec(A, Succ(n))`, and `VNil` is refuted again for `rest`. With `n : Nat()` alone, `let Succ(k) = n;` would be rejected, since `Zero` is not refuted.",
       "Task: finish `vsecond` with a second pattern `let`."),
     boxes: [box(nat, vec), twoVec],
-    initial: `-- Return the second element of v.
+    initial: `-- Return v's second element, with a second pattern let on rest.
 fn vsecond(A : Type(), n : Nat(), v : Vec(A, Succ(Succ(n))))
     -> (x : A) {
   let VCons(_, _, _, rest) = v;
@@ -468,27 +549,17 @@ print vsecond(Nat(), Zero(), xs);
     title: "Termination: subterm and same",
     phase: 1,
     prose: paragraphs(
-      "A body is allowed to call any function of an earlier group with no annotation, and top-level code any function (§9). A call within the function's own group, such as a call to itself, must decrease. In the simplest case a parameter is marked `subterm`, and the call marks its argument `subterm e`, where `e` must be a strict subterm of the caller's own `subterm` parameter. In `plus`'s `Succ(k)` branch, `m` canonicalizes to `Succ(k)`, so `k` is a strict subterm of `m`. The marks are always written; none is inferred.",
-      "`ack` above has two `subterm` parameters. A call that decreases the second marks the argument for the first `same`, and that argument must be canonically identical to the caller's first. The Termination panel lists the enclosing function's `subterm` parameters and the functions of its group (§13).",
+      "A body is allowed to call any function declared before it, with no annotation, and top-level code any function (§9). A call of a function to itself must decrease. In the simplest case a parameter is marked `subterm`, and the call marks its argument `subterm e`, where `e` must be a strict subterm of the caller's own `subterm` parameter. In `plus`'s `Succ(k)` branch, `m` canonicalizes to `Succ(k)`, so `k` is a strict subterm of `m`. The marks are always written; none is inferred.",
+      "`ack` above has two `subterm` parameters. A call that decreases the second marks the argument for the first `same`, and that argument must be canonically identical to the caller's first. The Termination panel lists the enclosing function's `subterm` parameters (§13).",
       "Task: `plus` is rejected as written. Mark it so that it is accepted."),
     boxes: [box(nat, ack)],
     initial: `-- Mark the recursion so that plus is accepted.
-fn plus(m : Nat(), n : Nat()) -> (r : Nat()) {
-  match m : (r : Nat()) {
-    Zero() => n;
-    Succ(k) => Succ(plus(k, n));
-  }
-}
+${plusFn("")}
 let two = Succ(Succ(Zero()));
 print plus(two, ack(Succ(Zero()), two));
 `,
     requireQed: false,
-    solution: `fn plus(subterm m : Nat(), n : Nat()) -> (r : Nat()) {
-  match m : (r : Nat()) {
-    Zero() => n;
-    Succ(k) => Succ(plus(subterm k, n));
-  }
-}
+    solution: `${plusFn("subterm ")}
 let two = Succ(Succ(Zero()));
 print plus(two, ack(Succ(Zero()), two));
 `,
@@ -499,10 +570,11 @@ print plus(two, ack(Succ(Zero()), two));
     phase: 1,
     prose: paragraphs(
       "Declarations that refer to each other are written together in a `mutual` block, their group (§5, §8). The data type constructors `Even` and `Odd` above form one; a value of `Even(n)` can be read as evidence that `n` is even.",
-      "Functions of one group are allowed to call each other, under the same `subterm` rule as a function calling itself (§9).",
-      "Task: finish `isOdd`, then replace `EvenZero()` with evidence that two is even."),
+      "A function outside any `mutual` block is a group of its own. Functions of one group are allowed to call each other, under the same `subterm` rule as a function calling itself, and the Termination panel lists the enclosing function's group (§9, §13).",
+      "Task: give `isOdd` its `Succ` branch, calling `isEven`, then replace `EvenZero()` with a proof of `Even(Succ(Succ(Zero())))`."),
     boxes: [box(nat, bool, evenOdd)],
-    initial: `-- Finish isOdd, then give real evidence that two is even.
+    initial: `-- Give isOdd a Succ branch calling isEven, then replace EvenZero()
+-- with a proof of Even(Succ(Succ(Zero()))).
 mutual {
   fn isEven(subterm n : Nat()) -> (b : Bool()) {
     match n : (b : Bool()) {
@@ -544,13 +616,13 @@ let p : Even(Succ(Succ(Zero())))
     title: "Propositions as types: equality",
     phase: 1,
     prose: paragraphs(
-      "A type can be read as a proposition and a value of it as a proof. The data type constructor `Eq` above has one value constructor, `Refl(A, x) : Eq(A, x, x)`, so, `sorry` aside, a value of `Eq(A, x, y)` is built only by `Refl`, whose type has the same `x` on both sides.",
+      "A type can be read as a proposition and a value of it as a proof. The data type constructor `Eq` above has one value constructor, `Refl(A, x) : Eq(A, x, x)`, so, `sorry` (a later page) aside, a value of `Eq(A, x, y)` is built only by `Refl`, whose type has the same `x` on both sides.",
       "`goal T;` sets the program's goal and `qed e;` checks `e` against it (§12). The status line reports whether the `qed` checks and whether the goal is proved. On this page the `qed` must be in your box.",
       "Task: prove the goal. Since `two` canonicalizes to `Succ(Succ(Zero()))`, one `Refl` should do."),
     boxes: [box(nat, eq), `let one = Succ(Zero());
 let two = Succ(one);
 goal Eq(Nat(), two, Succ(Succ(Zero())));`],
-    initial: `-- Prove the goal with qed.
+    initial: `-- Prove the goal: write qed and one Refl.
 `,
     requireQed: true,
     solution: `qed Refl(Nat(), two);
@@ -562,7 +634,7 @@ goal Eq(Nat(), two, Succ(Succ(Zero())));`],
     phase: 1,
     prose: paragraphs(
       "Types never contain function calls (§3), so `Eq(Nat(), plus(n, Zero()), n)` cannot be written. Here `plus` instead returns, beside its result `r`, a value of the data type `Plus(m, n, r)`, read as a proof that `m` plus `n` is `r`.",
-      "The goal on this page is a function goal, which DESIGN.md does not describe yet; this page follows D43 in DECISIONS.md, a Claude session's paraphrase of a decision by the owner. The goal is the parameters and returns of a function, with no name and no body, read as: for every `n` and `r`, a proof of `Plus(n, Zero(), r)` gives a proof of `Eq(Nat(), r, n)`. `qed plusZero;` names a function, and proves the goal when `plusZero`'s parameters and returns are canonically identical to the goal's, position by position, binder names aside, and §12's conditions on taint hold. In this implementation `subterm` marks do not count either, so `plusZero` is allowed to mark `n` `subterm` although the goal does not. Nothing is passed or returned, so functions are still not first class (§4).",
+      "The goal on this page is a function goal (§12): the parameters and returns of a function, with no name and no body, read as: for every `n` and `r`, a proof of `Plus(n, Zero(), r)` gives a proof of `Eq(Nat(), r, n)`. `qed plusZero;` names a function, and checks when `plusZero`'s parameters and returns are canonically identical to the goal's, position by position, binder names aside; `subterm` marks are not compared, so `plusZero` is allowed to mark `n` `subterm` (§12). Nothing is passed or returned, so functions are still not first class (§4).",
       "`plusZero`, by recursion on `n`, turns a proof of `Plus(n, Zero(), r)` into one of `Eq(Nat(), r, n)`. Matching on a value of `Eq` forces `Refl`, which equates the two sides of the `Eq` (§7): in that branch they canonicalize to the same term.",
       "Task: add the `PlusSucc` branch. In it, `n` canonicalizes to `Succ(m)` for the branch's first field `m`: call `plusZero(subterm m, ...)` on the inner proof and match on the `Eq` it returns. Then prove the goal with `qed plusZero;`."),
     boxes: [box(nat, eq, plus), `goal fn (n : Nat(), r : Nat(), p : Plus(n, Zero(), r))
@@ -593,7 +665,7 @@ qed plusZero;
     title: "A lemma about Plus",
     phase: 1,
     prose: paragraphs(
-      "The next pages prove facts about addition, stated with the data type constructor `Plus` from the previous page: `Plus(m, n, r)` is read as \"`m` plus `n` is `r`\". Its value constructors follow addition by recursion on the first argument: `PlusZero(n)` proves that zero plus `n` is `n`, and `PlusSucc(m, n, r, p)` turns a proof `p` that `m` plus `n` is `r` into one that `Succ(m)` plus `n` is `Succ(r)`. Each fact is a function goal, as on the previous page (D43 in DECISIONS.md, not yet in DESIGN.md): the parameters are the hypotheses, and the returns the conclusions.",
+      "The next pages prove facts about addition, stated with the data type constructor `Plus` from the previous page: `Plus(m, n, r)` is read as \"`m` plus `n` is `r`\". Its value constructors follow addition by recursion on the first argument: `PlusZero(n)` proves that zero plus `n` is `n`, and `PlusSucc(m, n, r, p)` turns a proof `p` that `m` plus `n` is `r` into one that `Succ(m)` plus `n` is `Succ(r)`. Each fact is a function goal, as on the previous page (§12): the parameters are the hypotheses, and the returns the conclusions.",
       "The goal here reads: if `m` plus `n` is `r`, then `m` plus `Succ(n)` is `Succ(r)`. A natural proof is an induction on `m`, written as a recursion on the proof `p`, marked `subterm`: in the `PlusSucc` branch, `p` canonicalizes to `PlusSucc` applied to the branch's fields, so the inner proof is a strict subterm of it (§9).",
       "The box above also shows `plusZeroRight`, which builds a proof that `n` plus zero is `n` by recursion on `n`. It is the previous page's fact in another form, producing the `Plus` proof rather than taking one apart. This page does not use it; the next one does.",
       "Task: write the two branches, then prove the goal with `qed plusSucc;`. Put the caret on each branch body: Scope shows what forcing the value constructor added, such as `m` being `Zero()` in the `PlusZero` branch, and Expected shows the type the branch is to produce. In the `PlusSucc(m1, _, r1, p1)` branch, a recursive call `plusSucc(m1, n, r1, subterm p1)` gives `Plus(m1, Succ(n), Succ(r1))`."),
@@ -653,7 +725,7 @@ qed plusAssoc;
     prose: paragraphs(
       "`Times(m, n, r)` is read as \"`m` times `n` is `r`\"; like `Plus`'s, its value constructors follow its first argument: zero times `n` is zero, and if `m` times `n` is `r` and `r` plus `n` is `s`, then `Succ(m)` times `n` is `s`. The goal is left distributivity, a × (b + c) = a × b + a × c: from `Plus(b, c, bc)` and `Times(a, bc, r)`, a proof produces `ab` and `ac` with `Times(a, b, ab)`, `Times(a, c, ac)` and `Plus(ab, ac, r)`.",
       "The proof in your box is an induction on `a`, as a recursion on `t`. In the `TimesSucc` branch, Scope shows `t3 : Times(a1, bc, r1)` and `p1 : Plus(r1, bc, r)`, and the recursive call gives `ab1` and `ac1` with a1 × b = ab1, a1 × c = ac1 and ab1 + ac1 = r1. What is left is arithmetic on `Plus` alone: from (ab1 + ac1) + (b + c) = r, `exchange` produces `ab` and `ac` with ab1 + b = ab, ac1 + c = ac and ab + ac = r. The first two are the last fields `TimesSucc` needs to build `Times(Succ(a1), b, ab)` and `Times(Succ(a1), c, ac)`.",
-      "`exchange` above, (w + y) + (x + z) = (w + x) + (y + z), has no recursion of its own: it chains associativity, read in both directions (`plusAssoc`, and `plusAssocRev`, proved by recursion on its second proof), and commutativity. Put the caret on each of its lines and compare Scope with the comments.",
+      "`exchange` above, (w + y) + (x + z) = (w + x) + (y + z), has no recursion of its own: it chains associativity, read in both directions (`plusAssoc`, and `plusAssocRev`, proved by recursion on its second proof), and commutativity. Each `let` in it gives the type of every value it binds, and such a type can mention the binders before it in the same `let`, such as `yxz`; the checker checks each against the result the binder names. A binder referred to this way needs a type of its own, which is why `yxz` carries `: Nat()`: without one, the reference is an error. Put the caret on each line and compare Scope with these types.",
       "Task: write the `TimesZero` branch where the comment is. There `a` and `r` are `Zero()`; Expected shows what is to be produced."),
     boxes: [box(nat, plusRel, times), box(plusZeroRight, plusSucc, plusComm), box(plusAssoc("PlusZero(_) => (r, q, PlusZero(r));"), plusAssocRev), exchange, timesDistribGoal],
     initial: `${timesDistrib("-- Write the TimesZero branch here.")}
@@ -696,25 +768,15 @@ fn zeroNotOne(e : Eq(Nat(), Zero(), Succ(Zero())))
     title: "Refuting through a proof",
     phase: 1,
     prose: paragraphs(
-      "A value constructor is refuted only by what is known about the scrutinee and its type (§10). In `f`, `p : IsZero(n)` rules out `Succ` for `n`, but does not refute it, so the match on `n` still needs a `Succ` branch.",
-      "In that branch, `p : IsZero(Succ(m))`, while `IsZeroHere()` has type `IsZero(Zero())`. So a match on `p` there refutes `IsZeroHere` and has no branches.",
-      "Task: add the `Succ` branch."),
-    boxes: [box(nat, isZero)],
-    initial: `-- Add the Succ branch: match on p there.
-fn f(n : Nat(), p : IsZero(n)) -> (r : Nat()) {
-  match n : (r : Nat()) {
-    Zero() => Zero();
-  }
-}
-`,
+      "A value constructor is refuted only by what is known about the scrutinee and its type (§10). In `f`, `p : IsZero(n)` rules out `Succ` for `n`, but does not refute it, so the match on `n` still needs a `Succ(m)` branch. That branch is to produce `Eq(Nat(), Succ(m), Zero())`, which `Refl` cannot build.",
+      "In that branch, `p : IsZero(Succ(m))`, while `IsZeroHere()` has type `IsZero(Zero())`. So a match on `p` there refutes `IsZeroHere` and has no branches, and, as on the previous page, a match with no branches is allowed any annotation.",
+      "Task: add the `Succ` branch, a match on `p` with no branches."),
+    boxes: [box(nat, eq, isZero)],
+    initial: `-- Add the Succ branch: a match on p there, with no branches.
+${isZeroEq("")}`,
     requireQed: false,
-    solution: `fn f(n : Nat(), p : IsZero(n)) -> (r : Nat()) {
-  match n : (r : Nat()) {
-    Zero() => Zero();
-    Succ(m) => match p : (r : Nat()) {};
-  }
-}
-`,
+    solution: isZeroEq(`
+    Succ(m) => match p : _ {};`),
   },
   {
     slug: "sorry",
@@ -741,16 +803,16 @@ qed p;
     title: "Proof by reflection",
     phase: 1,
     prose: paragraphs(
-      "`decideEven(n)` returns `Some` of a proof of `Even(n)` when `n` is even, and `None` otherwise. A plain pattern `let` on its result is rejected: the checker knows the result only by its type, so forcing does not refute `None` (§7, §10).",
-      "`comptime let Some(_, p) = e;` evaluates `e` during checking and requires its value to be headed by `Some`; the run, not forcing, rules out `None` (§11). It is written only at the top level.",
-      "Task: make the `let` a `comptime` pattern `let`. Then try `decideEven` on three, `Succ(Succ(Succ(Zero())))`, and read the error, which shows the value (§11)."),
-    boxes: [box(nat, evenOdd, option, decideEven), four],
-    initial: `-- Make this a comptime pattern let.
-let Some(_, p) = decideEven(four);
+      "Here `n` is `times(ten, ten)`, the result of a call, so the checker knows it only by its type, `Nat()` (§7), while the run knows its value: `print n;` shows one hundred `Succ`s around `Zero()`. So it seems no proof of `Even(n)` can be written out: the checker cannot tell whether `n` is `Zero()` or a `Succ`, and neither `EvenZero()` nor an `EvenSucc` checks against the goal. Even where the checker does know the number, as for one written with twenty `Succ`s, a proof written out is twenty nested value constructors, while the reflection below stays one line.",
+      "`decideEven(n)`, above, returns `Some` of a proof of `Even(n)` when `n` is even, and `None` otherwise. A plain pattern `let` on its result is rejected: the result too is known only by its type, so forcing does not refute `None` (§10). `comptime let Some(_, p) = e;` evaluates `e` during checking and requires its value to be headed by `Some`; the run, not forcing, rules out `None`, and `p` has type `Even(n)` (§11). It is written only at the top level.",
+      "Task: make the `let` a `comptime` pattern `let`, so that `qed p;` proves the goal. Then try `decideEven(Succ(Zero()))` in its place and read the error, which shows the value (§11)."),
+    boxes: [box(nat, evenOdd, option, decideEven), hundred],
+    initial: `-- Write comptime before this let, so that qed p; proves the goal.
+let Some(_, p) = decideEven(n);
 qed p;
 `,
     requireQed: true,
-    solution: `comptime let Some(_, p) = decideEven(four);
+    solution: `comptime let Some(_, p) = decideEven(n);
 qed p;
 `,
   },
@@ -782,11 +844,12 @@ qed loop(Zero());
     phase: 2,
     prose: paragraphs(
       "From this page on, programs are checked under phase 2, which adds erasure (§16). `vhead` returns the head of a vector; the type `A` and the length `n` are there so that the checker accepts `vhead` only on a vector that is not empty, but evaluating `vhead` never looks at them. A binder marked `erased` says so, and evaluation skips erased positions. Value constructors themselves are never erased, and every value built by one carries its tag, so a vector still says whether it is `VNil` or `VCons`; `print` shows an erased field as `_` (§16).",
-      "Every binder has a multiplicity, `many` or `erased`: function parameters and returns, value-constructor fields, the binders of every kind of `let`, and match annotation entries. A binder is `many` unless written `erased` (§16). In this implementation the multiplicity is written just before the binder's name, as in `erased n : Nat()` (ASSUMPTIONS.md 10, a Claude session's reading where DESIGN.md is silent). An erased name is allowed only in an erased position, such as a type or an argument for an erased parameter or field; the next page says more. Type-constructor arguments are always erased, so `Vec(A, Succ(n))` is allowed to mention an erased `A`.",
+      "Every binder has a multiplicity, `many` or `erased`: function parameters and returns, value-constructor fields, the binders of every kind of `let`, and match annotation entries. A binder is `many` unless written `erased` (§16). The multiplicity is written immediately before the binder's name, after any `subterm`, as in `erased n : Nat()` (§16). An erased name is allowed only in an erased position, such as a type or an argument for an erased parameter or field; the next page says more. Type-constructor arguments are always erased, so `Vec(A, Succ(n))` is allowed to mention an erased `A`.",
       "Here `vcons` and `vsecond` take `A` and `n` erased, and the program is rejected at the first place they are passed on to a binder that is `many`. Read the error. Once the program checks, put the caret inside `vsecond`: Scope tags `A` and `n` erased (§13), and in this implementation Expected tags an erased entry the same way (ASSUMPTIONS.md 53).",
       "Task: without changing `vcons` or `vsecond`, mark binders `erased` so that the program checks: `VCons`'s fields `A` and `n`, and `vhead`'s parameters `A` and `n`. `VNil`'s `A` is not used by evaluation either; nothing here requires it, but it is natural to erase it too. Then read what `print v;` shows."),
     boxes: [nat],
-    initial: `-- Mark binders erased so that this checks; keep vcons and vsecond.
+    initial: `-- Mark VCons's fields A and n and vhead's parameters A and n erased.
+-- Do not change vcons or vsecond.
 ${vec}
 ${vheadBy("")}
 ${erasedUses}`,
@@ -817,7 +880,7 @@ ${len("m is n")}`,
     prose: paragraphs(
       "In phase 2, `_` also stands for an erased argument, solved by unification (§16). In `vhead(_, _, VCons(_, _, Zero(), VNil(_)))`, the head `Zero()` fixes the inner `A` as `Nat()`, the type of `VNil(_)` fixes the inner `n` as `Zero()`, and the vector's type then fixes `vhead`'s `A` and `n`. In this implementation a `_` is also solved from what its position is given (§8; ASSUMPTIONS.md 51): in `let (e : Vec(Nat(), Zero())) = VNil(_);`, the binder's type fixes `VNil`'s `A`.",
       "In this implementation, `_` is allowed only as a whole argument of a call or application in an expression, for an erased parameter or field or a type constructor's argument; not inside a type written in a binder, such as `Vec(_, n)` (ASSUMPTIONS.md 11 and 51). Globals shows which parameters and fields are erased. Put the caret on a `_`: Expected shows the parameter it stands for, tagged erased (ASSUMPTIONS.md 53). Click a `_` to see its solution, canonicalized.",
-      "When nothing determines a `_`, as in `print VNil(_);`, the program is rejected. This implementation has further limits (ASSUMPTIONS.md 51). A `_`'s solution must mention only entries created before the `_`, so a `_` that only a later argument's call result determines is rejected. And a block used as an argument does not help solve the `_`s of the call it is passed to, even with no `_` inside it: `vhead(_, _, { v })` is rejected where `vhead(_, _, v)` checks.",
+      "When nothing determines a `_`, as in `print VNil(_);`, the program is rejected. This implementation has a further limit (ASSUMPTIONS.md 51): a `_`'s solution must mention only entries created before the `_`, so a `_` that only a later argument's call result determines is rejected. A block used as an argument takes part in solving through its final expression, as a direct argument does: `vhead(_, _, { v })` checks as `vhead(_, _, v)` does.",
       "Task: replace each erased argument with `_`, and check that the status line still reports the goal proved."),
     boxes: [box(nat, vecErased, vheadErased), "goal Vec(Nat(), Succ(Succ(Zero())));"],
     initial: `-- Replace every erased argument with _; keep the goal proved.
@@ -841,8 +904,8 @@ qed VCons(_, _, one, VCons(_, _, Zero(), VNil(_)));
     phase: 2,
     prose: paragraphs(
       "`match erased e : (...)` takes its scrutinee erased; a match written without a multiplicity is `many`. In an erased match, every field of a branch is bound erased (§16). In this implementation the scrutinee of a `many` match is not an erased position (ASSUMPTIONS.md 47), so `match p` on an erased `p` is rejected at `p`.",
-      "An erased match with a `many` annotation entry has at most one branch (§16). Evaluation skips the erased scrutinee, so it has no tag to choose a branch by; with one branch there is nothing to choose. SOUNDNESS.md part 9, which argues erasure only in outline, relies on this. So `match erased n : (r : Nat()) { Zero() => Zero(); Succ(k) => k; }` is rejected at its second branch, while with `erased r` it is allowed. In this implementation the rule applies even to a match that never runs (ASSUMPTIONS.md 48).",
-      "`cast` turns a vector of length `m` into one of length `n`, given a proof `p` that `m` and `n` are equal, which matters only to the checker and so is erased. An erased match on `p` forces `Refl`, which equates `m` and `n` (§7), so in its one branch `v` has the type Expected asks for, and evaluation simply returns `v`. The goal is a function goal, as on the \"Proof by recursion\" page (D43 in DECISIONS.md, not yet in DESIGN.md); in this implementation multiplicities must match too (ASSUMPTIONS.md 56), so `cast`'s binders are erased exactly where the goal's are.",
+      "An erased match with a `many` annotation entry has at most one branch that is not absurd, a branch being absurd when its body is a match with no branches (§16). Evaluation skips the erased scrutinee, so it has no tag to choose a branch by; with only one branch that is not absurd there seems to be nothing to choose. SOUNDNESS.md part 9, which argues erasure only in outline, relies on this. So `match erased n : (r : Nat()) { Zero() => Zero(); Succ(k) => k; }` is rejected at its second branch, while with `erased r` it is allowed. In this implementation the rule applies even to a match that never runs (ASSUMPTIONS.md 48).",
+      "`cast` turns a vector of length `m` into one of length `n`, given a proof `p` that `m` and `n` are equal, which matters only to the checker and so is erased. An erased match on `p` forces `Refl`, which equates `m` and `n` (§7), so in its one branch `v` has the type Expected asks for, and evaluation simply returns `v`. The goal is a function goal, as on the \"Proof by recursion\" page; in phase 2 multiplicities must agree too (§12), so `cast`'s binders are erased exactly where the goal's are.",
       "Task: replace `sorry(_)` with an erased match on `p`. Put the caret in its branch: Scope shows that forcing `Refl` added the rule that `n` is `m`. Then the `print` shows the vector, and the goal is proved."),
     boxes: [box(nat, vecErased, eqErased), `goal fn (erased m : Nat(), erased n : Nat(),
     erased p : Eq(Nat(), m, n), v : Vec(Nat(), m))
@@ -859,5 +922,126 @@ ${castUse}`,
   }
 }
 ${castUse}`,
+  },
+  {
+    slug: "tuple-let-telescope",
+    title: "Fine points: a let's binders as a telescope",
+    phase: 1,
+    prose: paragraphs(
+      "The pages from here on are a closing section, Fine points. Each shows one rule that was settled while the implementation was being built: all but one are now in DESIGN.md, where the owner confirmed their wording, and one is a choice a Claude session made where DESIGN.md is silent, recorded in ASSUMPTIONS.md. Each page names where its rule is stated.",
+      "The binders of a tuple `let` are a telescope (§6): a binder's type or `is` clause is allowed to refer to the binders before it. In `let (m : Nat(), v : Vec(Nat(), Succ(m))) = pair(x);`, `v`'s type mentions `m`. The `let` gives its right-hand side its binders, so `v`'s type is checked with `m` standing for the call's first result, as a function's returns are checked with the earlier returns standing for its results (§8). This seems to be what lets a `let` state the type of every result it binds when one result's type depends on another, as `exchange` on the distributivity page does.",
+      "Put the caret on the right-hand side, `pair(x)`: Expected lists both binders, the second mentioning the first (§13). On the `print` line, Scope shows `v : Vec(Nat(), Succ(m))`.",
+      "Task: delete `: Nat()` from `m`'s binder and read the error. §6 does not allow a type or `is` clause to refer to a binder that carries neither; in this implementation the error is at the reference, the `m` in `v`'s type, saying that `m` has no type there. Then put the type back so that the program checks again."),
+    boxes: [box(nat, vec, pair)],
+    initial: `-- Delete m's type, read the error, then restore the type.
+let x = Succ(Zero());
+let (m : Nat(), v : Vec(Nat(), Succ(m))) = pair(x);
+print v;
+`,
+    requireQed: false,
+    solution: `let x = Succ(Zero());
+let (m : Nat(), v : Vec(Nat(), Succ(m))) = pair(x);
+print v;
+`,
+  },
+  {
+    slug: "facts-escape",
+    title: "Fine points: facts outlive names",
+    phase: 1,
+    prose: paragraphs(
+      "A pattern `let`'s names are in scope for the rest of the enclosing block, but its fields and facts last to the end of the enclosing match branch or function body, or of the program (§7, §10). So what forcing learned inside a block is still known after it, though the names the pattern gave are gone.",
+      "One reason for the rule seems to be that a block's results are allowed to be its pattern's fields: here `h` names the very entry the field `hd` was opened to (§8), and after the block the checker still knows how that entry relates to `v`. A match branch is different: its facts depend on which value constructor the branch is for, so they cannot outlast it.",
+      "Look at the `inspect;` after the block, or put the caret on its line. Scope shows `v`'s rule, `VCons(Nat(), n, h, ...)`, still in force. The field `hd` appears as `h`, the name the tuple `let` gave its entry, and the tail, which the pattern named `tl`, appears as an anonymous entry, marked as `VCons`'s field `rest` and where it was created (§13): the entry is there, the name is not.",
+      "Task: the goal is that `v` is the `VCons` of `h` and a tail `t`. Bind `t` with a second pattern `let` on `v` before the goal, then prove it with `qed`. It checks only because the block's fact escaped: forcing the second pattern `let` equates `v`'s known `VCons` with the new one, so its head is `h`."),
+    boxes: [box(nat, vec, eq, pair), escaped],
+    initial: `-- Bind v's tail as t before the goal, then prove the goal.
+${escapedGoal}
+`,
+    requireQed: true,
+    solution: `let VCons(_, _, _, t) = v;
+${escapedGoal}
+qed Refl(Vec(Nat(), Succ(n)), v);
+`,
+  },
+  {
+    slug: "poison",
+    title: "Fine points: a poisoned body",
+    phase: 1,
+    prose: paragraphs(
+      "Your box has the previous page's shape, but `v` comes from `sorry`. Forcing `VCons` on it adds facts that nothing backs, and they last as long as any pattern `let`'s facts: to the end of the enclosing match branch or function body, or of the program (§7). So the taint reaches as far: a pattern `let` whose scrutinee is tainted taints every result of the match branch or function body it is in, or, at the top level, every result of the top-level statements after it (§12). After it, at the top level, nothing evaluates, every `print` shows `sorry` and no `qed` proves the goal, though checking goes on.",
+      "The reason is soundness: a fact forced from a `sorry` can make later code check that otherwise would not, such as an `is` clause or a `qed`, so everything those facts reach is treated as relying on the `sorry`. Every statement in your box checks, yet the status line reports that the goal is not proved, and `print n;` shows `sorry`, although `n` has nothing to do with `v` and the box above printed it.",
+      "The box above has the same pattern `let` inside a match branch. There its facts end with the branch, and it taints only the match's results: `print c;` shows `sorry`, while `print n;` after it shows `Zero()` (§12).",
+      "Task: replace the `sorry` with a real vector of type `Vec(Nat(), Succ(Zero()))`, so that the goal is proved. The status line still reports `sorry` in the program, from the box above."),
+    boxes: [box(nat, vec, eq, pair), inBranch],
+    initial: `-- Replace the sorry with a real vector, so that the goal is proved.
+-- Keep the pattern let on v.
+${poisonedLet("sorry(v : Vec(Nat(), Succ(Zero())))")}`,
+    requireQed: true,
+    solution: poisonedLet("VCons(Nat(), Zero(), Zero(), VNil(Nat()))"),
+  },
+  {
+    slug: "hole-through-block",
+    title: "Fine points: _ through a block",
+    phase: 2,
+    prose: paragraphs(
+      "In this implementation, a block used as an argument takes part in solving the call's `_`s through its final expression, as a direct argument does; the block's statements do not, nor does a match branch's body. This is ASSUMPTIONS.md 51, a choice a Claude session made where DESIGN.md is silent, not a decision by the owner.",
+      "§8 says a block gives its final expression what the block is given, so treating the final expression as the argument seems the reading closest to it; otherwise wrapping an argument in a block could leave a `_` that nothing solves. So `vhead(_, _, { v })` checks as `vhead(_, _, v)` does: `v`'s type, `Vec(Nat(), Succ(Zero()))`, is unified with the parameter's, `Vec(A, Succ(n))`.",
+      "Once your box uses `_`, put the caret on each `_`: Expected shows the parameter it stands for, tagged erased (ASSUMPTIONS.md 53). Click a `_`, or press \"Explain the term at the caret\", to see its solution: `Nat()` for `A` and `Zero()` for `n`.",
+      "Task: replace `vhead`'s erased arguments with `_` in both calls, and check that both still print."),
+    boxes: [box(nat, vecErased, vheadErased), `let one = Succ(Zero());
+let v = VCons(_, _, one, VNil(_));`],
+    initial: `-- Replace vhead's erased arguments with _ in both calls.
+${throughBlock("Nat()", "Zero()")}`,
+    requireQed: false,
+    solution: throughBlock("_", "_"),
+  },
+  {
+    slug: "hole-taint",
+    title: "Fine points: _ and taint",
+    phase: 2,
+    prose: paragraphs(
+      "A `_` is tainted when the term it is solved to mentions a tainted entry (§12). Here `count`'s parameter has type `Vec(A, Zero())`, and `A` comes from `sorry`, so the `_` in `VNil(_)` is solved to `A` and is tainted, and so is the call, as it would be with `VNil(A)` written out.",
+      "The reason is soundness: without the rule, writing `_` where a tainted argument belongs would hide the taint, and a call relying on a `sorry` could prove a goal.",
+      "Click either `_`: its solution is `A`. The status line reports that the `qed` checks and the goal is not proved, and the `print` shows `sorry`.",
+      "Task: replace `sorry(A : Type())` with `Nat()`. The `_` is then solved to an untainted entry, the `print` shows `Zero()`, and the goal is proved."),
+    boxes: [box(nat, vecErased), "goal Nat();"],
+    initial: `-- Replace sorry(A : Type()) with Nat(), so that the goal is proved.
+-- Change nothing else.
+${taintedHole("sorry(A : Type())")}`,
+    requireQed: true,
+    solution: taintedHole("Nat()"),
+  },
+  {
+    slug: "goal-comparison",
+    title: "Fine points: comparing a function with a goal",
+    phase: 1,
+    prose: paragraphs(
+      "`qed f;` checks `f`'s parameters and returns against a function goal's, position by position (§12). They are compared as terms whose bound variables refer to their binders, so binder names play no part, and an earlier binder's `is` clause is not in force for later ones; `is` clauses, and in phase 2 multiplicities, must agree; `subterm` marks are not compared.",
+      "So the comparison is between the two signatures as written. A `subterm` mark seems to say how `f` recurses (§9), which the goal does not state, so leaving marks out lets a recursive function prove a goal written without them.",
+      "`succEq` names its binders `x` and `y` and marks `x` `subterm`, which the goal does not; neither matters. But its return is `Eq(Nat(), Succ(x), y)`, and the goal's is `Eq(Nat(), b, Succ(a))`. With `y is Succ(x)` in force the two would canonicalize alike, but the comparison does not use it, so the program is rejected at `succEq` in the `qed`, and the error names return 1, with the binders named as in the goal. Put the caret on that name: Expected shows the goal's parameters and returns.",
+      "Task: make the `qed` prove the goal, by changing either the goal or `succEq`'s return."),
+    boxes: [box(nat, eq)],
+    initial: `-- Change the goal or succEq so that the qed proves the goal.
+${succEq("Succ(x), y")}`,
+    requireQed: true,
+    solution: succEq("y, Succ(x)"),
+  },
+  {
+    slug: "absurd-branches",
+    title: "Fine points: absurd branches",
+    phase: 2,
+    prose: paragraphs(
+      "An erased match with a `many` annotation entry is allowed at most one branch that is not absurd; a branch is absurd when its body is a match with no branches, possibly the final expression of a block. Evaluation runs the branch that is not absurd (§16).",
+      "An erased match has no value of its scrutinee to choose a branch by, which is why it is allowed only one branch that can run. An absurd branch seems never to run: its match has no branches because every value constructor of its scrutinee's type is refuted there. Allowing it is what lets an erased match use a proof to rule out a value constructor, as on the page \"Refuting through a proof\", where §10 requires the branch. Here `f` takes `n` erased, since its result never needs it.",
+      "Once your box checks, put the caret on `match erased`: Refutations lists `Succ` as absurd (§13). Put it on the inner `match p`: Refutations lists `IsZeroHere` as refuted, and opening it shows why. The `print` shows `Zero()`, from the branch that is not absurd.",
+      "Task: write the `Succ` branch as an absurd one: match on `p` there, with no branches."),
+    boxes: [box(nat, isZero)],
+    initial: `-- Add the Succ branch: an absurd one, matching on p.
+${absurdHead}
+${absurdUse}`,
+    requireQed: false,
+    solution: `${absurdHead}
+    Succ(m) => match p : _ {};
+${absurdUse}`,
   },
 ];
