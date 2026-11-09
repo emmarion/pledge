@@ -149,8 +149,8 @@ ${throughBlock("Nat()", "Zero()")}`,
     task: "Replace `sorry(A : Type())` with `Nat()`. The `_` is then solved to an untainted entry, the `print` shows `Zero()`, and the goal is proved.",
     refs: "§12",
     boxes: [box(nat, vecErased), "goal Nat();"],
-    initial: `-- Replace sorry(A : Type()) with Nat(), so that the goal is proved.
--- Change nothing else.
+    initial: `-- Replace the sorry in the first line with Nat(), so that the goal
+-- is proved. Change nothing else.
 ${taintedHole("sorry(A : Type())")}`,
     requireQed: true,
     solution: taintedHole("Nat()"),
