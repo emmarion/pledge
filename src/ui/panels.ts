@@ -1,4 +1,4 @@
-import type { CheckResult, EntryId, EntryInfo, PositionInfo, Rendered, Rewrite } from "../api.ts";
+import type { CheckResult, EntryId, EntryInfo, ExpectedEntry, PositionInfo, Rendered, Rewrite } from "../api.ts";
 import { h, type Child } from "./dom.ts";
 
 export interface Ctx {
@@ -58,12 +58,17 @@ const list = (items: Child[], empty: string): Child =>
 const entryName = (e: EntryInfo, ctx: Ctx): Child =>
   e.names.length ? e.names.join(", ") : h("span", { class: "anon" }, `‹${e.origin.kind} `, goto(ctx, e.origin.span.start), "›");
 
+const expectedList = (entries: readonly ExpectedEntry[], ctx: Ctx): Child =>
+  list(entries.map(e => binding(ctx, e.name ?? "_", e.type, e.rule, tag("erased", ctx.showErased && e.erased), tag("not determined", e.undetermined))), "none");
+
 export function infoView(info: PositionInfo, ctx: Ctx): HTMLElement[] {
   const { expected, termination, refutations } = info;
   return [
     section("Expected", expected?.entries == null
       ? muted("Nothing is given here.")
-      : list(expected.entries.map(e => binding(ctx, e.name ?? "_", e.type, e.rule, tag("not determined", e.undetermined))), "")),
+      : expected.params
+        ? [h("p", {}, "A function with parameters"), expectedList(expected.params, ctx), h("p", {}, "and returns"), expectedList(expected.entries, ctx)]
+        : expectedList(expected.entries, ctx)),
     section("Termination", termination === null
       ? muted("Not inside a function.")
       : h("dl", {},

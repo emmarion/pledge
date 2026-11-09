@@ -1,0 +1,29 @@
+data Nat() : Type() {
+  Zero() : Nat();
+  Succ(pred : Nat()) : Nat();
+}
+
+data Vec(A : Type(), n : Nat()) : Type() {
+  VNil(erased A : Type()) : Vec(A, Zero());
+  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n)) : Vec(A, Succ(n));
+}
+
+fn vhead(erased A : Type(), erased n : Nat(), v : Vec(A, Succ(n))) -> (x : A) {
+  let VCons(_, _, hd, _) = v;
+  hd
+}
+
+fn vtail(erased A : Type(), erased n : Nat(), v : Vec(A, Succ(n))) -> (t : Vec(A, n)) {
+  let VCons(_, _, _, tl) = v;
+  tl
+}
+
+fn empty() -> (v : Vec(Nat(), Zero())) {
+  VNil(_)
+}
+
+let two = VCons(_, _, Succ(Zero()), VCons(_, _, Zero(), empty()));
+
+print vhead(_, _, VCons(_, _, Zero(), VNil(_)));
+print two;
+print vtail(_, _, two);

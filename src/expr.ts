@@ -1,12 +1,12 @@
-import type { Ann, Arg, Expr, Id, Mult, Pattern, Span, Stmt, Tele, Term as Written } from "./syntax.ts";
-import { TYPE, abstract, adopt, app, canon, create, entry, identical, isStrictSubterm, lookup, ref, subst, withName } from "./terms.ts";
+import type { Ann, Arg, Expr, Header, Id, Mult, Pattern, Span, Stmt, Tele, Term as Written } from "./syntax.ts";
+import { TYPE, abstract, addRule, adopt, app, canon, create, entry, identical, isStrictSubterm, lookup, mark, mentions, occurs, ref, subst, typeOf, withName } from "./terms.ts";
 import type { EntryId, Scope, Signature, Telescope, Term } from "./terms.ts";
-import { force, open } from "./telescope.ts";
+import { force, open, unify } from "./telescope.ts";
 import type { Forced } from "./telescope.ts";
 import { label, render } from "./render.ts";
 import type { RefutationInfo } from "./api.ts";
-import { APP, describe, fail, fresh, global, point, record, written } from "./context.ts";
-import type { Ctx, FnCtx, FnSig, Given, Local, Result, Snapshot, Want } from "./context.ts";
+import { APP, HOLE, describe, fail, fresh, global, isTainted, point, record, written } from "./context.ts";
+import type { Ctx, FnCtx, FnSig, Given, Hole, Local, Result, Snapshot, Want } from "./context.ts";
 
 type App = Expr & { kind: "app" };
 type Match = Expr & { kind: "match" };
@@ -27,39 +27,84 @@ export function single(out: Out, span: Span): Result {
   return r;
 }
 
+const erasedAt = (given: Given | null, i: number): boolean => given?.wants[i]?.mult === "erased";
+const erase = (given: Given): Given => ({ ...given, wants: given.wants.map(w => ({ ...w, mult: "erased" as const })) });
+
 export function expr(ctx: Ctx, local: Local, e: Expr, given: Given | null): Out {
-  const out = build(ctx, local, e, given, record(ctx, local, e.span, given));
-  return out.results.every(r => r.tainted) ? { ...out, tree: { kind: "removed", span: e.span } } : out;
+  const whole = ctx.erased || (given !== null && given.wants.every(w => w.mult === "erased"));
+  const g = ctx.erased && given ? erase(given) : given, c = whole === ctx.erased ? ctx : { ...ctx, erased: whole };
+  const out = build(c, local, e, g, record(c, local, e.span, g));
+  const leak = whole ? -1 : out.results.findIndex((r, i) => r.erased && !erasedAt(g, i));
+  if (leak >= 0) fail(e.span, () => `${e.kind === "var" ? `\`${e.name.name}\`` : out.results.length === 1 ? "this value" : `value ${leak + 1} of this`} is erased, ` +
+    "and an erased value is allowed only in an erased position: a type, an argument for an erased parameter or field, or the result for an erased return or binder (§16)");
+  return whole || out.results.every(r => r.tainted) ? { ...out, tree: { kind: "removed", span: e.span } } : out;
 }
 
-function produced(local: Local, given: Given | null, results: Result[], span: Span, tree: Expr): Out {
-  if (given) against(local.scope, given, results.map(r => r.id), span);
-  return { local, results, tree };
+function produced(ctx: Ctx, local: Local, given: Given | null, results: Result[], span: Span, tree: Expr): Out {
+  return { local: given ? { ...local, scope: against(ctx, local.scope, given, results.map(r => r.id), span) } : local, results, tree };
 }
 
-function against(scope: Scope, given: Given, ids: readonly EntryId[], span: Span): void {
+const wanted = (given: Given, ids: readonly EntryId[], i: number): { type: Term | null; is: Term | null } => {
+  const w = given.wants[i]!, env = [...given.env, ...ids.slice(0, i).map(ref)];
+  return { type: w.type && subst(w.type, env), is: w.is && subst(w.is, env) };
+};
+
+function solveHoles(ctx: Ctx, scope: Scope, lhs: Term, rhs: Term, at: Span): Scope {
+  if (!ctx.holes.length) return scope;
+  const { scope: now, stuck } = unify(scope, lhs, rhs, at, id => ctx.holes.some(h => h.id === id));
+  const hole = stuck && ctx.holes.find(h => stuck.some(t => occurs(h.id, t)));
+  if (stuck && hole) fail(hole.span, () => `this \`_\` cannot be inferred: it would need ${show(now, stuck[0])} and ${show(now, stuck[1])} to be equal, ` +
+    "and this checker solves a `_` only by giving a rule to its own entry");
+  return now;
+}
+
+function against(ctx: Ctx, before: Scope, given: Given, ids: readonly EntryId[], span: Span): Scope {
   const n = given.wants.length;
   if (ids.length !== n) fail(span, () => `${plural(n, "value")} ${n === 1 ? "is" : "are"} expected here, and this produces ${ids.length}`);
-  given.wants.forEach((w, i) => {
-    const id = ids[i]!, env = [...given.env, ...ids.slice(0, i).map(ref)];
+  return given.wants.reduce((acc, w, i) => {
+    const id = ids[i]!, { type, is } = wanted(given, ids, i);
     const what = () => w.name !== null ? `\`${w.name}\`` : n === 1 ? "the value expected here" : `value ${i + 1}`;
-    const type = w.type && subst(w.type, env), is = w.is && subst(w.is, env);
+    const withType = type ? solveHoles(ctx, acc, type, entry(acc, id).type, span) : acc;
+    const scope = is ? solveHoles(ctx, withType, is, ref(id), span) : withType;
     if (type && !identical(scope, type, entry(scope, id).type))
       fail(span, () => `${what()} must have type ${show(scope, type)}, and this has type ${show(scope, entry(scope, id).type)}`);
     if (is && !identical(scope, is, ref(id)))
       fail(span, () => `${what()} must be ${show(scope, is)}, and this is ${show(scope, ref(id))}`);
+    return scope;
+  }, before);
+}
+
+function settle(ctx: Ctx, local: Local, given: Given | null, ids: readonly EntryId[], since: number): boolean {
+  const mine = ctx.holes.slice(since), { scope } = local;
+  if (!mine.length) return false;
+  const among = (holes: readonly Hole[], t: Term | null): boolean => t !== null && mentions(canon(scope, t), id => holes.some(h => h.id === id));
+  const outer = ctx.holes.slice(0, since);
+  if (given?.wants.some((_, i) => { const { type, is } = wanted(given, ids, i); return among(outer, type) || among(outer, is); })) return false;
+  const values = mine.map(({ id, span, is, from }) => {
+    const value = canon(scope, ref(id)), type = entry(scope, id).type, has = typeOf(scope, value);
+    point(ctx, scope, span, ref(id));
+    if (among(ctx.holes, value)) fail(span, () => "this `_` cannot be inferred: this checker solves a `_` only from the other arguments " +
+      "and what the position is given, and these do not determine it");
+    if (mentions(value, x => x > id)) fail(span, () => `this \`_\` would be ${show(scope, value)}, which mentions what is produced only after it, ` +
+      "such as a result of the call it is an argument of, and this checker solves a `_` only to what exists before it");
+    if (!identical(scope, type, has)) fail(span, () => `this \`_\` would be ${show(scope, value)}, of type ${show(scope, has)}, and it must have type ${show(scope, type)}`);
+    if (is && !identical(scope, is, value)) fail(span, () => `this \`_\` must be ${show(scope, is)}, and it would be ${show(scope, value)}`);
+    for (const p of ctx.st.explains.slice(from)) if (!entry(p.scope, id).rule) p.scope = addRule(p.scope, id, value, span);
+    return value;
   });
+  ctx.holes.length = since;
+  return values.some(v => mentions(v, x => isTainted(entry(scope, x), local.tainted)));
 }
 
 function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snapshot): Out {
   switch (e.kind) {
     case "var": {
       const name = e.name.name;
-      if (name === null) return fail(e.span, () => "`_` as an argument (§16) is not supported by this checker yet");
+      if (name === null) return fail(e.span, () => "`_` stands only for a whole argument, for an erased parameter or field (§16)");
       const found = lookup(local.scope, name);
       if (!found) return notValue(ctx, e.name);
       point(ctx, local.scope, e.span, ref(found.id));
-      return produced(local, given, [{ id: found.id, tainted: local.tainted.has(name) }], e.span, e);
+      return produced(ctx, local, given, [{ id: found.id, tainted: local.tainted.has(name), erased: found.erased || local.erased.has(name) }], e.span, e);
     }
     case "app": {
       const name = e.head.name ?? "_", g = global(ctx, name);
@@ -83,18 +128,18 @@ function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snaps
       return { local, results, tree: { ...e, elems } };
     }
     case "block": {
-      const since = local.scope.supply.next;
+      const since = local.scope.supply.next, level: Ctx = { ...ctx, holes: [] };
       let inner = local, poisoned = false;
       const stmts: Stmt[] = [];
       for (const s of e.stmts) {
-        const o = stmt(ctx, inner, s, false);
+        const o = stmt(level, inner, s, false);
         inner = o.local;
         poisoned ||= o.poison;
         stmts.push(o.tree);
       }
-      const fin = expr(ctx, inner, e.final, given);
+      const fin = expr(level, inner, e.final, given);
       return {
-        local: { scope: adopt(local.scope, fin.local.scope, since), tainted: local.tainted },
+        local: { ...local, scope: adopt(local.scope, fin.local.scope, since) },
         results: fin.results.map(r => ({ ...r, tainted: r.tainted || poisoned })),
         tree: { ...e, stmts, final: fin.tree },
       };
@@ -103,7 +148,7 @@ function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snaps
     case "sorry": {
       const ann = annotation(ctx, local, e.tele, given, e.span);
       const opened = open(local.scope, ann.tele, ann.env, (b, i) => ({ origin: { kind: `sorry.${b.name ?? i + 1}`, span: e.span }, tainted: true }));
-      return produced({ ...local, scope: opened.scope }, given, opened.entries.map(id => ({ id, tainted: true })), e.span, e);
+      return produced(ctx, { ...local, scope: opened.scope }, given, resultsOf(opened, () => true), e.span, e);
     }
     case "removed": return fail(e.span, () => "internal: a removed expression was checked");
   }
@@ -120,27 +165,49 @@ function unmarked(e: App, why: string): void {
   if (m) fail(m.span, () => `only a call within its group has marks (§9), and ${why}`);
 }
 
-function args(ctx: Ctx, local: Local, name: string, params: Telescope, e: App): { local: Local; results: Result[]; trees: Arg[] } {
+const resultsOf = (opened: { scope: Scope; entries: readonly EntryId[] }, tainted: (i: number) => boolean): Result[] =>
+  opened.entries.map((id, i) => ({ id, tainted: tainted(i), erased: entry(opened.scope, id).erased }));
+
+function args(ctx: Ctx, local: Local, name: string, params: Telescope, e: App, erasedArgs: boolean): { local: Local; results: Result[]; trees: Arg[]; mark: number } {
   if (e.args.length !== params.length)
     fail(e.span, () => `${name} takes ${plural(params.length, "argument")}, and ${e.args.length} ${e.args.length === 1 ? "is" : "are"} given`);
-  const results: Result[] = [], trees: Arg[] = [];
+  const results: Result[] = [], trees: Arg[] = [], mark = ctx.holes.length;
   params.forEach((p, i) => {
-    const a = e.args[i]!;
-    const out = expr(ctx, local, a.expr, { wants: [p], env: results.map(r => ref(r.id)), whole: false });
+    const a = e.args[i]!, env = results.map(r => ref(r.id));
+    const given: Given = { wants: [erasedArgs ? { ...p, mult: "erased" } : p], env, whole: false };
+    if (a.expr.kind === "var" && a.expr.name.name === null) {
+      record(ctx, local, a.span, given);
+      if (!erasedAt(given, 0)) fail(a.span, () => `\`_\` stands for an erased argument (§16), and ${p.name === null ? `parameter ${i + 1}` : `\`${p.name}\``} of ${name} is not erased`);
+      const made = create(local.scope, subst(p.type, env), null, { origin: { kind: HOLE, span: a.span }, erased: true });
+      const is = p.is && subst(p.is, env);
+      ctx.holes.push({ id: made.id, span: a.span, is, from: ctx.st.explains.length });
+      local = { ...local, scope: is ? solveHoles(ctx, made.scope, ref(made.id), is, a.span) : made.scope };
+      results.push({ id: made.id, tainted: false, erased: true });
+      trees.push({ ...a, expr: { kind: "removed", span: a.expr.span } });
+      return;
+    }
+    const out = expr(ctx, local, a.expr, given);
     local = out.local;
     results.push(single(out, a.span));
     trees.push({ ...a, expr: out.tree });
   });
-  return { local, results, trees };
+  return { local, results, trees, mark };
 }
 
 function construct(ctx: Ctx, local: Local, e: App, sig: Signature, given: Given | null): Out {
   unmarked(e, `${sig.head.name} is not a function`);
-  const a = args(ctx, local, sig.head.name, sig.params, e);
+  const a = args(ctx, local, sig.head.name, sig.params, e, sig.head.kind === "type" && ctx.st.phase >= 2);
   const refs = trees(a.local.scope, a.results), tainted = a.results.some(r => r.tainted);
   const made = create(a.local.scope, subst(sig.ret, refs), app(sig.head, ...refs), { origin: { kind: APP, span: e.span }, tainted });
   point(ctx, made.scope, e.span, ref(made.id));
-  return produced({ ...a.local, scope: made.scope }, given, [{ id: made.id, tainted }], e.span, { ...e, args: a.trees });
+  return applied(ctx, { ...a.local, scope: made.scope }, given, [{ id: made.id, tainted, erased: false }], e, a);
+}
+
+function applied(ctx: Ctx, local: Local, given: Given | null, results: Result[], e: App, a: { trees: Arg[]; mark: number }): Out {
+  const out = produced(ctx, local, given, results, e.span, { ...e, args: a.trees });
+  if (!settle(ctx, out.local, given, results.map(r => r.id), a.mark)) return out;
+  const scope = results.reduce((s, r) => mark(s, r.id, { tainted: true }), out.local.scope);
+  return { ...out, local: { ...out.local, scope }, results: results.map(r => ({ ...r, tainted: true })) };
 }
 
 function call(ctx: Ctx, local: Local, e: App, name: string, sig: FnSig | null, given: Given | null): Out {
@@ -149,11 +216,11 @@ function call(ctx: Ctx, local: Local, e: App, name: string, sig: FnSig | null, g
   const fn = ctx.fn?.group.includes(name) ? ctx.fn : null;
   if (!fn) unmarked(e, ctx.fn ? `${name} is not in ${ctx.fn.name}'s group` : "top-level code calls any function unmarked");
   const plan = fn && marks(e, name, sig, fn);
-  const a = args(ctx, local, name, sig.params, e);
+  const a = args(ctx, local, name, sig.params, e, false);
   if (fn && plan) decrease(a.local.scope, e, a.results, fn, plan);
   const tainted = sig.tainted || a.results.some(r => r.tainted);
   const opened = open(a.local.scope, sig.returns, trees(a.local.scope, a.results), (b, i) => ({ origin: { kind: `${name}.${b.name ?? i + 1}`, span: e.span }, tainted }));
-  return produced({ ...a.local, scope: opened.scope }, given, opened.entries.map(id => ({ id, tainted })), e.span, { ...e, args: a.trees });
+  return applied(ctx, { ...a.local, scope: opened.scope }, given, resultsOf(opened, () => tainted), e, a);
 }
 
 interface Plan { subs: number[]; k: number }
@@ -185,10 +252,11 @@ function decrease(scope: Scope, e: App, results: readonly Result[], fn: FnCtx, {
 }
 
 function match(ctx: Ctx, local: Local, e: Match, given: Given | null, snap: Snapshot): Out {
-  const scrut = expr(ctx, local, e.scrut, null);
+  const erased = e.mult === "erased";
+  const scrut = expr(erased ? { ...ctx, erased } : ctx, local, e.scrut, null);
   const s = single(scrut, e.scrut.span), inner = scrut.local;
   const ann = annotation(ctx, inner, e.ann, given, e.span);
-  const fs = forcings(ctx, inner, s.id, e.scrut.span, e.branches.map(b => b.pat), e.span);
+  const fs = forcings(ctx, inner, s.id, e.scrut.span, e.branches.map(b => b.pat), e.span, erased);
   snap.refutations = refutations(fs);
   const branchOf = (pat: Pattern): Forcing => fs.find(f => f.pat === pat)!;
   for (const br of e.branches) {
@@ -197,13 +265,17 @@ function match(ctx: Ctx, local: Local, e: Match, given: Given | null, snap: Snap
   }
   const missing = fs.filter(f => f.forced.ok && !f.pat).map(f => f.name);
   if (missing.length) fail(e.span, () => `no branch for ${missing.join(", ")}, which ${missing.length === 1 ? "is" : "are"} not refuted here (§10)`);
+  const second = e.branches[1];
+  if (erased && second && ann.tele.some(b => b.mult === "many"))
+    fail(second.span, () => "an erased match with a `many` annotation entry has at most one branch, since evaluation has no value to choose a branch by (§16)");
+  const wants = ann.tele.map((b, i) => erasedAt(given, i) ? { ...b, mult: "erased" as const } : b);
   const bodies = e.branches.map(br => {
     const won = survivor(branchOf(br.pat), br.pat.span, "");
-    return expr(ctx, bind({ ...inner, scope: won.scope }, br.pat.fields, won.fields).local, br.body, { wants: ann.tele, env: ann.env, whole: true });
+    return expr({ ...ctx, holes: [] }, bind({ ...inner, scope: won.scope }, br.pat.fields, won.fields).local, br.body, { wants, env: ann.env, whole: true });
   });
   const taint = (i: number) => s.tainted || bodies.some(b => b.results[i]?.tainted === true);
   const opened = open(inner.scope, ann.tele, ann.env, (b, i) => ({ origin: { kind: `match.${b.name ?? i + 1}`, span: e.span }, tainted: taint(i) }));
-  return produced({ ...inner, scope: opened.scope }, given, opened.entries.map((id, i) => ({ id, tainted: taint(i) })), e.span,
+  return produced(ctx, { ...inner, scope: opened.scope }, given, resultsOf(opened, taint), e.span,
     { ...e, scrut: scrut.tree, branches: e.branches.map((br, j) => ({ ...br, body: bodies[j]!.tree })) });
 }
 
@@ -227,7 +299,7 @@ function dataCtors(ctx: Ctx, scope: Scope, id: EntryId, span: Span): { name: str
   });
 }
 
-function forcings(ctx: Ctx, local: Local, id: EntryId, scrutSpan: Span, pats: readonly Pattern[], at: Span): Forcing[] {
+function forcings(ctx: Ctx, local: Local, id: EntryId, scrutSpan: Span, pats: readonly Pattern[], at: Span, erased: boolean): Forcing[] {
   const ctors = dataCtors(ctx, local.scope, id, scrutSpan), seen = new Set<string>();
   for (const p of pats) {
     const name = p.ctor.name ?? "_", c = ctors.find(x => x.name === name);
@@ -238,7 +310,7 @@ function forcings(ctx: Ctx, local: Local, id: EntryId, scrutSpan: Span, pats: re
   }
   return ctors.map(({ name, sig }) => {
     const pat = pats.find(p => p.ctor.name === name);
-    const forced = force(local.scope, id, sig, pat?.span ?? at, (b, i) => ({ origin: { kind: `${name}.${b.name ?? i + 1}`, span: pat?.fields[i]?.span ?? at } }));
+    const forced = force(local.scope, id, sig, pat?.span ?? at, (b, i) => ({ origin: { kind: `${name}.${b.name ?? i + 1}`, span: pat?.fields[i]?.span ?? at }, ...(erased ? { erased } : {}) }));
     return { name, forced, pat };
   });
 }
@@ -257,17 +329,20 @@ function names(ctx: Ctx, local: Local, ids: readonly Id[]): void {
   for (const id of ids) fresh(ctx, local, id, seen);
 }
 
-function bind(local: Local, ids: readonly Id[], entries: readonly EntryId[], tainted: (i: number) => boolean = () => false): { local: Local; bound: Named[] } {
+const never = (): boolean => false;
+
+function bind(local: Local, ids: readonly Id[], entries: readonly EntryId[], tainted: (i: number) => boolean = never, erased: (i: number) => boolean = never): { local: Local; bound: Named[] } {
   let scope = local.scope;
-  const set = new Set(local.tainted), bound: Named[] = [];
+  const sets = { tainted: new Set(local.tainted), erased: new Set(local.erased) }, bound: Named[] = [];
   ids.forEach(({ name }, i) => {
     const id = entries[i];
     if (name === null || id === undefined) return;
     scope = withName(scope, id, name);
     bound.push({ name, id });
-    if (tainted(i)) set.add(name);
+    if (tainted(i)) sets.tainted.add(name);
+    if (erased(i)) sets.erased.add(name);
   });
-  return { local: { scope, tainted: set }, bound };
+  return { local: { scope, ...sets }, bound };
 }
 
 export function stmt(ctx: Ctx, local: Local, s: Stmt, poison: boolean, comptime?: Comptime): StmtOut {
@@ -286,14 +361,15 @@ export function stmt(ctx: Ctx, local: Local, s: Stmt, poison: boolean, comptime?
         return { ...base, type: a.type, is: a.is };
       });
       const out = expr(ctx, local, s.rhs, { wants, env: [], whole: s.binders.every(b => b.ann) });
-      const b = bind(out.local, s.binders.map(x => x.name), out.results.map(r => r.id), i => out.results[i]!.tainted || poison);
+      const b = bind(out.local, s.binders.map(x => x.name), out.results.map(r => r.id), i => out.results[i]!.tainted || poison, i => s.binders[i]!.mult === "erased");
       return { local: b.local, poison: false, tree: { ...s, rhs: out.tree }, bound: b.bound };
     }
     case "patlet": {
-      const snap = record(ctx, local, s.span, "none");
+      const snap = record(ctx, local, s.span, "none"), erased = s.mult === "erased";
+      if (s.comptime && erased) fail(s.span, () => "a `comptime` pattern `let` evaluates its right-hand side (§11), so it cannot be erased (§16)");
       names(ctx, local, s.pat.fields);
-      const out = expr(ctx, local, s.rhs, null), r = single(out, s.rhs.span), tainted = r.tainted || poison;
-      const fs = forcings(ctx, out.local, r.id, s.rhs.span, [s.pat], s.span);
+      const out = expr(erased ? { ...ctx, erased } : ctx, local, s.rhs, null), r = single(out, s.rhs.span), tainted = r.tainted || poison;
+      const fs = forcings(ctx, out.local, r.id, s.rhs.span, [s.pat], s.span, erased);
       snap.refutations = refutations(fs);
       if (s.comptime) comptime?.(out.tree, tainted);
       const mine = fs.find(f => f.pat === s.pat)!;
@@ -311,7 +387,7 @@ const skeleton = (t: Written): Expr => t.args === null
   : { kind: "app", head: t.head, args: t.args.map(a => ({ mark: null, expr: skeleton(a), span: a.span })), span: t.span };
 
 export function term(ctx: Ctx, local: Local, t: Written): Result & { local: Local } {
-  const out = expr({ ...ctx, skeleton: true }, local, skeleton(t), null);
+  const out = expr({ ...ctx, skeleton: true, erased: ctx.erased || ctx.st.phase >= 2, holes: [] }, local, skeleton(t), null);
   return { local: out.local, ...single(out, t.span) };
 }
 
@@ -327,22 +403,31 @@ export function annotate(ctx: Ctx, local: Local, ann: Ann): { local: Local; type
   return { local: t.local, type: it, is: null, tainted: t.tainted };
 }
 
-export function telescope(ctx: Ctx, local: Local, binders: readonly Binderish[], kind: string, outer: readonly EntryId[] = []): { local: Local; ids: EntryId[]; tele: Telescope } {
+export interface Checked { local: Local; ids: EntryId[]; tele: Telescope; tainted: boolean }
+
+export function telescope(ctx: Ctx, local: Local, binders: readonly Binderish[], kind: string, outer: readonly EntryId[] = []): Checked {
   const seen = new Set<string>(), ids: EntryId[] = [];
+  let tainted = false;
   for (const b of binders) {
     record(ctx, local, b.span, "none");
     fresh(ctx, local, b.name, seen);
     const a = annotate(ctx, local, b.ann);
+    tainted ||= a.tainted;
     const made = create(a.local.scope, a.type, a.is, { origin: { kind, span: b.span }, erased: b.mult === "erased" });
     local = bind({ ...a.local, scope: made.scope }, [b.name], [made.id]).local;
     ids.push(made.id);
   }
   const all = [...outer, ...ids], scope = local.scope;
   return {
-    local, ids,
+    local, ids, tainted,
     tele: binders.map((b, i) => {
       const e = entry(scope, ids[i]!);
       return { name: b.name.name, type: abstract(scope, e.type, all), is: e.rule && abstract(scope, e.rule.term, all), mult: b.mult ?? "many", span: b.span };
     }),
   };
+}
+
+export function header(ctx: Ctx, local: Local, h: Header): { params: Checked; returns: Checked } {
+  const params = telescope(ctx, local, h.params, "param");
+  return { params, returns: telescope(ctx, params.local, h.returns, "binder", params.ids) };
 }

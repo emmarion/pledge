@@ -17,8 +17,11 @@ export interface EntryInfo {
   tainted: boolean;
 }
 
+export interface ExpectedEntry { name: string | null; type: Rendered | null; rule: Rendered | null; undetermined: boolean; erased: boolean }
+
 export interface ExpectedInfo {
-  entries: { name: string | null; type: Rendered | null; rule: Rendered | null; undetermined: boolean }[] | null;
+  entries: ExpectedEntry[] | null;
+  params?: ExpectedEntry[];
 }
 
 export interface TerminationInfo {

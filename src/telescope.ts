@@ -1,7 +1,7 @@
 import type { Span } from "./syntax.ts";
 import type { Rendered } from "./api.ts";
 import { addRule, app, canon, create, entry, identical, occurs, ref, rewrites, same, sameHead, subst, typeOf } from "./terms.ts";
-import type { App, Binder, EntryId, Fresh, Head, Ref, Scope, Signature, Telescope, Term } from "./terms.ts";
+import type { App, Binder, EntryId, Fresh, Head, OpenTerm, Origin, Ref, Scope, Signature, Telescope, Term } from "./terms.ts";
 import { cat, entryRef, join, render } from "./render.ts";
 
 export interface Opened { scope: Scope; entries: EntryId[]; env: Term[] }
@@ -45,6 +45,13 @@ export function instantiate(scope: Scope, tele: Telescope, given: readonly Entry
   return { ok: true, env: out };
 }
 
+export function difference(scope: Scope, a: Telescope, b: Telescope, origin: Origin): number {
+  const { scope: s, env } = open(scope, a, [], () => ({ origin }));
+  const same = (x: OpenTerm | null, y: OpenTerm | null): boolean => x === null || y === null ? x === y : identical(s, subst(x, env), subst(y, env));
+  const i = a.findIndex((x, j) => { const y = b[j]; return !y || x.mult !== y.mult || !same(x.type, y.type) || !same(x.is, y.is); });
+  return i >= 0 ? i : a.length < b.length ? a.length : -1;
+}
+
 export type Applied = { ok: true; scope: Scope; id: EntryId } | { ok: false; mismatch: Mismatch };
 
 export function apply(scope: Scope, sig: Signature, args: readonly EntryId[], fresh: Fresh): Applied {
@@ -55,38 +62,49 @@ export function apply(scope: Scope, sig: Signature, args: readonly EntryId[], fr
 type Why = "scrutinee" | "scrutinee type" | "types" | { head: Head; index: number };
 interface Eq { lhs: Term; rhs: Term; why: Why; parent: Seen | null }
 interface Seen extends Eq { scope: Scope; l: Term; r: Term }
-type Failure = { heads: readonly [Head, Head] } | { x: EntryId; e: Term };
+type Failure = { heads: readonly [Head, Head] } | { x: EntryId; e: Term } | { rigid: readonly [Term, Term] };
 
 export type Forced = { ok: true; scope: Scope; fields: EntryId[] } | { ok: false; derivation: () => Rendered[] };
 
-function orient(l: Term, r: Term): { x: Ref; e: Term } | { apps: readonly [App, App] } {
-  if (l.tag === "app") return r.tag === "app" ? { apps: [l, r] } : { x: r, e: l };
-  return r.tag === "entry" && r.id > l.id ? { x: r, e: l } : { x: l, e: r };
+function orient(l: Term, r: Term, may: (id: EntryId) => boolean): { x: Ref; e: Term } | { apps: readonly [App, App] } | null {
+  if (l.tag === "app" && r.tag === "app") return { apps: [l, r] };
+  const x = [l, r].reduce<Ref | null>((best, t) => t.tag === "entry" && may(t.id) && (!best || t.id > best.id) ? t : best, null);
+  return x && { x, e: x === l ? r : l };
+}
+
+function solve(scope: Scope, eqs: Eq[], at: Span, may: (id: EntryId) => boolean): { scope: Scope; failed: { eq: Seen; failure: Failure } | null } {
+  let now = scope;
+  for (const eq of eqs) {
+    const e: Seen = { ...eq, scope: now, l: canon(now, eq.lhs), r: canon(now, eq.rhs) };
+    const failed = (failure: Failure) => ({ scope: now, failed: { eq: e, failure } });
+    if (same(e.l, e.r)) continue;
+    const o = orient(e.l, e.r, may);
+    if (!o) return failed({ rigid: [e.l, e.r] });
+    if ("apps" in o) {
+      const [a, b] = o.apps;
+      if (!sameHead(a.head, b.head) || a.args.length !== b.args.length) return failed({ heads: [a.head, b.head] });
+      a.args.forEach((lhs, index) => { const rhs = b.args[index]; if (rhs) eqs.push({ lhs, rhs, why: { head: a.head, index }, parent: e }); });
+      continue;
+    }
+    if (occurs(o.x.id, o.e)) return failed({ x: o.x.id, e: o.e });
+    now = addRule(now, o.x.id, o.e, at);
+    eqs.push({ lhs: entry(now, o.x.id).type, rhs: typeOf(now, o.e), why: "types", parent: e });
+  }
+  return { scope: now, failed: null };
+}
+
+export function unify(scope: Scope, lhs: Term, rhs: Term, at: Span, hole: (id: EntryId) => boolean): { scope: Scope; stuck: readonly [Term, Term] | null } {
+  const { scope: now, failed } = solve(scope, [{ lhs, rhs, why: "types", parent: null }], at, hole);
+  return { scope: now, stuck: failed && "rigid" in failed.failure ? failed.failure.rigid : null };
 }
 
 export function force(scope: Scope, scrutinee: EntryId, ctor: Signature, at: Span, fresh: (b: Binder, i: number) => Fresh): Forced {
   const opened = open(scope, ctor.params, [], fresh);
-  let now = opened.scope;
-  const eqs: Eq[] = [
+  const { scope: now, failed } = solve(opened.scope, [
     { lhs: ref(scrutinee), rhs: app(ctor.head, ...opened.env), why: "scrutinee", parent: null },
-    { lhs: entry(now, scrutinee).type, rhs: subst(ctor.ret, opened.env), why: "scrutinee type", parent: null },
-  ];
-  for (const eq of eqs) {
-    const e: Seen = { ...eq, scope: now, l: canon(now, eq.lhs), r: canon(now, eq.rhs) };
-    const refute = (failure: Failure): Forced => ({ ok: false, derivation: () => derivation(ctor, e, failure) });
-    if (same(e.l, e.r)) continue;
-    const o = orient(e.l, e.r);
-    if ("apps" in o) {
-      const [a, b] = o.apps;
-      if (!sameHead(a.head, b.head) || a.args.length !== b.args.length) return refute({ heads: [a.head, b.head] });
-      a.args.forEach((lhs, index) => { const rhs = b.args[index]; if (rhs) eqs.push({ lhs, rhs, why: { head: a.head, index }, parent: e }); });
-      continue;
-    }
-    if (occurs(o.x.id, o.e)) return refute({ x: o.x.id, e: o.e });
-    now = addRule(now, o.x.id, o.e, at);
-    eqs.push({ lhs: entry(now, o.x.id).type, rhs: typeOf(now, o.e), why: "types", parent: e });
-  }
-  return { ok: true, scope: now, fields: opened.entries };
+    { lhs: entry(opened.scope, scrutinee).type, rhs: subst(ctor.ret, opened.env), why: "scrutinee type", parent: null },
+  ], at, () => true);
+  return failed ? { ok: false, derivation: () => derivation(ctor, failed.eq, failed.failure) } : { ok: true, scope: now, fields: opened.entries };
 }
 
 function derivation(ctor: Signature, failing: Seen, failure: Failure): Rendered[] {
@@ -104,5 +122,6 @@ function derivation(ctor: Signature, failing: Seen, failure: Failure): Rendered[
   const { scope } = failing;
   return [...lines, "heads" in failure
     ? cat(`refuted: ${failure.heads[0].name} and ${failure.heads[1].name} are different heads`)
+    : "rigid" in failure ? cat("refuted: ", ...join(failure.rigid.map(t => render(scope, t, { canonical: false })), " and "), " cannot be equated")
     : cat("refuted: ", entryRef(scope, failure.x), " occurs strictly inside ", render(scope, failure.e, { canonical: false }))];
 }

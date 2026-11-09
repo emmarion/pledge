@@ -1,7 +1,7 @@
 import type { Diagnostic, RefutationInfo, TerminationInfo } from "./api.ts";
 import type { Id, Mult, Phase, Span } from "./syntax.ts";
 import { entry, lookup } from "./terms.ts";
-import type { EntryId, OpenTerm, Scope, Signature, Telescope, Term } from "./terms.ts";
+import type { Entry, EntryId, OpenTerm, Scope, Signature, Telescope, Term } from "./terms.ts";
 
 export class Failure {
   readonly diag: Diagnostic;
@@ -21,10 +21,12 @@ export type Global =
   | { kind: "binding"; name: string; id: EntryId };
 
 export interface Want { name: string | null; type: OpenTerm | null; is: OpenTerm | null; mult: Mult; span: Span }
-export interface Given { wants: readonly Want[]; env: readonly Term[]; whole: boolean }
+export interface Given { wants: readonly Want[]; env: readonly Term[]; whole: boolean; params?: number }
 
-export interface Local { scope: Scope; tainted: ReadonlySet<string> }
-export interface Result { id: EntryId; tainted: boolean }
+export interface Local { scope: Scope; tainted: ReadonlySet<string>; erased: ReadonlySet<string> }
+export interface Result { id: EntryId; tainted: boolean; erased: boolean }
+
+export const isTainted = (e: Entry, tainted: ReadonlySet<string>): boolean => e.tainted || e.names.some(n => tainted.has(n));
 
 export interface FnCtx { name: string; group: readonly string[]; subterms: EntryId[]; info: TerminationInfo }
 
@@ -49,9 +51,11 @@ export interface State {
   record: boolean;
 }
 
-export interface Ctx { st: State; fn: FnCtx | null; skeleton: boolean; limit: number | null }
+export interface Hole { id: EntryId; span: Span; is: Term | null; from: number }
+export interface Ctx { st: State; fn: FnCtx | null; skeleton: boolean; limit: number | null; erased: boolean; holes: Hole[] }
 
 export const APP = "app";
+export const HOLE = "_";
 
 export const visible = (ctx: Ctx): number => ctx.limit ?? ctx.st.globals.length;
 
@@ -81,7 +85,7 @@ export function point(ctx: Ctx, scope: Scope, span: Span, term: Term): void {
 export function written(scope: Scope, t: Term): Term {
   if (t.tag === "app") return { ...t, args: t.args.map(a => written(scope, a)) };
   const e = entry(scope, t.id);
-  return e.rule && e.origin.kind === APP && !e.names.length ? written(scope, e.rule.term) : t;
+  return e.rule && (e.origin.kind === APP || e.origin.kind === HOLE) && !e.names.length ? written(scope, e.rule.term) : t;
 }
 
 export function fresh(ctx: Ctx, local: Local, id: Id, seen: Set<string>): void {

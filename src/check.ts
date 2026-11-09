@@ -3,13 +3,17 @@ import type { Data, Expr, Fn, Span, Top } from "./syntax.ts";
 import { parse } from "./parser.ts";
 import { lex } from "./lexer.ts";
 import { TYPE, abstract, declare, emptyScope, ref, signature } from "./terms.ts";
-import type { Term } from "./terms.ts";
+import type { Telescope, Term } from "./terms.ts";
+import { difference } from "./telescope.ts";
+import { renderBinder } from "./render.ts";
 import { bindPattern, evalOne, evalStmt, showValue } from "./eval.ts";
 import type { Env, FnDef, Value } from "./eval.ts";
-import { Failure, declareGlobal, fail, fresh, record } from "./context.ts";
-import type { Ctx, FnCtx, FnSig, Global, Local, Snapshot, State } from "./context.ts";
-import { annotate, expr, single, stmt, telescope, term } from "./expr.ts";
+import { Failure, declareGlobal, fail, fresh, global, record } from "./context.ts";
+import type { Ctx, FnCtx, FnSig, Given, Global, Local, Snapshot, State } from "./context.ts";
+import { annotate, expr, header, plural, single, stmt, telescope, term } from "./expr.ts";
 import { info, queries } from "./info.ts";
+
+type Telescopes = Pick<FnSig, "params" | "returns">;
 
 const nothing: PositionInfo = { expected: null, termination: null, scope: [], refutations: null, globals: [] };
 
@@ -31,14 +35,14 @@ export const check: Check = (source, phase) => {
       infoAt: () => nothing, explainAt: () => null, evalAt: () => ({ error: parsed.error }),
     };
   const { tops } = parsed.program;
-  let top: Local = { scope: emptyScope(source), tainted: new Set() };
+  let top: Local = { scope: emptyScope(source), tainted: new Set(), erased: new Set() };
   const st: State = { phase, globals: [], index: new Map(), snapshots: [], explains: [], record: true };
   declareGlobal(st, { kind: "type", name: "Type", sig: signature(top.scope, "Type")!, ctors: null, done: true });
-  const ctx: Ctx = { st, fn: null, skeleton: false, limit: null };
+  const ctx: Ctx = { st, fn: null, skeleton: false, limit: null, erased: false, holes: [] };
   const prints: CheckResult["prints"] = [], gaps: Snapshot[] = [];
   const fns = new Map<string, FnDef>();
   let env: Env = new Map(), poisoned = false, proved = false, error: Diagnostic | null = null;
-  let goal: { type: Term; tainted: boolean; span: Span } | null = null;
+  let goal: { type: Term | Telescopes; tainted: boolean; span: Span } | null = null;
   const hasQed = tops.some(t => t.kind === "qed");
   let qedChecks: boolean | null = hasQed ? false : null, qedSeen = false;
 
@@ -85,9 +89,8 @@ export const check: Check = (source, phase) => {
       const fn: FnCtx = { name, group: names, subterms: [], info: { fn: name, subtermParams: f.params.filter(p => p.subterm).map(p => p.name.name ?? "_"), group: names } };
       const c: Ctx = { ...ctx, fn };
       record(c, top, f.span, "none");
-      const params = telescope(c, top, f.params, "param");
+      const { params, returns } = header(c, top, f);
       fn.subterms.push(...params.ids.filter((_, j) => f.params[j]!.subterm));
-      const returns = telescope(c, params.local, f.returns, "binder", params.ids);
       const sig: FnSig = { params: params.tele, returns: returns.tele, subterm: f.params.map(p => p.subterm), tainted: false };
       globals[i]!.sig = sig;
       return { f, c, sig, local: params.local, env: params.ids.map(ref) };
@@ -109,8 +112,38 @@ export const check: Check = (source, phase) => {
     }
   };
 
-  const qedGiven = (g: NonNullable<typeof goal>) =>
-    ({ wants: [{ name: null, type: g.type, is: null, mult: "many" as const, span: g.span }], env: [], whole: true });
+  const goalGiven = (g: NonNullable<typeof goal>): Given => "params" in g.type
+    ? { wants: [...g.type.params, ...g.type.returns], env: [], whole: true, params: g.type.params.length }
+    : { wants: [{ name: null, type: g.type, is: null, mult: "many", span: g.span }], env: [], whole: true };
+
+  const counts = (t: Telescopes): string => `${plural(t.params.length, "parameter")} and ${plural(t.returns.length, "return")}`;
+
+  const named = (e: Expr): Global | undefined => e.kind === "var" && e.name.name !== null ? global(ctx, e.name.name) : undefined;
+
+  const proves = (goalFn: Telescopes, e: Expr, given: Given): boolean => {
+    record(ctx, top, e.span, given);
+    const f = named(e);
+    if (f?.kind !== "fn" || !f.sig) return fail(e.span, () => "the goal is a function goal, so `qed` names a function declared before it, as in `qed f;`");
+    const sig = f.sig, mine = [...sig.params, ...sig.returns], theirs = [...goalFn.params, ...goalFn.returns];
+    if (sig.params.length !== goalFn.params.length || sig.returns.length !== goalFn.returns.length)
+      fail(e.span, () => `${f.name} has ${counts(sig)}, and the goal has ${counts(goalFn)}`);
+    const i = difference(top.scope, theirs, mine, { kind: "goal", span: e.span }), n = sig.params.length;
+    const names = theirs.map(b => b.name), shown = (tele: Telescope) => renderBinder(top.scope, { ...tele[i]!, name: names[i] ?? null }, names).text;
+    if (i >= 0) fail(e.span, () => `${f.name}'s ${i < n ? `parameter ${i + 1}` : `return ${i - n + 1}`} is \`${shown(mine)}\`, and the goal's is \`${shown(theirs)}\` (binders named as in the goal); ` +
+      "a function proves a function goal when its parameters and returns are canonically identical to the goal's, position by position, binder names aside");
+    return sig.tainted;
+  };
+
+  const checks = (e: Expr, given: Given, span: Span): boolean => {
+    const f = named(e);
+    if (f?.kind === "fn") {
+      record(ctx, top, e.span, given);
+      fail(e.span, () => `${f.name} is a function, and naming a function proves only a function goal, \`goal fn (...) -> (...);\`; this goal is a type`);
+    }
+    const out = expr(ctx, top, e, given), tainted = out.results.some(r => r.tainted);
+    evaluated(span, out.tree, tainted);
+    return tainted;
+  };
 
   const evaluated = (span: Span, e: Expr, tainted: boolean): Value | null =>
     tainted || poisoned ? null : run(span, () => evalOne(fns, env, e));
@@ -147,6 +180,11 @@ export const check: Check = (source, phase) => {
       case "goal": {
         record(ctx, top, t.span, "none");
         if (goal) fail(t.span, () => "a program has at most one `goal` (§12)");
+        if ("params" in t.type) {
+          const { params, returns } = header(ctx, top, t.type);
+          goal = { type: { params: params.tele, returns: returns.tele }, tainted: params.tainted || returns.tainted || poisoned, span: t.span };
+          return;
+        }
         const g = annotate(ctx, top, { kind: "type", term: t.type });
         top = g.local;
         goal = { type: g.type, tainted: g.tainted || poisoned, span: t.type.span };
@@ -157,10 +195,8 @@ export const check: Check = (source, phase) => {
         if (qedSeen) fail(t.span, () => "a program has at most one `qed` (§12)");
         qedSeen = true;
         if (!goal) return fail(t.span, () => "`qed` comes after `goal`, and no `goal` is set before this `qed` (§12)");
-        const out = expr(ctx, top, t.expr, qedGiven(goal));
+        const tainted = "params" in goal.type ? proves(goal.type, t.expr, goalGiven(goal)) : checks(t.expr, goalGiven(goal), t.span);
         qedChecks = true;
-        const tainted = out.results.some(r => r.tainted);
-        evaluated(t.span, out.tree, tainted);
         proved = !tainted && !poisoned && !goal.tainted;
         return;
       }

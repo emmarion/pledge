@@ -254,3 +254,98 @@ test("evalAt checks typed text in the scope at a position", () => {
   if ("error" in inBody) assert.fail(inBody.error.message());
   assert.equal(inBody.canonicalType.text, "A");
 });
+
+const eqData = "data Eq(A : Type(), x : A, y : A) : Type() {\n  Refl(A : Type(), x : A) : Eq(A, x, x);\n}\n";
+const plusData = "data Plus(m : Nat(), n : Nat(), r : Nat()) : Type() {\n  PlusZero(n : Nat()) : Plus(Zero(), n, n);\n  PlusSucc(m : Nat(), n : Nat(), r : Nat(), p : Plus(m, n, r)) : Plus(Succ(m), n, Succ(r));\n}\n";
+const plusZero = `fn plusZero(subterm n : Nat(), r : Nat(), p : Plus(n, Zero(), r)) -> (e : Eq(Nat(), r, n)) {
+  match p : _ {
+    PlusZero(_) => Refl(Nat(), r);
+    PlusSucc(m, _, r1, q) => match plusZero(subterm m, r1, q) : _ {
+      Refl(_, _) => Refl(Nat(), r);
+    };
+  }
+}
+`;
+const plusGoal = (goal: string): string => `${nat}${eqData}${plusData}goal fn ${goal};\n${plusZero}qed plusZero;\n`;
+const falseData = "data False() : Type() {}\n";
+const verdicts = (r: CheckResult) => [r.containsSorry, r.qedChecks, r.goalProved];
+
+test("function goals: plusZero proves the goal, binder names and subterm marks aside", () => {
+  const source = plusGoal("(n : Nat(), r : Nat(), p : Plus(n, Zero(), r)) -> (e : Eq(Nat(), r, n))");
+  const r = ok(source);
+  assert.deepEqual(verdicts(r), [false, true, true]);
+  const at = r.infoAt(offset(source, "qed plusZero", 5)).expected;
+  assert.deepEqual([at?.params?.map(e => `${e.name} : ${e.type?.text}`), at?.entries?.map(e => `${e.name} : ${e.type?.text}`)],
+    [["n : Nat()", "r : Nat()", "p : Plus(n, Zero(), r)"], ["e : Eq(Nat(), r, n)"]]);
+  const inGoal = offset(source, "Eq(Nat(), r, n));", 10);
+  assert.deepEqual(scopeOf(r.infoAt(inGoal)), ["n : Nat()", "r : Nat()", "p : Plus(n, Zero(), r)"]);
+  assert.equal(r.infoAt(inGoal).termination, null);
+  const p = r.evalAt(inGoal, "p");
+  if ("error" in p) assert.fail(p.error.message());
+  assert.equal(p.type.text, "Plus(n, Zero(), r)");
+  assert.equal(r.explainAt(inGoal)?.canonical.text, "r");
+  assert.deepEqual(verdicts(ok(plusGoal("(a : Nat(), b : Nat(), _ : Plus(a, Zero(), b)) -> (_ : Eq(Nat(), b, a))"))), [false, true, true]);
+});
+
+test("function goals: a telescope that differs does not prove the goal", () => {
+  const mismatch = (goal: string, pattern: RegExp) => {
+    const source = plusGoal(goal);
+    err(source, "plusZero", pattern, "qed plusZero");
+    assert.deepEqual(verdicts(check(source, 1)), [false, false, false]);
+  };
+  mismatch("(n : Nat(), r : Nat(), p : Plus(n, Zero(), r)) -> (e : Eq(Nat(), n, r))",
+    /plusZero's return 1 is `e : Eq\(Nat\(\), r, n\)`, and the goal's is `e : Eq\(Nat\(\), n, r\)`.*canonically identical/);
+  mismatch("(n : Nat(), r : Nat(), p : Plus(r, Zero(), n)) -> (e : Eq(Nat(), r, n))",
+    /plusZero's parameter 3 is `p : Plus\(n, Zero\(\), r\)`, and the goal's is `p : Plus\(r, Zero\(\), n\)`/);
+  mismatch("(n : Nat(), r is Zero(), p : Plus(n, Zero(), r)) -> (e : Eq(Nat(), r, n))", /plusZero's parameter 2 is `r : Nat\(\)`, and the goal's is `r is Zero\(\)`/);
+  mismatch("(n : Nat(), p : Plus(n, Zero(), n)) -> (e : Eq(Nat(), n, n))", /plusZero has 3 parameters and 1 return, and the goal has 2 parameters and 1 return/);
+  mismatch("(r : Nat(), n : Nat(), _ : Plus(n, Zero(), r)) -> (e : Eq(Nat(), r, n))",
+    /plusZero's parameter 3 is `_ : Plus\(r, Zero\(\), n\)`, and the goal's is `_ : Plus\(n, Zero\(\), r\)` \(binders named as in the goal\)/);
+  assert.deepEqual(verdicts(ok(plusGoal("(r : Nat(), n : Nat(), _ : Plus(r, Zero(), n)) -> (e : Eq(Nat(), n, r))"))), [false, true, true]);
+});
+
+test("function goals: the Expected panel shows the goal at a `qed` naming a function, on the error path too", () => {
+  const fn = `${nat}fn f(n : Nat()) -> (r : Nat()) { n }\n`, typeGoal = `${fn}goal Nat();\nqed f;\n`;
+  assert.deepEqual(check(typeGoal, 1).infoAt(offset(typeGoal, "f;")).expected?.entries?.map(e => e.type?.text), ["Nat()"]);
+  const fnGoal = `${fn}goal fn (m : Nat()) -> (r : Nat());\nqed f;\n`;
+  assert.deepEqual(ok(fnGoal).infoAt(offset(fnGoal, "f;")).expected?.params?.map(e => e.type?.text), ["Nat()"]);
+});
+
+test("function goals: is clauses of earlier binders are in force", () => {
+  const source = `${nat}${eqData}goal fn (n is Zero(), e : Eq(Nat(), n, Zero())) -> (r : Nat());\nfn f(m is Zero(), e : Eq(Nat(), Zero(), m)) -> (r : Nat()) { m }\nqed f;\n`;
+  assert.deepEqual(verdicts(ok(source)), [false, true, true]);
+});
+
+test("function goals: taint, sorry and the identity on False()", () => {
+  const sorry = ok(`${falseData}goal fn () -> (r : False());\nfn f() -> (r : False()) { sorry(_) }\nqed f;\n`);
+  assert.deepEqual(verdicts(sorry), [true, true, false]);
+  const viaCall = ok(`${falseData}goal fn () -> (r : False());\nfn g() -> (r : False()) { sorry(_) }\nfn f() -> (r : False()) { g() }\nqed f;\n`);
+  assert.deepEqual(verdicts(viaCall), [true, true, false]);
+  const identity = ok(`${falseData}goal fn (p : False()) -> (r : False());\nfn id(q : False()) -> (s : False()) { q }\nqed id;\n`);
+  assert.deepEqual(verdicts(identity), [false, true, true]);
+  const taintedGoal = ok(`${nat}let T = sorry(x : Type());\ngoal fn (x : T) -> (r : T);\nfn f(y : T) -> (r : T) { y }\nqed f;\n`);
+  assert.deepEqual(verdicts(taintedGoal), [true, true, false]);
+  const poisoned = ok(`${nat}data IsZero(n : Nat()) : Type() {\n  IsZeroHere() : IsZero(Zero());\n}\ngoal fn (n : Nat()) -> (r : Nat());\nfn f(n : Nat()) -> (r : Nat()) { n }\nlet s = sorry(p : IsZero(Zero()));\nlet IsZeroHere() = s;\nqed f;\n`);
+  assert.deepEqual(verdicts(poisoned), [true, true, false]);
+});
+
+test("function goals: qed names a function exactly when the goal is a function goal", () => {
+  const fn = `${nat}fn f(n : Nat()) -> (r : Nat()) { n }\n`;
+  err(`${fn}goal Nat();\nqed f;\n`, "f", /f is a function, and naming a function proves only a function goal.*this goal is a type/, "qed f");
+  const fnGoal = `${nat}goal fn (n : Nat()) -> (r : Nat());\n`;
+  err(`${fnGoal}qed Zero();\n`, "Zero()", /the goal is a function goal, so `qed` names a function declared before it/, "qed");
+  err(`${fnGoal}let x = Zero();\nqed x;\n`, "x", /the goal is a function goal/, "qed x");
+  err(`${fnGoal}qed f;\nfn f(n : Nat()) -> (r : Nat()) { n }\n`, "f", /the goal is a function goal/, "qed f");
+  err(`${nat}goal fn (n : Nat()) -> (n : Nat());\n`, "n", /already in scope/, "-> (n");
+  err(`${nat}goal fn (n : Nat()) -> (r : Succ(n));\n`, "Succ(n)", /not a type/);
+});
+
+test("function goals in phase 2: multiplicities must match", () => {
+  const source = (mult: string) => `${nat}goal fn (erased n : Nat()) -> (r : Nat());\nfn f(${mult}n : Nat()) -> (r : Nat()) { Zero() }\nqed f;\n`;
+  const proved = check(source("erased "), 2);
+  assert.equal(proved.error, null);
+  assert.deepEqual(verdicts(proved), [false, true, true]);
+  const differs = check(source(""), 2);
+  assert.match(differs.error?.message() ?? "", /f's parameter 1 is `n : Nat\(\)`, and the goal's is `erased n : Nat\(\)`/);
+  assert.deepEqual(verdicts(differs), [false, false, false]);
+});

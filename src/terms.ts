@@ -153,8 +153,10 @@ export function same(a: OpenTerm, b: OpenTerm): boolean {
 
 export const identical = (scope: Scope, a: OpenTerm, b: OpenTerm): boolean => same(canon(scope, a), canon(scope, b));
 
-export const occurs = (id: EntryId, t: OpenTerm): boolean =>
-  t.tag === "app" ? t.args.some(a => occurs(id, a)) : t.tag === "entry" && t.id === id;
+export const mentions = (t: OpenTerm, which: (id: EntryId) => boolean): boolean =>
+  t.tag === "app" ? t.args.some(a => mentions(a, which)) : t.tag === "entry" && which(t.id);
+
+export const occurs = (id: EntryId, t: OpenTerm): boolean => mentions(t, x => x === id);
 
 export function isStrictSubterm(scope: Scope, s: Term, t: Term): boolean {
   const cs = canon(scope, s);

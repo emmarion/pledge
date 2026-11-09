@@ -1,4 +1,4 @@
-import type { Expr, Fn, Id, Pattern, Stmt } from "./syntax.ts";
+import type { Expr, Fn, Id, Mult, Pattern, Stmt } from "./syntax.ts";
 
 export interface Value { head: string; args: Value[] }
 
@@ -29,8 +29,9 @@ const tag = (v: Value): string => v === removed ? fail("a removed value was insp
 
 export const evalOne = (fns: Fns, env: Env, e: Expr): Value => take(evalExpr(fns, env, e), 1)[0]!;
 
-export const bindPattern = (env: Env, pat: Pattern, v: Value): Env =>
-  tag(v) === pat.ctor.name ? bind(env, pat.fields, v.args) : fail(`pattern ${pat.ctor.name} met ${showValue(v)}`);
+export const bindPattern = (env: Env, pat: Pattern, v: Value, mult: Mult | null = null): Env =>
+  mult === "erased" ? bind(env, pat.fields, pat.fields.map(() => removed))
+  : tag(v) === pat.ctor.name ? bind(env, pat.fields, v.args) : fail(`pattern ${pat.ctor.name} met ${showValue(v)}`);
 
 export const evalExpr = (fns: Fns, env: Env, e: Expr): Value[] => {
   switch (e.kind) {
@@ -46,8 +47,10 @@ export const evalExpr = (fns: Fns, env: Env, e: Expr): Value[] => {
     case "block": return evalExpr(fns, e.stmts.reduce((acc, s) => evalStmt(fns, acc, s), env), e.final);
     case "match": {
       const v = evalOne(fns, env, e.scrut);
-      const br = e.branches.find(b => b.pat.ctor.name === tag(v)) ?? fail(`no branch for ${showValue(v)}`);
-      const vs = evalExpr(fns, bindPattern(env, br.pat, v), br.body);
+      const [only, ...others] = e.branches;
+      const br = e.mult !== "erased" ? e.branches.find(b => b.pat.ctor.name === tag(v)) ?? fail(`no branch for ${showValue(v)}`)
+        : only && !others.length ? only : fail(`an erased match with ${e.branches.length} branches`);
+      const vs = evalExpr(fns, bindPattern(env, br.pat, v, e.mult), br.body);
       return e.ann === "_" ? vs : take(vs, e.ann.length);
     }
     case "sorry": return fail("sorry was reached");
@@ -58,7 +61,7 @@ export const evalExpr = (fns: Fns, env: Env, e: Expr): Value[] => {
 export const evalStmt = (fns: Fns, env: Env, s: Stmt): Env => {
   switch (s.kind) {
     case "let": return bind(env, s.binders.map(b => b.name), take(evalExpr(fns, env, s.rhs), s.binders.length));
-    case "patlet": return bindPattern(env, s.pat, evalOne(fns, env, s.rhs));
+    case "patlet": return bindPattern(env, s.pat, evalOne(fns, env, s.rhs), s.mult);
     case "inspect": return env;
   }
 };

@@ -1,4 +1,4 @@
-import type { Ann, Arg, Binder, Branch, Ctor, Data, Expr, Fn, Id, LetBinder, Mult, Param, Pattern, Phase, Program, Span, Stmt, Tele, Term, Top, TypedParam } from "./syntax.ts";
+import type { Ann, Arg, Binder, Branch, Ctor, Data, Expr, Fn, Header, Id, LetBinder, Mult, Param, Pattern, Phase, Program, Span, Stmt, Tele, Term, Top, TypedParam } from "./syntax.ts";
 import type { Diagnostic } from "./api.ts";
 import { lex, type Token } from "./lexer.ts";
 
@@ -222,15 +222,19 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
     return declaration({ kind: "data", name: dataName, params, ctors, span: spanFrom(begin) });
   };
 
+  const header = (): Header => {
+    const params = parens(param, false);
+    expect("->");
+    return { params, returns: tele() };
+  };
+
   const fn = (): Fn => {
     const begin = start();
     expect("fn");
     const fnName = name();
-    const params = parens(param, false);
-    expect("->");
-    const returns = tele();
+    const h = header();
     const body = block();
-    return declaration({ kind: "fn", name: fnName, params, returns, body, span: spanFrom(begin) });
+    return declaration({ kind: "fn", name: fnName, ...h, body, span: spanFrom(begin) });
   };
 
   const mutual = (): Top => {
@@ -259,7 +263,7 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
       return patLet(begin, true);
     }
     if (eat("print")) return { kind: "print", expr: expr(), span: endStatement(begin) };
-    if (eat("goal")) return { kind: "goal", type: term(), span: endStatement(begin) };
+    if (eat("goal")) return { kind: "goal", type: eat("fn") ? header() : term(), span: endStatement(begin) };
     if (eat("qed")) return { kind: "qed", expr: expr(), span: endStatement(begin) };
     return fail("a declaration or a top-level statement");
   };

@@ -222,3 +222,96 @@ and never renumbered (rule 15); a removed item leaves a gap.
     own and otherwise ends in an ellipsis, opening in full on hover or
     focus. Hovering a name shows its entry's type and `is` rule, or a
     global's signature.
+
+## Erasure (phase 2)
+
+45. **Erased results, not only names.** §16's "erased name" is read as
+    any erased result: a name bound erased, a call's result for an
+    erased return, a match's result for an erased annotation entry,
+    and a `_`. Each is allowed only where its position is erased.
+46. **Erasure flows down per result.** A position's result is erased
+    when what the position is given has an erased entry there, and
+    for every argument of a type constructor. A tuple passes it to
+    its elements, a block to its final expression, a match to the
+    matching result of every branch body; a call's arguments take
+    their parameters' multiplicities, never the call's position. An
+    expression whose results are all in erased positions is wholly
+    erased, everything inside it included; §16's "a call whose results
+    are all erased takes any arguments" follows from this.
+47. **Positions given nothing are `many`**: a `many` match's scrutinee,
+    a `many` pattern `let`'s right-hand side, `print`'s and `qed`'s
+    expressions. So `print x;` and `qed x;` with `x` erased are errors.
+48. **The one-branch rule** applies to every `match erased` with a
+    `many` annotation entry, even when the whole match is in an erased
+    position and never runs. `comptime let erased C(...) = e;` is
+    rejected, since the run needs the value.
+49. **Type-constructor arguments** are removed before evaluation like
+    any erased position, so `print Vec(Nat(), Zero());` shows
+    `Vec(_, _)` in phase 2.
+50. **`sorry`'s telescope** takes no multiplicities; `sorry(_)` takes
+    those of the telescope it stands for.
+51. **`_`** is allowed only for an argument whose parameter or field is
+    erased, or a type constructor's argument. It gets a fresh erased
+    entry typed by its parameter. Wherever a result is checked against
+    what its position is given, the two sides are first unified by
+    forcing's equation engine, which here gives a rule only to the
+    entry of a `_` still being solved. When the application ends,
+    every `_` created for it must be solved, unless what the position
+    is given mentions a `_` of an enclosing application, which then
+    solves it; a solution must have the parameter's type and satisfy
+    its `is` clause, as a written argument would, and must mention
+    only entries created before the `_`. This last rule is what keeps
+    a `_` from being solved to a result of the very call it is an
+    argument of; it also rejects a `_` determined only by a later
+    argument's call result, and it still accepts a solution naming an
+    earlier argument's call result, which no written argument could.
+    A block used as an argument never helps solve a `_` of the
+    enclosing application, even when the block contains no `_`, so
+    `g(_, { v }, Zero())` is rejected where `g(_, v, Zero())` is
+    accepted; a match or a tuple there is fine. Whether a block should
+    take part is an open question for the owner: it would mean
+    unifying the block's results with what it is given in the outer
+    scope, after the block's facts end.
+52. **Taint through `_`.** A `_` whose canonical solution mentions an
+    entry that is tainted, or that has a tainted name, taints the
+    application. This is stricter than §12's rule for a written
+    argument: when an entry has both a clean name `n` and a tainted
+    one, `k(n, _)` is tainted where `k(n, n)` is not. It is also looser
+    in one direction: with `x` from `sorry(x is Zero())`, `k(Zero(), _)`
+    is untainted though `k(Zero(), x)` is tainted, since the solution
+    is the ground term `Zero()`. Both only matter in programs that
+    contain `sorry`.
+53. **Scope and Expected panels** mark an entry erased when it was
+    opened erased or every one of its names was bound erased; `_`
+    entries are hidden like anonymous application entries. Interactive
+    mode checks typed text as in an erased position, since it never
+    evaluates.
+
+## Function goals (DECISIONS.md D43)
+
+54. **Syntax.** `goal fn (params) -> (returns);` is parsed exactly as a
+    function's two telescopes, so `subterm` marks, `_` names and, in
+    phase 2, multiplicities are accepted; there is no name and no body.
+55. **What `qed f;` is.** Against a function goal, the `qed`'s
+    expression must be the bare name of a function declared before it;
+    any other expression, `qed sorry(_);` included, is an error, so a
+    learner who wants to give up writes a function whose body is
+    `sorry(_)`. `qed f;` against a type goal is an error. Nothing is
+    evaluated at such a `qed`.
+56. **Identity of telescopes.** The goal's parameters and returns are
+    opened as one telescope in the scope at the `qed`, its `is` clauses
+    as rules, and the function's binders are compared position by
+    position, canonically, with `is` clauses both absent or both
+    present and identical, and multiplicities equal. So an earlier
+    binder's `is` clause counts for later ones, `x : Nat()` differs from
+    `x is Zero()`, and facts in force at the `qed`, including those of
+    untainted top-level pattern `let`s after the `goal`, count. A
+    mismatch is an error at the name, so `qedChecks` stays false, and
+    the message names the first position that differs.
+57. **Taint.** The goal is tainted as a telescope is; the function's
+    taint is its body's (§12), so a function whose own telescopes
+    mention a tainted binding is not tainted by that. The alternative,
+    also requiring the function's telescopes to be untainted, is open.
+58. **Panels.** At the `qed`'s name, Expected shows the goal's
+    parameters, then its returns; inside the goal's telescopes the
+    panels work as inside a function's, with no enclosing function.

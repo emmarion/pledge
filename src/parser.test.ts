@@ -29,9 +29,9 @@ const term = (head: string, args: unknown[] | null = []) => ({ head: id(head), a
 const variable = (name: string | null) => ({ kind: "var", name: id(name) });
 const app = (head: string, ...args: unknown[]) => ({ kind: "app", head: id(head), args: args.map(expr => ({ mark: null, expr })) });
 
-test("every tests/*.pledge parses in phases 1 and 2", () => {
+test("every tests/*.pledge parses in its phase and every later one", () => {
   assert.ok(pledgeFiles.length >= 10);
-  for (const file of pledgeFiles) for (const phase of [1, 2] as const) {
+  for (const file of pledgeFiles) for (const phase of file.startsWith("phase2_") ? [2] as const : [1, 2] as const) {
     const result = parse(readFileSync(new URL(file, testsDir), "utf8"), phase);
     assert.ok("program" in result, `${file} (phase ${phase}): ${"error" in result ? result.error.message() : ""}`);
   }
@@ -210,4 +210,24 @@ let w = f(_, C(_, Zero()));
   assert.match(err("let x = sorry(erased y : Type());", 2).message, /keyword `erased`/);
   assert.match(err("let erased (x) = y;", 2).message, /a name or `_`/);
   assert.match(err("let x = (_);", 2).message, /an expression/);
+});
+
+test("function goals", () => {
+  const binder = (name: string | null, head: string, mult: string | null = null) => ({ name: id(name), ann: { kind: "type", term: term(head) }, mult });
+  assert.deepEqual(strip(ok("goal fn (subterm n : Nat(), _ : Nat()) -> (r : Nat()); qed f;").tops), [
+    { kind: "goal", type: { params: [{ ...binder("n", "Nat"), subterm: true }, { ...binder(null, "Nat"), subterm: false }], returns: [binder("r", "Nat")] } },
+    { kind: "qed", expr: variable("f") },
+  ]);
+  assert.deepEqual(strip(ok("goal fn () -> (erased r : Nat());", 2).tops[0]), { kind: "goal", type: { params: [], returns: [binder("r", "Nat", "erased")] } });
+  const cases: [string, number, RegExp][] = [
+    ["goal fn f(n : Nat()) -> (r : Nat());", 8, /expected `\(`, found `f`/],
+    ["goal fn (n : Nat()) (r : Nat());", 20, /expected `->`/],
+    ["goal fn (n : Nat()) -> (r : Nat()) { n }", 35, /expected `;`, found `\{`/],
+    ["goal fn (n : Nat()) -> ();", 24, /a name or `_`/],
+  ];
+  for (const [source, start, message] of cases) {
+    const e = err(source);
+    assert.match(e.message, message, source);
+    assert.equal(e.start, start, source);
+  }
 });

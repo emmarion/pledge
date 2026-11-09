@@ -1,6 +1,6 @@
 import type { EntryInfo, Rendered, Rewrite } from "./api.ts";
 import { canon, entry, rewrites } from "./terms.ts";
-import type { EntryId, OpenTerm, Scope, Signature, Telescope, Term } from "./terms.ts";
+import type { Binder, EntryId, OpenTerm, Scope, Signature, Telescope, Term } from "./terms.ts";
 
 export type Piece = string | Rendered;
 
@@ -44,10 +44,12 @@ export function render(scope: Scope, t: OpenTerm, opts: RenderOptions = {}): Ren
   return go(opts.canonical === false ? t : canon(scope, t));
 }
 
+export const renderBinder = (scope: Scope, b: Binder, bound: readonly (string | null)[], canonical = true): Rendered =>
+  cat(b.mult === "erased" ? "erased " : "", b.name ?? "_", b.is ? " is " : " : ", render(scope, b.is ?? b.type, { canonical, bound }));
+
 export function renderTelescope(scope: Scope, tele: Telescope, outer: readonly (string | null)[] = [], canonical = true): Rendered {
   const bound = [...outer, ...tele.map(b => b.name)];
-  return cat("(", ...join(tele.map(b =>
-    cat(b.mult === "erased" ? "erased " : "", b.name ?? "_", b.is ? " is " : " : ", render(scope, b.is ?? b.type, { canonical, bound }))), ", "), ")");
+  return cat("(", ...join(tele.map(b => renderBinder(scope, b, bound, canonical)), ", "), ")");
 }
 
 export const renderSignature = (scope: Scope, sig: Signature): Rendered =>

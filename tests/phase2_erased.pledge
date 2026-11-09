@@ -1,0 +1,41 @@
+data Nat() : Type() {
+  Zero() : Nat();
+  Succ(pred : Nat()) : Nat();
+}
+
+data Vec(A : Type(), n : Nat()) : Type() {
+  VNil(erased A : Type()) : Vec(A, Zero());
+  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n)) : Vec(A, Succ(n));
+}
+
+fn length(erased A : Type(), erased n : Nat(), subterm v : Vec(A, n)) -> (erased m is n, r : Nat()) {
+  match v : (erased m is n, r : Nat()) {
+    VNil(_) => (n, Zero());
+    VCons(_, k, _, rest) => {
+      let (erased j, l) = length(A, k, subterm rest);
+      (n, Succ(l))
+    };
+  }
+}
+
+fn pred(erased n : Nat()) -> (erased p : Nat()) {
+  match erased n : (erased p : Nat()) {
+    Zero() => Zero();
+    Succ(m) => m;
+  }
+}
+
+fn second(erased n : Nat(), v : Vec(Nat(), Succ(Succ(n)))) -> (x : Nat(), erased k : Nat()) {
+  let VCons(_, _, h, rest) = v;
+  let erased VCons(_, _, _, tail) = rest;
+  let VCons(_, _, y, _) = rest;
+  (y, pred(h))
+}
+
+let erased three = Succ(Succ(Succ(Zero())));
+let v = VCons(_, _, Zero(), VCons(_, _, Succ(Zero()), VNil(_)));
+let (erased m, r) = length(_, _, v);
+print r;
+print v;
+let (s, erased t) = second(_, v);
+print s;

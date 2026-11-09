@@ -48,7 +48,9 @@ export interface Ctor { name: Id; fields: Binder[]; ret: Term; span: Span }
 
 export interface Data { kind: "data"; name: Id; params: TypedParam[]; ctors: Ctor[]; span: Span }
 
-export interface Fn { kind: "fn"; name: Id; params: Param[]; returns: Binder[]; body: Expr & { kind: "block" }; span: Span }
+export interface Header { params: Param[]; returns: Binder[] }
+
+export interface Fn extends Header { kind: "fn"; name: Id; body: Expr & { kind: "block" }; span: Span }
 
 export type Top =
   | Data
@@ -56,7 +58,7 @@ export type Top =
   | { kind: "mutual"; decls: Data[] | Fn[]; span: Span }
   | Stmt
   | { kind: "print"; expr: Expr; span: Span }
-  | { kind: "goal"; type: Term; span: Span }
+  | { kind: "goal"; type: Term | Header; span: Span }
   | { kind: "qed"; expr: Expr; span: Span };
 
 export interface Program { tops: Top[]; span: Span }
