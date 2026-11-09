@@ -93,6 +93,8 @@ export const global = (ctx: Ctx, name: string): Global | undefined => globalAt(c
 
 export const code = (text: string | null): string => `\`${text ?? "_"}\``;
 
+export const plural = (n: number, what: string): string => `${n} ${what}${n === 1 ? "" : "s"}`;
+
 export const labelled = (role: string, name: string | null, i: number, owner?: string): string =>
   `${role} ${name === null ? i + 1 : code(name)}${owner === undefined ? "" : ` of ${code(owner)}`}`;
 

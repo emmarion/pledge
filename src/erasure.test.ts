@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { CheckResult, EntryInfo, PositionInfo } from "./api.ts";
-import { file, files, harness, nat, vecBy, vheadBy } from "../tests/helpers.ts";
+import { file, files, harness, isZero, nat, vecBy, vheadBy } from "../tests/helpers.ts";
 
 const { ok, err } = harness(2);
 const vec = vecBy("erased "), vhead = vheadBy("erased ");
@@ -89,7 +89,6 @@ test("match erased: at most one branch with a many annotation entry", () => {
   err(one.replace("=> w;", "=> h;"), "h", leak, "=> h");
 });
 
-const isZero = "data IsZero(n : Nat()) : Type() {\n  IsZeroHere() : IsZero(Zero());\n}\n";
 
 test("match erased: absurd branches beside the one that is not (§16)", () => {
   const f = (branches: string) => `${nat}${isZero}fn f(n : Nat(), p : IsZero(n)) -> (r : Nat()) {\n  match erased n : (r : Nat()) {\n${branches}\n  }\n}\nprint f(Zero(), IsZeroHere());\n`;

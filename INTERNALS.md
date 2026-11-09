@@ -51,7 +51,7 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
   page's starting program, the tutorial and the tests.
 - `src/ui/`: the page (§13) and the tutorial page (§12).
 - `src/tutorial/pages.ts`: the tutorial's pages as data.
-- `src/tutorial/links.ts`: the links that citations of DESIGN.md get,
-  in the tutorial's prose and in messages.
+- `src/ui/links.ts`: the links that citations of DESIGN.md get, and the
+  rendering of prose and messages (code between backticks, citations as links).
 - `tests/`: Pledge programs the tests check (`.pledge`), and
   `helpers.ts`, which the test files share.

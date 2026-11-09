@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { check } from "../src/check.ts";
-import type { CheckResult, Diagnostic } from "../src/api.ts";
+import type { CheckResult, Diagnostic, EntryInfo, PositionInfo } from "../src/api.ts";
 import type { Phase } from "../src/syntax.ts";
 import * as examples from "../src/examples.ts";
 
@@ -13,6 +13,12 @@ export const files = (prefix = ""): string[] =>
 export const nat = `${examples.nat}\n`;
 export const vecBy = (mult: string): string => `${examples.vecBy(mult)}\n`;
 export const vheadBy = (mult: string): string => `${examples.vheadBy(mult)}\n`;
+export const isZero = "data IsZero(n : Nat()) : Type() {\n  IsZeroHere() : IsZero(Zero());\n}\n";
+
+export const verdicts = (r: CheckResult) => [r.containsSorry, r.qedChecks, r.goalProved];
+const entryText = (e: EntryInfo): string =>
+  `${e.names.join(",") || `?${e.origin.kind}`} : ${e.type.text}${e.rule ? ` is ${e.rule.text}` : ""}`;
+export const scopeOf = (info: PositionInfo): string[] => info.scope.map(entryText);
 
 export const harness = (phase: Phase) => ({
   ok(source: string, under: Phase = phase): CheckResult {

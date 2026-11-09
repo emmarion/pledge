@@ -1,4 +1,3 @@
-
 import type { Phase, Span } from "./syntax.ts";
 
 export interface Diagnostic { span: Span; message: () => string; derivation?: () => Rendered[] }

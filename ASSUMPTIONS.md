@@ -33,7 +33,6 @@ and never renumbered (rule 15); a removed item leaves a gap.
     whose header is §11's, delegating to a recursive helper, since
     DESIGN.md gives only the signature.
 
-
 ## Evaluation
 
 5. **A function body sees the top-level bindings** written before the
@@ -79,6 +78,7 @@ and never renumbered (rule 15); a removed item leaves a gap.
     includes its `subterm` mark and multiplicity. A `_` standing for a
     whole telescope has no span of its own, so an error about it
     points at the enclosing `match` or `sorry`.
+
 ## Terms, scope and forcing
 
 15. **Bound variables** in a telescope are indexed by position in the
@@ -248,6 +248,7 @@ and never renumbered (rule 15); a removed item leaves a gap.
 42. **Within a group**, bodies are re-checked until no further function
     becomes tainted, and the §13 information is kept from the final
     pass only.
+
 ## Erasure (phase 2)
 
 45. **Erased results, not only names.** §16's "erased name" is read as

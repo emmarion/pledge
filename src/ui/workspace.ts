@@ -5,7 +5,8 @@ import type { Phase, Span } from "../syntax.ts";
 import { lineCol } from "../position.ts";
 import { fill, h, load, save, type Child } from "./dom.ts";
 import { Editor, highlight, type NameKind } from "./editor.ts";
-import { entryTip, evalView, explainView, globalTip, infoView, inspectView, marked, statusView, verdict,
+import { marked } from "./links.ts";
+import { entryTip, evalView, explainView, globalTip, infoView, inspectView, statusView, verdict,
   type Host } from "./panels.ts";
 
 interface Box { text: string; key: string | null; holdsQed?: boolean }

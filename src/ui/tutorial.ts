@@ -1,6 +1,6 @@
 import { disclaimer, pages } from "../tutorial/pages.ts";
 import { h } from "./dom.ts";
-import { linked, marked } from "./panels.ts";
+import { linked, marked } from "./links.ts";
 import { Workspace } from "./workspace.ts";
 
 const slug = new URLSearchParams(location.search).get("page");

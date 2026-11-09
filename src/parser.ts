@@ -1,5 +1,5 @@
-import type { Ann, Arg, WrittenBinder, Branch, Ctor, Data, Expr, Fn, Header, Id, LetBinder, Mult, Param, Pattern,
-  Phase, Program, Span, Stmt, Tele, WrittenTerm, Top } from "./syntax.ts";
+import type { Ann, Arg, WrittenBinder, Branch, Ctor, Data, Expr, Fn, Header, Id, LetBinder, Mult, Name, Param,
+  Pattern, Phase, Program, Span, Stmt, Tele, WrittenTerm, Top } from "./syntax.ts";
 import type { Diagnostic } from "./api.ts";
 import { lex, type Token } from "./lexer.ts";
 import { attempt, fail } from "./context.ts";
@@ -75,7 +75,7 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
     return items;
   };
 
-  const name = (): Id => {
+  const name = (): Name => {
     const token = peek();
     return token.kind === "name" ? (next(), { name: token.text, span: token.span }) : syntaxError("a name");
   };

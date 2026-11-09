@@ -51,7 +51,7 @@ export const check: Check = (source, phase, where = position(source)) => {
     const types = ds.map(d => {
       here(d.span);
       newName(ctx, top, d.name, new Set());
-      const name = d.name.name ?? "_";
+      const name = d.name.name;
       const params = telescope(ctx, top, d.params, "binder").tele;
       const g: Global & { kind: "type" } = { kind: "type", name,
         sig: { head: { kind: "type", name }, params, ret: TYPE }, ctors: [], done: false };
@@ -64,7 +64,7 @@ export const check: Check = (source, phase, where = position(source)) => {
       for (const c of d.ctors) {
         here(c.span);
         newName(ctx, top, c.name, new Set());
-        const name = c.name.name ?? "_";
+        const name = c.name.name;
         const fields = telescope(ctx, top, c.fields, "binder");
         if (c.ret.head.name !== owner.name || c.ret.args === null)
           fail(c.ret.span, () =>
@@ -82,7 +82,7 @@ export const check: Check = (source, phase, where = position(source)) => {
   };
 
   const fnGroup = (group: readonly Fn[]): void => {
-    const names = group.map(f => f.name.name ?? "_");
+    const names = group.map(f => f.name.name);
     const globals = group.map((f, i) => {
       newName(ctx, top, f.name, new Set());
       const g: Global & { kind: "fn" } = { kind: "fn", name: names[i]!, sig: null };

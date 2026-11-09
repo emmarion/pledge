@@ -2,9 +2,8 @@ import type { Expr, Span } from "./syntax.ts";
 import type { Telescope, Term } from "./terms.ts";
 import { difference } from "./telescope.ts";
 import { renderBinder } from "./render.ts";
-import { code, fail, global, record } from "./context.ts";
+import { code, fail, global, plural, record } from "./context.ts";
 import type { Ctx, FnSig, Given, Global, Local } from "./context.ts";
-import { plural } from "./expr.ts";
 
 type Telescopes = Pick<FnSig, "params" | "returns">;
 

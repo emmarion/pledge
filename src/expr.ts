@@ -1,4 +1,4 @@
-import type { Ann, Arg, Expr, Header, Id, LetBinder, Mult, Pattern, Span, Stmt, Tele, WrittenBinder,
+import type { Ann, Arg, Expr, Header, Id, LetBinder, Mult, Name, Pattern, Span, Stmt, Tele, WrittenBinder,
   WrittenTerm } from "./syntax.ts";
 import { TYPE, abstract, addRule, app, canon, create, entry, forget, identical, isStrictSubterm, lookup, mark,
   mentions, occurs, ref, subst, typeOf, withName } from "./terms.ts";
@@ -7,7 +7,8 @@ import { force, open, unify } from "./telescope.ts";
 import type { Forced } from "./telescope.ts";
 import { label, render } from "./render.ts";
 import type { RefutationInfo } from "./api.ts";
-import { APP, HOLE, code, describe, fail, labelled, newName, global, point, record, written } from "./context.ts";
+import { APP, HOLE, code, describe, fail, labelled, newName, global, plural, point, record,
+  written } from "./context.ts";
 import type { Ctx, FnCtx, FnSig, Given, Hole, Local, Result, Snapshot, Want } from "./context.ts";
 
 type App = Expr & { kind: "app" };
@@ -20,7 +21,6 @@ interface Forcing { name: string; forced: Forced; pat: Pattern | undefined }
 
 const show = (scope: Scope, t: Term): string => code(render(scope, t).text);
 const trees = (scope: Scope, results: readonly Result[]): Term[] => results.map(r => written(scope, ref(r.id)));
-export const plural = (n: number, what: string): string => `${n} ${what}${n === 1 ? "" : "s"}`;
 const are = (n: number, what: string): string => `${plural(n, what)} ${n === 1 ? "is" : "are"}`;
 const miscount = (span: Span, want: number, got: string): never =>
   fail(span, () => `${are(want, "value")} expected here, and this ${got} (§8)`);
@@ -124,13 +124,13 @@ function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snaps
       if (name === null) return fail(e.span, () =>
         "`_` stands only for a whole argument, for an erased parameter or field (§16)");
       const found = lookup(local.scope, name);
-      if (!found) return notValue(ctx, e.name);
+      if (!found) return notValue(ctx, { name, span: e.name.span });
       point(ctx, local.scope, e.span, ref(found.id));
       return produced(ctx, local, given, [{ id: found.id, tainted: local.tainted.has(name),
         erased: found.erased || local.erased.has(name) }], e.span, e);
     }
     case "app": {
-      const name = e.head.name ?? "_", g = global(ctx, name);
+      const name = e.head.name, g = global(ctx, name);
       if (g?.kind === "fn") return call(ctx, local, e, name, g.sig, given);
       if (g?.kind === "type" || g?.kind === "ctor") return construct(ctx, local, e, g.sig, given);
       return fail(e.head.span, () => lookup(local.scope, name)
@@ -179,9 +179,9 @@ function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snaps
   }
 }
 
-function notValue(ctx: Ctx, id: Id): never {
-  const name = id.name ?? "_", g = global(ctx, name);
-  return fail(id.span, () => !g ? `${code(name)} is not in scope`
+function notValue(ctx: Ctx, { name, span }: Name): never {
+  const g = global(ctx, name);
+  return fail(span, () => !g ? `${code(name)} is not in scope`
     : `${code(name)} is ${describe(g)}, which is not a value: ` +
       (g.kind === "fn" ? "functions are not first class (§4)" : `it is applied, as in ${code(`${name}(...)`)}`));
 }
@@ -332,7 +332,7 @@ function match(ctx: Ctx, local: Local, e: Match, given: Given | null, snap: Snap
       br.pat.fields, won.fields).local, br.body, { wants, env: ann.env, whole: true, ...(label ? { label } : {}) });
   });
   snap.refutations = [...refuted, ...e.branches.filter(br => !live.includes(br)).map(br =>
-    ({ ctor: br.pat.ctor.name ?? "_", kind: "absurd" as const, derivation: () => [] }))];
+    ({ ctor: br.pat.ctor.name, kind: "absurd" as const, derivation: () => [] }))];
   const taint = (i: number) => s.tainted || bodies.some(b => b.results[i]?.tainted === true);
   const o = opened(inner, ann.tele, ann.env, "match", e.span, taint);
   return produced(ctx, o.local, given, o.results, e.span,
@@ -367,7 +367,7 @@ function forcings(ctx: Ctx, local: Local, id: EntryId, scrutSpan: Span, pats: re
     erased: boolean): Forcing[] {
   const ctors = dataCtors(ctx, local.scope, id, scrutSpan), seen = new Set<string>();
   for (const p of pats) {
-    const name = p.ctor.name ?? "_", c = ctors.find(x => x.name === name);
+    const name = p.ctor.name, c = ctors.find(x => x.name === name);
     if (!c) fail(p.ctor.span, () =>
       `${code(name)} is not a value constructor of the scrutinee's type ` +
       show(local.scope, entry(local.scope, id).type));
@@ -422,7 +422,7 @@ function bind(local: Local, ids: readonly Id[], entries: readonly EntryId[], tai
 function letWants(ctx: Ctx, site: Local, binders: readonly LetBinder[]): Want[] {
   let local = site;
   const ids: EntryId[] = [], untyped = new Set<string>();
-  const unknown = (t: WrittenTerm): WrittenTerm | undefined => untyped.has(t.head.name ?? "") ? t
+  const unknown = (t: WrittenTerm): WrittenTerm | undefined => untyped.has(t.head.name) ? t
     : (t.args ?? []).map(unknown).find(u => u);
   for (const b of binders) {
     record(ctx, local, b.span, null);

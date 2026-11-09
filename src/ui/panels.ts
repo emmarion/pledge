@@ -1,6 +1,6 @@
 import type { CheckResult, EntryId, EntryInfo, ExpectedEntry, PositionInfo, Rendered, Rewrite } from "../api.ts";
-import { cited, citationUrl } from "../tutorial/links.ts";
 import { h, type Child } from "./dom.ts";
+import { linked, marked } from "./links.ts";
 
 export interface Host {
   goto(offset: number): void;
@@ -10,16 +10,6 @@ export interface Host {
   showErased: boolean;
   globalsOpen: boolean;
 }
-
-export const linked = (text: string): Child => text.split(cited).map((part, i) => {
-  const href = i % 2 ? citationUrl(part) : null;
-  return href ? h("a", { href, target: "_blank", rel: "noopener" }, part) : part;
-});
-
-export const marked = (text: string): Child => {
-  const parts = text.split("`");
-  return parts.length % 2 ? parts.map((part, i) => i % 2 ? h("code", {}, part) : linked(part)) : linked(text);
-};
 
 const muted = (text: string): HTMLElement => h("span", { class: "muted" }, text);
 

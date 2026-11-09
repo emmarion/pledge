@@ -1,4 +1,4 @@
-import type { Expr, Fn, Id, Mult, Pattern, Stmt } from "./syntax.ts";
+import type { Expr, Fn, Id, Mult, Name, Pattern, Stmt } from "./syntax.ts";
 
 export interface Value { head: string; args: Value[] }
 
@@ -43,7 +43,7 @@ type Match = Expr & { kind: "match" };
 type Step = Value[] | { expr: Expr; env: Env };
 type Frame =
   | { kind: "take"; n: number }
-  | { kind: "seq"; env: Env; exprs: readonly Expr[]; done: Value[]; head: Id | null }
+  | { kind: "seq"; env: Env; exprs: readonly Expr[]; done: Value[]; head: Name | null }
   | { kind: "block"; env: Env; block: Block; i: number }
   | { kind: "match"; env: Env; match: Match };
 
@@ -53,12 +53,12 @@ export const evalExpr = (fns: Fns, env: Env, e: Expr): Value[] => {
     const top = stack.at(-1);
     if (top?.kind !== "take" || top.n !== n) stack.push({ kind: "take", n });
   };
-  const seq = (env: Env, exprs: readonly Expr[], done: Value[], head: Id | null): Step => {
+  const seq = (env: Env, exprs: readonly Expr[], done: Value[], head: Name | null): Step => {
     const next = exprs[done.length];
     if (next) return stack.push({ kind: "seq", env, exprs, done, head }), { expr: next, env };
     if (!head) return done;
-    const def = fns.get(head.name ?? "_");
-    if (!def) return [{ head: head.name ?? internal("application of _"), args: done }];
+    const def = fns.get(head.name);
+    if (!def) return [{ head: head.name, args: done }];
     returning(def.fn.returns.length);
     return { expr: def.fn.body, env: bindValues(def.globals, def.fn.params.map(p => p.name), done) };
   };

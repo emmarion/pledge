@@ -1,8 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { check } from "./check.ts";
-import type { CheckResult, EntryInfo, PositionInfo } from "./api.ts";
-import { file, files, harness, nat, vecBy } from "../tests/helpers.ts";
+import { file, files, harness, isZero, nat, scopeOf, vecBy, verdicts } from "../tests/helpers.ts";
 
 const { ok, err } = harness(1);
 const vec = vecBy("");
@@ -14,8 +13,6 @@ const offset = (source: string, needle: string, delta = 0): number => {
   return i + delta;
 };
 
-const entryText = (e: EntryInfo): string => `${e.names.join(",") || `?${e.origin.kind}`} : ${e.type.text}${e.rule ? ` is ${e.rule.text}` : ""}`;
-const scopeOf = (info: PositionInfo): string[] => info.scope.map(entryText);
 
 const option = "data Option(A : Type()) : Type() {\n  None(A : Type()) : Option(A);\n  Some(A : Type(), x : A) : Option(A);\n}\n";
 const evenOdd = file("design_even_odd.pledge").slice(nat.length);
@@ -253,7 +250,6 @@ const plusZero = `fn plusZero(subterm n : Nat(), r : Nat(), p : Plus(n, Zero(), 
 `;
 const plusGoal = (goal: string): string => `${nat}${eqData}${plusData}goal fn ${goal};\n${plusZero}qed plusZero;\n`;
 const falseData = "data False() : Type() {}\n";
-const verdicts = (r: CheckResult) => [r.containsSorry, r.qedChecks, r.goalProved];
 
 test("function goals: plusZero proves the goal, binder names and subterm marks aside", () => {
   const source = plusGoal("(n : Nat(), r : Nat(), p : Plus(n, Zero(), r)) -> (e : Eq(Nat(), r, n))");
@@ -359,7 +355,6 @@ test("tuple let binders are a telescope, checked against the results they name (
   err(source.replace("Vec(Nat(), m)", "Vec(Nat(), k)"), "k", /`k` is not in scope/);
 });
 
-const isZero = "data IsZero(n : Nat()) : Type() {\n  IsZeroHere() : IsZero(Zero());\n}\n";
 
 test("a pattern let's facts and fields survive its block; only its names end there (§7, §10)", () => {
   const source = `${nat}${vec}fn h(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (r : Vec(A, n)) {\n  let (t : Vec(A, n)) = { let VCons(_, _, _, r) = v; r };\n  inspect;\n  t\n}\n`;

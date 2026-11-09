@@ -1,3 +1,5 @@
+import { h, type Child } from "./dom.ts";
+
 const repo = "https://github.com/emmarion/pledge/blob/main/";
 
 export const sections = [
@@ -13,4 +15,14 @@ export const citationUrl = (citation: string): string | null => {
   if (!citation.startsWith("§")) return repo + citation;
   const anchor = sections[Number(citation.slice(1)) - 1];
   return anchor === undefined ? null : `${repo}DESIGN.md#${anchor}`;
+};
+
+export const linked = (text: string): Child => text.split(cited).map((part, i) => {
+  const href = i % 2 ? citationUrl(part) : null;
+  return href ? h("a", { href, target: "_blank", rel: "noopener" }, part) : part;
+});
+
+export const marked = (text: string): Child => {
+  const parts = text.split("`");
+  return parts.length % 2 ? parts.map((part, i) => i % 2 ? h("code", {}, part) : linked(part)) : linked(text);
 };

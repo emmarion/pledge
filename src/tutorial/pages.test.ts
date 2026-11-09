@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { check } from "../check.ts";
 import { readFileSync } from "node:fs";
 import { disclaimer, pages } from "./pages.ts";
-import { cited, citationUrl, sections } from "./links.ts";
+import { cited, citationUrl, sections } from "../ui/links.ts";
+import { scopeOf, verdicts } from "../../tests/helpers.ts";
 
 const program = (boxes: string[], learner: string): string => [...boxes, learner].join("\n");
 
@@ -62,8 +63,6 @@ test("times-distrib: a binder the later clauses of its `let` refer to needs a ty
 
 const page = (slug: string) => pages.find(p => p.slug === slug)!;
 const run = (slug: string, learner: string) => { const p = page(slug); const source = program(p.boxes, learner); return { source, r: check(source, p.phase) }; };
-const verdicts = (r: ReturnType<typeof check>) => [r.containsSorry, r.qedChecks, r.goalProved];
-const scopeAt = (r: ReturnType<typeof check>, offset: number) => r.infoAt(offset).scope.map(e => `${e.names.join(",") || `?${e.origin.kind}`} : ${e.type.text}${e.rule ? ` is ${e.rule.text}` : ""}`);
 
 test("fine points: the new pages are the last ones, phase 1 unless they need phase 2", () => {
   const slugs = ["tuple-let-telescope", "facts-escape", "tainted-pattern-let", "hole-through-block", "hole-taint", "goal-comparison", "absurd-branches"];
@@ -92,7 +91,7 @@ test("iszero: the Succ branch cannot be filled with Refl", () => {
 test("tuple-let-telescope: Expected lists both binders, and dropping m's type is an error at the reference", () => {
   const { source, r } = run("tuple-let-telescope", page("tuple-let-telescope").solution);
   assert.deepEqual(r.infoAt(source.indexOf("pair(x)")).expected.entries?.map(e => `${e.name} : ${e.type?.text}`), ["m : Nat()", "v : Vec(Nat(), Succ(m))"]);
-  assert.ok(scopeAt(r, source.indexOf("print v")).includes("v : Vec(Nat(), Succ(m))"));
+  assert.ok(scopeOf(r.infoAt(source.indexOf("print v"))).includes("v : Vec(Nat(), Succ(m))"));
   const dropped = run("tuple-let-telescope", page("tuple-let-telescope").solution.replace("m : Nat(),", "m,"));
   assert.match(dropped.r.error?.message() ?? "", /`m` has no type here/);
   assert.equal(dropped.r.error?.span.start, dropped.source.indexOf("Succ(m)))") + 5);
@@ -100,7 +99,7 @@ test("tuple-let-telescope: Expected lists both binders, and dropping m's type is
 
 test("facts-escape: after the block, v's rule and the anonymous tail remain, and the goal needs them", () => {
   const { source, r } = run("facts-escape", page("facts-escape").solution);
-  const after = scopeAt(r, source.indexOf("inspect;"));
+  const after = scopeOf(r.infoAt(source.indexOf("inspect;")));
   assert.ok(after.some(e => /^v : .* is VCons\(Nat\(\), n, h, \?VCons\.rest@/.test(e)), after.join("; "));
   assert.ok(after.includes("?VCons.rest : Vec(Nat(), n)"), after.join("; "));
   assert.ok(!after.some(e => /^(hd|tl)\b/.test(e)));
