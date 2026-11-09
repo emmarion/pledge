@@ -10,12 +10,13 @@ tutorial page (§12), with the features of that phase and of every
 earlier one. This file describes phase 1; §16 lists what is planned
 beyond it.
 
-Soundness is essential: no program may prove `False`. Pledge has
+Soundness is essential: no program can prove `False`. Pledge has
 `Type() : Type()`. In place of a universe hierarchy, it relies on three
 restrictions: types never contain function calls (§3), functions are not
 first class (§4), and termination comes from definition order and
 structural decrease, not from types (§9). SOUNDNESS.md argues that
-these suffice. Since functions are not first class, positivity does
+these suffice. In a program that contains `sorry`, soundness also
+relies on taint (§12). Since functions are not first class, positivity does
 not arise.
 
 Pledge is loosely based on [Sleight](https://github.com/emmarion/sleight)
@@ -29,12 +30,16 @@ line. A name is a letter followed by any number of letters, digits and
 `_`; names are case-sensitive. Keywords (§18) are written like names.
 Blocks are delimited by braces; layout is not significant.
 Statements, value-constructor declarations and match branches end with `;`.
-A `;` may also follow a `}` that needs none, and a `;` may be repeated.
+A `;` is also allowed after a `}` that needs none, and a `;` is allowed to be repeated.
 
 A binder is written `name : T`, or `name is e` (§6). A telescope is a
-parenthesized, comma-separated list of binders, each of which may refer
-to the binders before it. `_` may be written as the name of any binder,
-a return's included; it makes the entry anonymous (§7).
+parenthesized, comma-separated list of binders. It is checked in the
+scope where it is written, with the facts in force there (§7), extended
+by its own earlier binders and, for a return telescope, by the
+parameters (§8). So each binder is allowed to refer to any entry in
+scope there, a top-level one included, and to the binders before it.
+`_` is allowed as the name of any binder, a return's included; it makes
+the binder, and every entry it is opened to, anonymous (§7).
 
 Every application is saturated and written `f(a1, ..., an)`; there is no
 currying. A nullary application is written `f()`, so `Nat()` and
@@ -62,13 +67,14 @@ telescope (§5), so `VNil` and `VCons` each declare their own `A`.
 
 ## 2. Names
 
-There is one namespace, and no name may be shadowed: a binder may not
-reuse a name that is in scope where it is written, or a keyword. A name
+There is one namespace, and no name is allowed to be shadowed: a binder
+is not allowed to reuse a name that is in scope where it is written, or
+a keyword. A name
 refers to a value, a function, a type constructor or a value
 constructor. `Type` is a built-in type constructor with no parameters,
 and not a data type constructor (§5); `Type()` is the type of every
-type, itself included (§3, §4). Only a value may be passed, returned, bound or
-stored.
+type, itself included (§3, §4). Only a value is allowed to be passed,
+returned, bound or stored.
 
 Names come into scope in the order they are written. A function's own
 name is in scope in its body, and every function a `mutual` block
@@ -79,9 +85,17 @@ declares is in scope throughout the block. §5 says where the names a
 
 A skeleton term is built only from:
 
-1. variables;
+1. variables, each free, naming an entry in the scope (§7), or bound,
+   referring to a binder of a telescope that has not been opened;
 2. applications of a type constructor, `Type` among them (§2);
 3. applications of a value constructor.
+
+A binder gets an entry in two ways. It is opened, getting a fresh
+entry, when its telescope is checked, when a body, branch or pattern
+`let` is entered, and at the results of a call, a match or `sorry`. It
+is instantiated, getting an existing entry, when an entry is checked
+against it or bound to it: a call's or application's argument, a result
+checked against returns or an annotation, or a `let`'s right-hand side.
 
 Each application in a skeleton term must check against the telescope of
 the type constructor or value constructor it applies (§8). A type is a skeleton term of type `Type()`. Type checking
@@ -93,13 +107,12 @@ requirement. Uniqueness of identity proofs (Axiom K) is derivable.
 
 ## 4. First-class values
 
-Types are first class: a value of type `Type()` may be passed, returned,
-bound and stored in a field of a value constructor. A value of type `Type()` cannot
-be the scrutinee of a `match` or pattern `let`; forcing may still equate
-it with another type (§7).
+Types are first class: a value of type `Type()` is allowed to be passed,
+returned, bound and stored in a field of a value constructor. A value of
+type `Type()` cannot be the scrutinee of a `match` or pattern `let`.
 
 Functions, type constructors and value constructors are not first
-class. They are applied, never passed or stored.
+class. They are applied, never passed, returned, bound or stored.
 
 ## 5. Data types
 
@@ -112,11 +125,13 @@ data T(params) : Type() {
 
 Each value constructor declares its own telescope of fields, and returns
 `T` applied to one argument per parameter of `T`. The arguments are
-skeleton terms (§3) and may refer to the value constructor's fields. The
-parameters of `T` are in scope only in its own telescope: a value constructor
-that constrains an index declares its own field for it. A type
+skeleton terms (§3) and are allowed to refer to the value constructor's
+fields and to any entry in scope, a top-level one included. The
+parameters of `T` are in scope only in its own telescope: a value
+constructor that needs one declares its own field for it. A type
 constructor declared by `data` is a data type constructor, and an
-application of one is a data type. A `data` declaration is allowed to
+application of one is a data type. A `data` declaration is written only
+at the top level, alone or in a `mutual` block, and is allowed to
 declare no value constructors.
 
 Mutually recursive `data` declarations are written together in a
@@ -141,48 +156,52 @@ mutual {
 
 ## 6. `is`
 
-`x is e` may be written in place of `x : T` in function parameters and
-returns, value-constructor fields, match annotations and `let` binders, but
-not in type-constructor parameters. The type of `x` is then the type of
-`e`, and `e` must be a skeleton term (§3). An entry bound by `x is e`
-has the rule `x is e`, with each parameter or field in `e` standing for
-its entry (§8): a parameter in the body, a field in a branch or after a
-pattern `let`, and a return or annotation entry at each result. An
-argument supplied for an `is` parameter or field, or a result supplied
-for an `is` return, must canonicalize to the same skeleton term as `e`.
+`x is e` is allowed in place of `x : T` in function parameters and
+returns, value-constructor fields, match annotations, `let` binders and
+`sorry`'s telescope, but not in type-constructor parameters. The type of
+`x` is then the type of `e`, and `e` must be a skeleton term (§3). When
+a binder `x is e` is opened (§3), its fresh entry gets the rule that it
+is `e`; when it is instantiated, the entry it gets must canonicalize to
+the same skeleton term as `e`. Either way, each bound variable in `e`
+stands for the entry its binder got.
 
-A `let` binder may carry a type, an `is` clause, or neither. A type or
-`is` clause written on a `let` binder must be canonically identical to
-what the checker infers, so `let y is Succ(n) = e;` asserts a fact the
-checker must already know.
+A `let` binder is allowed to carry a type, an `is` clause, or neither. A
+type or `is` clause written on a `let` binder must be canonically
+identical to what the checker infers, so `let y is Succ(n) = e;` asserts
+a fact the checker must already know.
 
 ## 7. What the checker knows
 
-The checker keeps a scope of entries. Each entry has a type and may have
+The checker keeps a scope of entries. Each entry has a type and can have
 an `is` rule, a rewrite from the entry to a skeleton term (§3).
 Canonicalizing a skeleton term rewrites it by these rules to a fixed
 point.
 
 The checker knows only what it can infer from the text. After
 `let x = VCons(Nat(), Zero(), Zero(), VNil(Nat()));`, `x` canonicalizes
-to `VCons(Nat(), Zero(), Zero(), VNil(Nat()))`. The results of a function call are new entries known only by their types,
-except where the function's return telescope states an `is` (§6).
+to `VCons(Nat(), Zero(), Zero(), VNil(Nat()))`. The results of a
+function call or of `sorry` are new entries known only by their types,
+except where the function's return telescope or `sorry`'s telescope
+states an `is` (§6).
 
 Every application of a type constructor or value constructor, and every
-result of a call, is an entry of its own, usually anonymous.
+result of a call, is an entry of its own, usually anonymous. An
+application's entry `x` has the rule `x is F(a1, ..., an)`, where `F` is
+the type constructor or value constructor applied and each `ai` is its
+argument's entry.
 
 **Forcing.** Entering a match branch equates the scrutinee with the
 branch's value constructor applied to fresh fields, and the scrutinee's type
 with that application's type. Both sides of an equation are
 canonicalized first. Two applications of the same type constructor, or
 of the same value constructor, are equated argument by argument, and an equation between a term and itself
-is dropped. A variable is given the rule `x is e`; when `e` is a
-variable too, the newer of the two takes the rule. Whenever a variable
-is equated with a term, their types are equated too. The facts last
-until the branch ends, or, for a pattern `let`, to the end of the
-enclosing body (§10). Forcing fails, refuting the branch, when:
+is dropped. An entry `x` is given the rule `x is e`; when `e` is an
+entry too, the newer of the two takes the rule. Whenever an entry is
+equated with a term, their types are equated too. The facts last until
+the branch ends, or, for a pattern `let`, to the end of the enclosing
+block, or, at the top level, of the program (§10). Forcing fails, refuting the branch, when:
 
-1. a variable is equated with a skeleton term that strictly contains it;
+1. an entry is equated with a skeleton term that strictly contains it;
 2. two applications of different type constructors, of different value
    constructors, or one of each, are equated.
 
@@ -197,22 +216,35 @@ functions and no closures. Mutually recursive functions are written
 together in a `mutual` block, their **group**; a function outside any
 `mutual` block is a group of its own.
 
-A function returns zero or more values. The return telescope may
-depend on the parameters and on earlier returns; its names are in scope
-in its later entries, not in the body.
+A function returns one or more values. The return telescope can depend
+on the parameters and on earlier returns; its names are in scope in its
+later entries, not in the body.
 
-A block, `{ s1; ...; sn; e }`, is an expression: statements followed by
-a final expression, whose results are the block's. A function's body is
-a block, and a block may stand wherever an expression may, such as a
-match branch. `(a1, ..., an)` produces `n` values, so `()` produces none
-and `(a)` is `a`. An expression that produces no values may stand as a
-statement, `e;`.
+A block, `{ s1; ...; sn; e }`, is an expression: zero or more statements
+followed by a final expression, whose results are the block's. A
+statement in a block is a tuple or pattern `let`, or `inspect;`, and
+`let x = e;` is `let (x) = e;`, a tuple `let` with one binder.
+A function's body is a block, and a block is allowed wherever an
+expression is, such as a match branch. A program is a sequence of
+declarations (`data`, `fn` and `mutual`) and top-level statements:
+`let` in every form, `comptime` pattern `let` included, `inspect;`,
+`print e;`, `goal T;` and `qed e;`.
 
-Only the final expression of a block, a match branch's body and the
-right-hand side of a `let` may produce other than one value. The first
-two produce what their position expects, and the last as many values as
-the `let` has binders. Every other expression, each argument of a call
-or application included, produces one value.
+A tuple `(a1, ..., an)` has at least one element, so `()` is not an
+expression, and `(a)` is a tuple of one. Each element produces one
+value, and the tuple produces `n`. A call produces one value per return,
+a match one per annotation entry, `sorry(telescope)` one per entry of
+its telescope, and a block what its final expression produces; any
+other expression produces one.
+
+A function body must produce one value per return, a branch body one per
+annotation entry, a tuple `let`'s right-hand side one per
+binder, and a block's final expression what the block must produce.
+Anywhere else, a pattern `let`'s right-hand side included, an expression
+must produce one value. A function has at least one return, a match
+annotation and `sorry`'s telescope at least one entry, and a tuple
+`let` at least one binder; a pattern `let`'s value constructor can
+have no fields.
 
 ```
 fn vuncons(A : Type(), n : Nat(), v : Vec(A, Succ(n)))
@@ -225,32 +257,33 @@ fn vuncons(A : Type(), n : Nat(), v : Vec(A, Succ(n)))
 `let (h, t) = vuncons(A, n, v);` binds its two results.
 
 The arguments of a call are checked in order. Each argument is an entry
-(§7), and in the types and `is` skeleton terms after a parameter, the
-parameter stands for its argument's entry. So in `f(a1, ..., an)`, each
-`ai` is checked against its parameter's type, which may mention `a1` to
-`a(i-1)`'s entries through the earlier parameters, and the call's
-results are new entries typed by `f`'s returns, which mention the
-arguments' entries through the parameters. An application of a type
-constructor or a value constructor is checked the same way. A
-type-constructor application has type `Type()`. A value-constructor
-application has its value constructor's return as its type, with each field
-standing for its argument's entry. For example, `VCons(Nat(), Zero(), x,
-VNil(Nat()))` needs `x : Nat()` and `VNil(Nat()) : Vec(Nat(), Zero())`,
-and its type canonicalizes to `Vec(Nat(), Succ(Zero()))`.
+(§7), and each parameter is instantiated to its argument's entry (§3).
+So in `f(a1, ..., an)`, each `ai` is checked against its parameter's
+type, which can mention `a1` to `a(i-1)`'s entries through the earlier
+parameters, and the call's results are the fresh entries `f`'s returns
+are opened to, which mention the arguments' entries through the
+parameters. An application of a type constructor or a value constructor
+is checked the same way. A type-constructor application has type
+`Type()`. A value-constructor application has its value constructor's
+return as its type, with each field instantiated to its argument's
+entry. For example, `VCons(Nat(), Zero(), x, VNil(Nat()))` needs
+`x : Nat()` and `VNil(Nat()) : Vec(Nat(), Zero())`, and its type
+canonicalizes to `Vec(Nat(), Succ(Zero()))`.
 
-A body's or a branch's results are checked against its return
-telescope in the same way: each return stands for the entry of the
-result produced for it. A parameter stands for itself, since the body
-refers to it directly.
+A body's or a branch's results are checked against its return telescope
+or annotation in the same way: each return or annotation entry is
+instantiated to the entry of the result produced for it. A parameter is
+opened when the body is entered, so the body refers to its entry
+directly.
 
 ## 9. Termination
 
-A body may call:
+A body is allowed to call:
 
 - any function of an earlier group, with no annotation;
 - a function of its own group, under the decrease below.
 
-Parameters may be marked `subterm`, including `is` parameters
+Parameters are allowed to be marked `subterm`, including `is` parameters
 (`subterm m is Succ(n)`). A call within the group marks, for some `k`,
 the argument for the callee's `k`-th `subterm` parameter `subterm e`,
 and the argument for each of its earlier `subterm` parameters `same e`;
