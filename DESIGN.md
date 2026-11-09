@@ -511,11 +511,18 @@ constructors and value constructors. When `e`'s result is tainted, it
 evaluates nothing and shows `sorry`.
 
 `goal T;` sets the program's goal, a type, checked in the scope where
-it is written. `qed e;` checks `e` against it. Each is a top-level
+it is written, and `goal fn (params) -> (returns);` sets a goal that is
+a function signature, its telescopes checked as a function's are (§8),
+with no name and no body. `qed e;` checks `e` against a type goal;
+`qed f;`, naming a function, checks `f`'s parameter and return
+telescopes against a function goal's, which must be canonically
+identical position by position, binder names aside. Each is a top-level
 statement and appears at most once in a program, `qed` after `goal`.
-The goal is proved when the `qed` checks, the results of `T` and of `e`
-are untainted, and no top-level pattern `let` whose scrutinee is
-tainted comes before the `qed`. The interface reports
+The goal is proved when the `qed` checks, the results of `T` and of `e`,
+or the goal's telescopes and `f`, are untainted, and no top-level
+pattern `let` whose scrutinee is tainted comes before the `qed`.
+`qed f;` passes, returns and stores nothing (§4); it names a
+declaration. The interface reports
 whether the program contains `sorry` anywhere, whether the `qed` checks
 and whether the goal is proved.
 
@@ -644,7 +651,8 @@ term      ::= NAME | NAME '(' [term (',' term)*] ')'
 block     ::= '{' statement* expr '}'
 statement ::= 'let' letlhs '=' expr ';' | 'inspect' ';'
 topstatement ::= 'comptime' 'let' pattern '=' expr ';'
-              | 'print' expr ';' | 'goal' term ';' | 'qed' expr ';'
+              | 'print' expr ';' | 'qed' expr ';'
+              | 'goal' (term | 'fn' '(' [param (',' param)*] ')' '->' '(' binders ')') ';'
 letlhs    ::= '(' letbinder (',' letbinder)* ')' | letbinder | pattern
 letbinder ::= id [':' term | 'is' term]
 pattern   ::= NAME '(' [id (',' id)*] ')'

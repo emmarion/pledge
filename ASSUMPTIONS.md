@@ -289,9 +289,6 @@ and never renumbered (rule 15); a removed item leaves a gap.
 
 ## Function goals (DECISIONS.md D43)
 
-54. **Syntax.** `goal fn (params) -> (returns);` is parsed exactly as a
-    function's two telescopes, so `subterm` marks, `_` names and, in
-    phase 2, multiplicities are accepted; there is no name and no body.
 55. **What `qed f;` is.** Against a function goal, the `qed`'s
     expression must be the bare name of a function declared before it;
     any other expression, `qed sorry(_);` included, is an error, so a
