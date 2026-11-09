@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: Pledge
+abstract: "Pledge is a small language for learning restricted dependent types, built so that you can see what its type checker knows at every point of a program. It runs entirely in the browser: an editor shows, beside the program, the expected type, the scope with what each entry is known to equal, the value constructors a match rules out with a derivation of why, and the parameters a recursive call has to decrease, together with a tutorial running from Nat to proofs about addition and multiplication. This repository holds its specification, an implementation in TypeScript, the tutorial, and a written (not machine-checked) argument that no program can prove False."
+authors:
+  - family-names: Marion
+    given-names: Eric Michael
+    orcid: "https://orcid.org/0009-0004-8519-6942"
+repository-code: "https://github.com/emmarion/pledge"
+url: "https://emmarion.github.io/pledge/"
+license: Apache-2.0
+keywords:
+  - programming languages
+  - dependent types
+  - restricted dependent types
+  - type theory
+  - teaching
+  - education
+  - type checking
+  - proof assistants
+  - termination checking
+  - TypeScript
+  - browser
+references:
+  - type: software
+    title: Sleight
+    authors:
+      - family-names: Marion
+        given-names: Eric Michael
+        orcid: "https://orcid.org/0009-0004-8519-6942"
+    repository-code: "https://github.com/emmarion/sleight"
+    doi: 10.5281/zenodo.23361871

@@ -1,8 +1,8 @@
 # Pledge
 
-Pledge is a small language for learning dependent types, built so that
-you can see what its type checker knows at every point of a program. It
-runs entirely in the browser:
+Pledge is a small language for learning restricted dependent types,
+built so that you can see what its type checker knows at every point of
+a program. It runs entirely in the browser:
 
 - **[Try it](https://emmarion.github.io/pledge/)**: an editor with the
   checker's view beside it.
@@ -92,6 +92,7 @@ npm test
 [INTERNALS.md](INTERNALS.md) describes how the code is laid out. A push
 to `main` type-checks, runs the tests and deploys `web/` to GitHub Pages.
 
-## License
+## Citing and license
 
-Apache 2.0; see [LICENSE](LICENSE).
+[CITATION.cff](CITATION.cff) has the citation. Apache-2.0, see
+[LICENSE](LICENSE) and [NOTICE](NOTICE).

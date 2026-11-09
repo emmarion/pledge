@@ -2,7 +2,29 @@
   "name": "pledge",
   "version": "0.1.0",
   "private": true,
-  "description": "A language for teaching restricted dependent types; runs in the browser.",
+  "description": "A small language for learning restricted dependent types, with a browser editor that shows what the type checker knows at every point of a program.",
+  "keywords": [
+    "dependent-types",
+    "type-theory",
+    "type-systems",
+    "type-checker",
+    "programming-language",
+    "language-design",
+    "education",
+    "teaching",
+    "tutorial",
+    "proof-assistant",
+    "termination-checking",
+    "formal-verification",
+    "typescript",
+    "browser"
+  ],
+  "homepage": "https://emmarion.github.io/pledge/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emmarion/pledge.git"
+  },
+  "author": "Eric Marion",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
