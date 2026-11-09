@@ -297,15 +297,20 @@ out. ∎
 - **The checker implements part 4.** The note proves the declarative
   rules sound, not the TypeScript code. In particular it assumes that
   entries are distinct however they are named, that
-  forcing and canonicalization follow part 3, and that rules leave the
-  scope with the entries they mention (§7).
+  forcing and canonicalization follow part 3, that a match branch's
+  rules leave the scope with the branch, and that a pattern `let`'s
+  rules, which Lemma 3.3 makes consequences of the typing, last to the
+  end of the enclosing match branch or function body, or of the program
+  (§7, §10).
 - **The evaluator** computes the semantics of part 5. The facts a
   `comptime` pattern `let` adds depend on it.
 - **Phase 2.** Erasure is argued only in outline: evaluation that skips
   an erased computation uses its declared results, which by Theorems 5.1
   and 6.2 would have been produced and would have satisfied them. An
-  erased match with a `many` result has at most one branch (§16), so it
-  needs no tag it lacks. The typing of part 2 would need erased fields
+  erased match with a `many` result has at most one branch that is not
+  absurd (§16), an absurd branch being one whose body refutes every
+  value constructor of some scrutinee, so by Lemma 3.3 it is never
+  taken, and the match needs no tag it lacks. The typing of part 2 would need erased fields
   to be checked like any other, since they still constrain types.
 
 ## 10. What the argument leans on
