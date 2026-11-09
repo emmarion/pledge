@@ -5,17 +5,17 @@ export interface Span { start: number; end: number }
 
 export interface Id { name: string | null; span: Span }
 
-export interface Term { head: Id; args: Term[] | null; span: Span }
+export interface WrittenTerm { head: Id; args: WrittenTerm[] | null; span: Span }
 
 export type Mult = "many" | "erased";
 
 export type Ann =
-  | { kind: "type"; term: Term }
-  | { kind: "is"; term: Term };
+  | { kind: "type"; term: WrittenTerm }
+  | { kind: "is"; term: WrittenTerm };
 
-export interface Binder { name: Id; ann: Ann; mult: Mult | null; span: Span }
+export interface WrittenBinder { name: Id; ann: Ann; mult: Mult | null; span: Span }
 
-export interface Param extends Binder { subterm: boolean }
+export interface Param extends WrittenBinder { subterm: boolean }
 
 export interface LetBinder { name: Id; ann: Ann | null; mult: Mult | null; span: Span }
 
@@ -24,7 +24,7 @@ export interface Pattern { ctor: Id; fields: Id[]; span: Span }
 export type Mark = "subterm" | "same";
 export interface Arg { mark: Mark | null; expr: Expr; span: Span }
 
-export type Tele = Binder[] | "_";
+export type Tele = WrittenBinder[] | "_";
 
 export interface Branch { pat: Pattern; body: Expr; span: Span }
 
@@ -42,13 +42,13 @@ export type Stmt =
   | { kind: "patlet"; comptime: boolean; mult: Mult | null; pat: Pattern; rhs: Expr; span: Span }
   | { kind: "inspect"; span: Span };
 
-export interface TypedParam { name: Id; type: Term; span: Span }
+export interface TypedParam { name: Id; type: WrittenTerm; span: Span }
 
-export interface Ctor { name: Id; fields: Binder[]; ret: Term; span: Span }
+export interface Ctor { name: Id; fields: WrittenBinder[]; ret: WrittenTerm; span: Span }
 
 export interface Data { kind: "data"; name: Id; params: TypedParam[]; ctors: Ctor[]; span: Span }
 
-export interface Header { params: Param[]; returns: Binder[] }
+export interface Header { params: Param[]; returns: WrittenBinder[] }
 
 export interface Fn extends Header { kind: "fn"; name: Id; body: Expr & { kind: "block" }; span: Span }
 
@@ -58,7 +58,7 @@ export type Top =
   | { kind: "mutual"; decls: Data[] | Fn[]; span: Span }
   | Stmt
   | { kind: "print"; expr: Expr; span: Span }
-  | { kind: "goal"; type: Term | Header; span: Span }
+  | { kind: "goal"; type: WrittenTerm | Header; span: Span }
   | { kind: "qed"; expr: Expr; span: Span };
 
 export interface Program { tops: Top[]; span: Span }

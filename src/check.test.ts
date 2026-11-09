@@ -148,7 +148,7 @@ test("sorry: qed sorry(_) checks but proves nothing", () => {
   err(`${nat}fn f(n : Nat()) -> (r : Nat()) { Succ(sorry(_)) }\n`, "sorry(_)", /`_` stands for the whole telescope/);
 });
 
-test("taint survives laundering through a function (D24's shape)", () => {
+test("taint survives laundering through a function (§12)", () => {
   const base = `${nat}data False() : Type() {}\ngoal False();\nlet b = sorry(x : False());\n`;
   const renamed = ok(`${base}fn id(p : False()) -> (r : False()) { let q = p; q }\nfn g(n : Nat()) -> (r : Nat()) { let y = b; n }\nprint g(Zero());\nqed id(b);\n`);
   assert.deepEqual(renamed.prints.map(p => p.value), ["Zero()"]);
@@ -190,7 +190,7 @@ test("infoAt inside vhead's body: scope, expected and termination", () => {
     "A : Type()", "n : Nat()", "v : Vec(A, Succ(n)) is VCons(A, n, hd, ?VCons.rest@12:23)",
     "?VCons.A : Type() is A", "?VCons.n : Nat() is n", "hd : A", "?VCons.rest : Vec(A, n)",
   ]);
-  assert.deepEqual(info.expected?.entries?.map(e => [e.name, e.type?.text, e.undetermined]), [["x", "A", false]]);
+  assert.deepEqual(info.expected.entries?.map(e => [e.name, e.type?.text, e.undetermined]), [["x", "A", false]]);
   assert.deepEqual(info.termination, { fn: "vhead", subtermParams: [], group: ["vhead"] });
   assert.deepEqual(info.globals.map(g => g.name + g.signature.text), [
     "Type() : Type()", "Nat() : Type()", "Vec(A : Type(), n : Nat()) : Type()", "vhead(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (x : A)",
@@ -220,9 +220,9 @@ test("infoAt: undetermined binders, nothing given, and globals with bindings", (
   const source = `${nat}let s = sorry(x : Nat());\nlet (a, b : Nat()) = (s, Zero());\nprint a;\n`;
   const r = ok(source);
   const at = r.infoAt(offset(source, "(s, Zero())"));
-  assert.deepEqual(at.expected?.entries?.map(e => [e.name, e.type?.text ?? null, e.undetermined]), [["a", null, true], ["b", "Nat()", false]]);
-  assert.equal(r.infoAt(offset(source, "print a", 6)).expected?.entries, null);
-  assert.equal(r.infoAt(offset(source, "let s")).expected, null);
+  assert.deepEqual(at.expected.entries?.map(e => [e.name, e.type?.text ?? null, e.undetermined]), [["a", null, true], ["b", "Nat()", false]]);
+  assert.equal(r.infoAt(offset(source, "print a", 6)).expected.entries, null);
+  assert.equal(r.infoAt(offset(source, "let s")).expected.entries, null);
   const end = r.infoAt(source.length);
   assert.deepEqual(end.globals.filter(g => g.kind === "binding").map(g => g.name + g.signature.text), ["s : Nat()", "a : Nat()", "b : Nat() is Zero()"]);
   assert.deepEqual(end.scope.filter(e => e.tainted).map(e => e.names.join(",")), ["s,a"]);
@@ -313,12 +313,12 @@ test("function goals: a telescope that differs does not prove the goal", () => {
 
 test("function goals: the Expected panel shows the goal at a `qed` naming a function, on the error path too", () => {
   const fn = `${nat}fn f(n : Nat()) -> (r : Nat()) { n }\n`, typeGoal = `${fn}goal Nat();\nqed f;\n`;
-  assert.deepEqual(check(typeGoal, 1).infoAt(offset(typeGoal, "f;")).expected?.entries?.map(e => e.type?.text), ["Nat()"]);
+  assert.deepEqual(check(typeGoal, 1).infoAt(offset(typeGoal, "f;")).expected.entries?.map(e => e.type?.text), ["Nat()"]);
   const fnGoal = `${fn}goal fn (m : Nat()) -> (r : Nat());\nqed f;\n`;
-  assert.deepEqual(ok(fnGoal).infoAt(offset(fnGoal, "f;")).expected?.params?.map(e => e.type?.text), ["Nat()"]);
+  assert.deepEqual(ok(fnGoal).infoAt(offset(fnGoal, "f;")).expected.params?.map(e => e.type?.text), ["Nat()"]);
 });
 
-test("function goals: telescopes are compared with bound variables, an earlier is clause not in force (D47)", () => {
+test("function goals: telescopes are compared with bound variables, an earlier is clause not in force (§12)", () => {
   const goal = `${nat}${eqData}goal fn (n is Zero(), e : Eq(Nat(), n, Zero())) -> (r : Nat());\n`;
   const source = `${goal}fn f(m is Zero(), e : Eq(Nat(), Zero(), m)) -> (r : Nat()) { m }\nqed f;\n`;
   err(source, "f", /f's parameter 2 is `e : Eq\(Nat\(\), Zero\(\), n\)`, and the goal's is `e : Eq\(Nat\(\), n, Zero\(\)\)`/, "qed f");
@@ -335,8 +335,8 @@ test("function goals: taint, sorry and the identity on False()", () => {
   assert.deepEqual(verdicts(identity), [false, true, true]);
   const taintedGoal = ok(`${nat}let T = sorry(x : Type());\ngoal fn (x : T) -> (r : T);\nfn f(y : T) -> (r : T) { y }\nqed f;\n`);
   assert.deepEqual(verdicts(taintedGoal), [true, true, false]);
-  const poisoned = ok(`${nat}data IsZero(n : Nat()) : Type() {\n  IsZeroHere() : IsZero(Zero());\n}\ngoal fn (n : Nat()) -> (r : Nat());\nfn f(n : Nat()) -> (r : Nat()) { n }\nlet s = sorry(p : IsZero(Zero()));\nlet IsZeroHere() = s;\nqed f;\n`);
-  assert.deepEqual(verdicts(poisoned), [true, true, false]);
+  const afterTaintedLet = ok(`${nat}data IsZero(n : Nat()) : Type() {\n  IsZeroHere() : IsZero(Zero());\n}\ngoal fn (n : Nat()) -> (r : Nat());\nfn f(n : Nat()) -> (r : Nat()) { n }\nlet s = sorry(p : IsZero(Zero()));\nlet IsZeroHere() = s;\nqed f;\n`);
+  assert.deepEqual(verdicts(afterTaintedLet), [true, true, false]);
 });
 
 test("function goals: qed names a function exactly when the goal is a function goal", () => {
@@ -360,7 +360,7 @@ test("function goals in phase 2: multiplicities must match", () => {
   assert.deepEqual(verdicts(differs), [false, false, false]);
 });
 
-test("tuple let binders are a telescope, checked against the results they name (D44)", () => {
+test("tuple let binders are a telescope, checked against the results they name (§6)", () => {
   const f = "fn f(A : Type(), x : Nat()) -> (n : Nat(), v : Vec(A, n)) { (Zero(), VNil(A)) }\n";
   ok(`${nat}${vec}${f}fn g(A : Type(), x : Nat()) -> (r : Nat()) {\n  let (m : Nat(), v : Vec(A, m)) = f(A, x);\n  m\n}\n`);
   const untyped = /`m` has no type here: give it one before referring to it/;
@@ -383,7 +383,7 @@ test("tuple let binders are a telescope, checked against the results they name (
 
 const isZero = "data IsZero(n : Nat()) : Type() {\n  IsZeroHere() : IsZero(Zero());\n}\n";
 
-test("a pattern let's facts and fields survive its block; only its names end there (D45)", () => {
+test("a pattern let's facts and fields survive its block; only its names end there (§7, §10)", () => {
   const source = `${nat}${vec}fn h(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (r : Vec(A, n)) {\n  let (t : Vec(A, n)) = { let VCons(_, _, _, r) = v; r };\n  inspect;\n  t\n}\n`;
   assert.deepEqual(scopeOf(ok(source).inspects[0]!.info), [
     "A : Type()", "n : Nat()", "v : Vec(A, Succ(n)) is VCons(A, n, ?VCons.head@10:43, t)",
@@ -403,7 +403,7 @@ test("a branch's facts end with the branch, a pattern let's in a block in it inc
     "VCons(_, _, h2, _)", /VNil is not refuted/);
 });
 
-test("soundness: a tainted pattern let in a block poisons the rest of the program (D45)", () => {
+test("soundness: a tainted pattern let in a block taints the rest of the program (§12)", () => {
   const source = `${nat}${eqData}${isZero}fn mk() -> (n : Nat()) { Succ(Zero()) }\nlet n = mk();\nlet p = sorry(p : IsZero(n));\nprint n;\n` +
     "let x = { let IsZeroHere() = p; n };\nlet (y is Zero()) = n;\ngoal Eq(Nat(), n, Zero());\nqed Refl(Nat(), n);\nprint n;\nprint Zero();\n";
   const r = ok(source);
@@ -417,7 +417,7 @@ test("soundness: a tainted pattern let in a block poisons the rest of the progra
   assert.deepEqual(verdicts(ok(inFn)), [true, true, false]);
 });
 
-test("soundness: a tainted pattern let in a match branch taints the match's results, and neither its taint nor its facts leave the branch (D45)", () => {
+test("soundness: a tainted pattern let in a match branch taints the match's results, and neither its taint nor its facts leave the branch (§7, §12)", () => {
   const fab = `${nat}${eqData}${isZero}fn mk() -> (n : Nat()) { Succ(Zero()) }\nlet n = mk();\nlet b = mk();\n`;
   const m = "match b : (r : Nat()) { Zero() => Zero(); Succ(k) => { let IsZeroHere() = sorry(p : IsZero(n)); n }; }";
   const top = ok(`${fab}let c = ${m};\nprint c;\nprint n;\ngoal Nat();\nqed n;\n`);

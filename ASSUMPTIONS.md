@@ -154,6 +154,9 @@ and never renumbered (rule 15); a removed item leaves a gap.
     the empty type on a later page is also `False`; they never share a
     program. The closing page's solution uses `sorry` deliberately, so
     its goal stays unproved.
+61. **Citations in the tutorial's prose**, of a section (§) or of
+    DESIGN.md or SOUNDNESS.md, link to the file on the `main` branch
+    of the repository on GitHub, a section by its heading's anchor.
 
 ## Checking
 
@@ -161,8 +164,8 @@ and never renumbered (rule 15); a removed item leaves a gap.
     tainted, every result produced later in checking order is tainted,
     later parts of the same statement included; results produced
     earlier in that statement are not, though the statement is never
-    evaluated. DECISIONS.md D45 speaks of the body's results and does
-    not mention the statement holding the pattern `let`.
+    evaluated. §12 speaks of the body's results and does not mention
+    the statement holding the pattern `let`.
 32. **A later error** anywhere in the program leaves the goal unproved,
     even when the `qed` checked before it; §12 does not say.
 33. **Functions declared after a top-level statement containing a
@@ -263,7 +266,7 @@ and never renumbered (rule 15); a removed item leaves a gap.
     mode checks typed text as in an erased position, since it never
     evaluates.
 
-## Function goals (DECISIONS.md D43)
+## Function goals (§12)
 
 55. **What `qed f;` is.** Against a function goal, the `qed`'s
     expression must be the bare name of a function declared before it;
@@ -271,7 +274,7 @@ and never renumbered (rule 15); a removed item leaves a gap.
     learner who wants to give up writes a function whose body is
     `sorry(_)`. `qed f;` against a type goal is an error. Nothing is
     evaluated at such a `qed`.
-56. **Comparing telescopes at `qed f;`** (DECISIONS.md D47) happens in
+56. **Comparing telescopes at `qed f;`** (§12) happens in
     the scope at the `qed`, so facts in force there count. A mismatch is
     an error at the name, so `qedChecks` stays false, and the message
     names the first position that differs.
@@ -296,5 +299,4 @@ and never renumbered (rule 15); a removed item leaves a gap.
     `VCons`'s `A`, `VCons`'s `n` and both fields of `Refl`, as the
     phase 2 example programs under `tests/` do; §16 does not say which
     fields should be erased. Where their prose describes behaviour
-    DESIGN.md is silent on, it cites the item here and says "in this
-    implementation".
+    DESIGN.md is silent on, it says "in this implementation".

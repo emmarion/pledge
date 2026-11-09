@@ -32,7 +32,7 @@ export type Global =
 export interface Want { name: string | null; type: OpenTerm | null; is: OpenTerm | null; mult: Mult; span: Span }
 export interface Given { wants: readonly Want[]; env: readonly Ref[]; whole: boolean; params?: number }
 
-export interface Local { scope: Scope; tainted: ReadonlySet<string>; erased: ReadonlySet<string>; poisoned: boolean }
+export interface Local { scope: Scope; tainted: ReadonlySet<string>; erased: ReadonlySet<string>; allTainted: boolean }
 export interface Result { id: EntryId; tainted: boolean; erased: boolean }
 
 export const isTainted = (e: Entry, tainted: ReadonlySet<string>): boolean => e.tainted || e.names.some(n => tainted.has(n));
@@ -42,7 +42,7 @@ export interface FnCtx { name: string; group: readonly string[]; subterms: Entry
 export interface Snapshot {
   span: Span;
   local: Local;
-  given: Given | null | "none";
+  given: Given | null;
   fn: FnCtx | null;
   refutations: RefutationInfo[] | null;
   limit: number;
@@ -81,7 +81,7 @@ export function declareGlobal(st: State, g: Global): void {
 export const describe = (g: Global): string =>
   g.kind === "fn" ? "a function" : g.kind === "type" ? "a type constructor" : g.kind === "ctor" ? "a value constructor" : "a value";
 
-export function record(ctx: Ctx, local: Local, span: Span, given: Given | null | "none", inspect = false): Snapshot {
+export function record(ctx: Ctx, local: Local, span: Span, given: Given | null, inspect = false): Snapshot {
   const snap: Snapshot = { span, local, given, fn: ctx.fn, refutations: null, limit: visible(ctx), inspect };
   if (ctx.st.record) ctx.st.snapshots.push(snap);
   return snap;
@@ -96,7 +96,7 @@ export const written = (scope: Scope, t: Term): Term => mapLeaves(t, u => {
   return e.rule && (e.origin.kind === APP || e.origin.kind === HOLE) && !e.names.length ? written(scope, e.rule.term) : u;
 });
 
-export function fresh(ctx: Ctx, local: Local, id: Id, seen: Set<string>): void {
+export function newName(ctx: Ctx, local: Local, id: Id, seen: Set<string>): void {
   const name = id.name;
   if (name === null) return;
   if (seen.has(name)) fail(id.span, () => `${name} is introduced twice here (§2)`);

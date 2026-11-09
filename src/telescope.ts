@@ -18,50 +18,16 @@ export function open(scope: Scope, tele: Telescope, env: readonly Term[], fresh:
   return out;
 }
 
-interface Mismatch { index: number; kind: "arity" | "type" | "is"; message: () => string }
-type Instantiated = { ok: true; env: Term[] } | { ok: false; mismatch: Mismatch };
-
-export function instantiate(scope: Scope, tele: Telescope, given: readonly EntryId[]): Instantiated {
-  if (given.length !== tele.length) {
-    const message = () => `${tele.length} expected, ${given.length} given`;
-    return { ok: false, mismatch: { index: Math.min(given.length, tele.length), kind: "arity", message } };
-  }
-  const out: Term[] = [];
-  for (const [index, b] of tele.entries()) {
-    const id = given[index] ?? -1;
-    const fail = (kind: "type" | "is", want: Term, have: Term): Instantiated => ({
-      ok: false,
-      mismatch: {
-        index, kind,
-        message: () => `${b.name ?? "_"} (position ${index + 1}): ${entryRef(scope, id).text} ${kind === "is" ? "is" : "has type"} ${render(scope, have).text}, not ${render(scope, want).text}`,
-      },
-    });
-    const wantType = subst(b.type, out), haveType = entry(scope, id).type;
-    if (!identical(scope, wantType, haveType)) return fail("type", wantType, haveType);
-    const wantIs = b.is && subst(b.is, out);
-    if (wantIs && !identical(scope, wantIs, ref(id))) return fail("is", wantIs, ref(id));
-    out.push(ref(id));
-  }
-  return { ok: true, env: out };
-}
-
 export function difference(scope: Scope, a: Telescope, b: Telescope): number {
   const agree = (x: OpenTerm | null, y: OpenTerm | null): boolean => x === null || y === null ? x === y : identical(scope, x, y);
   const i = a.findIndex((x, j) => { const y = b[j]; return !y || x.mult !== y.mult || !agree(x.type, y.type) || !agree(x.is, y.is); });
   return i >= 0 ? i : a.length < b.length ? a.length : -1;
 }
 
-type Applied = { ok: true; scope: Scope; id: EntryId } | { ok: false; mismatch: Mismatch };
-
-export function apply(scope: Scope, sig: Signature, args: readonly EntryId[], fresh: Fresh): Applied {
-  const inst = instantiate(scope, sig.params, args);
-  return inst.ok ? { ok: true, ...create(scope, subst(sig.ret, inst.env), app(sig.head, ...args.map(ref)), fresh) } : inst;
-}
-
 type Why = "scrutinee" | "scrutinee type" | "types" | { head: Head; index: number };
 interface Eq { lhs: Term; rhs: Term; why: Why; parent: Seen | null }
 interface Seen extends Eq { scope: Scope; l: Term; r: Term }
-type Failure = { heads: readonly [Head, Head] } | { x: EntryId; e: Term } | { rigid: readonly [Term, Term] };
+type Clash = { heads: readonly [Head, Head] } | { x: EntryId; e: Term } | { rigid: readonly [Term, Term] };
 
 export type Forced = { ok: true; scope: Scope; fields: EntryId[] } | { ok: false; derivation: () => Rendered[] };
 
@@ -71,11 +37,11 @@ function orient(l: Term, r: Term, may: (id: EntryId) => boolean): { x: Ref; e: T
   return x && { x, e: x === l ? r : l };
 }
 
-function solve(scope: Scope, eqs: Eq[], at: Span, may: (id: EntryId) => boolean): { scope: Scope; failed: { eq: Seen; failure: Failure } | null } {
+function solve(scope: Scope, eqs: Eq[], at: Span, may: (id: EntryId) => boolean): { scope: Scope; failed: { eq: Seen; failure: Clash } | null } {
   let now = scope;
   for (const eq of eqs) {
     const e: Seen = { ...eq, scope: now, l: canon(now, eq.lhs), r: canon(now, eq.rhs) };
-    const failed = (failure: Failure) => ({ scope: now, failed: { eq: e, failure } });
+    const failed = (failure: Clash) => ({ scope: now, failed: { eq: e, failure } });
     if (same(e.l, e.r)) continue;
     const o = orient(e.l, e.r, may);
     if (!o) return failed({ rigid: [e.l, e.r] });
@@ -106,7 +72,7 @@ export function force(scope: Scope, scrutinee: EntryId, ctor: Signature, at: Spa
   return failed ? { ok: false, derivation: () => derivation(ctor, failed.eq, failed.failure) } : { ok: true, scope: now, fields: opened.entries };
 }
 
-function derivation(ctor: Signature, failing: Seen, failure: Failure): Rendered[] {
+function derivation(ctor: Signature, failing: Seen, failure: Clash): Rendered[] {
   const chain: Seen[] = [];
   for (let e: Seen | null = failing; e; e = e.parent) chain.unshift(e);
   const lines = chain.map(({ scope, lhs, rhs, l, r, why }, n) => {

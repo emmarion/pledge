@@ -1,6 +1,6 @@
 import type { EntryInfo, Rendered, Rewrite } from "./api.ts";
 import { canon, entry, rewrites } from "./terms.ts";
-import type { Binder, EntryId, OpenTerm, Scope, Signature, Telescope, Term } from "./terms.ts";
+import type { Binder, EntryId, OpenTerm, Scope, Telescope, Term } from "./terms.ts";
 
 type Piece = string | Rendered;
 
@@ -17,16 +17,6 @@ export function cat(...pieces: readonly Piece[]): Rendered {
 }
 
 export const join = (items: readonly Piece[], sep: string): Piece[] => items.flatMap((x, i) => i ? [sep, x] : [x]);
-
-export function lineCol(source: string, offset: number): { line: number; col: number } {
-  const lines = source.slice(0, offset).split("\n");
-  return { line: lines.length, col: (lines.at(-1) ?? "").length + 1 };
-}
-
-export const position = (source: string) => (offset: number): string => {
-  const { line, col } = lineCol(source, offset);
-  return `${line}:${col}`;
-};
 
 export function label(scope: Scope, id: EntryId): string {
   const e = entry(scope, id);
@@ -55,9 +45,6 @@ export function renderTelescope(scope: Scope, tele: Telescope, outer: readonly (
   const bound = [...outer, ...tele.map(b => b.name)];
   return cat("(", ...join(tele.map(b => renderBinder(scope, b, bound, canonical)), ", "), ")");
 }
-
-export const renderSignature = (scope: Scope, sig: Signature): Rendered =>
-  cat(sig.head.name, renderTelescope(scope, sig.params), " : ", render(scope, sig.ret, { bound: sig.params.map(b => b.name) }));
 
 export function entryInfo(scope: Scope, id: EntryId, canonical = true): EntryInfo {
   const e = entry(scope, id);

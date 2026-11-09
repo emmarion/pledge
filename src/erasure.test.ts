@@ -113,7 +113,7 @@ test("match erased: at most one branch with a many annotation entry", () => {
 
 const isZero = "data IsZero(n : Nat()) : Type() {\n  IsZeroHere() : IsZero(Zero());\n}\n";
 
-test("match erased: absurd branches beside the one that is not (D49)", () => {
+test("match erased: absurd branches beside the one that is not (§16)", () => {
   const f = (branches: string) => `${nat}${isZero}fn f(n : Nat(), p : IsZero(n)) -> (r : Nat()) {\n  match erased n : (r : Nat()) {\n${branches}\n  }\n}\nprint f(Zero(), IsZeroHere());\n`;
   const source = f("    Zero() => Succ(Zero());\n    Succ(m) => match p : _ {};");
   const r = ok(source);
@@ -128,7 +128,7 @@ test("match erased: absurd branches beside the one that is not (D49)", () => {
   assert.deepEqual(ok(many).infoAt(many.indexOf("match n") + 2).refutations, []);
 });
 
-test("soundness: an absurd branch that relies on sorry taints the match, and an erased match whose branches are all absurd never runs (D49)", () => {
+test("soundness: an absurd branch that relies on sorry taints the match, and an erased match whose branches are all absurd never runs (§16)", () => {
   const g = (pre: string, absurd: string) => `${nat}${isZero}${eq}fn g(n : Nat(), k : Nat(), p : IsZero(k)) -> (r : Nat()) {\n${pre}  match erased n : (r : Nat()) {\n` +
     `    Zero() => Succ(Zero());\n    Succ(m) => ${absurd};\n  }\n}\nprint g(Succ(Zero()), Zero(), IsZeroHere());\ngoal Nat();\nqed g(Succ(Zero()), Zero(), IsZeroHere());\n`;
   for (const [pre, absurd] of [
@@ -165,7 +165,7 @@ test("_ stands for an erased argument, solved from later arguments and from what
   assert.deepEqual(prints(r), ["Zero()"]);
   const source = `${nat}${vec}let x = VCons(_, _, Zero(), VNil(_));\n`;
   assert.equal(ok(source).explainAt(source.indexOf("_"))?.canonical.text, "Nat()");
-  assert.deepEqual(ok(source).infoAt(source.indexOf("_")).expected?.entries?.map(e => [e.name, e.type?.text, e.erased]), [["A", "Type()", true]]);
+  assert.deepEqual(ok(source).infoAt(source.indexOf("_")).expected.entries?.map(e => [e.name, e.type?.text, e.erased]), [["A", "Type()", true]]);
 });
 
 test("explainAt shows a skeleton term with its _ solved", () => {
@@ -199,7 +199,7 @@ test("interface data shows multiplicities where written", () => {
   ]);
   const inBody = ok(source).infoAt(source.indexOf("hd\n}"));
   assert.deepEqual(flagged(inBody), ["A", "n", "?VCons.A", "?VCons.n"]);
-  assert.deepEqual(inBody.expected?.entries?.map(e => [e.name, e.erased]), [["x", false]]);
+  assert.deepEqual(inBody.expected.entries?.map(e => [e.name, e.erased]), [["x", false]]);
 });
 
 const bad = "data Bad(n : Nat()) : Type() {\n  BadZero() : Bad(Zero());\n}\n";
@@ -237,7 +237,7 @@ test("taint: a _ whose solution mentions a tainted entry taints the application,
   assert.deepEqual(ok(source).inspects[0]?.info.scope.map(e => [e.names.join(","), e.tainted]), [["T", true], ["y", true], ["z", false]]);
 });
 
-test("taint: a _ is tainted only by an entry's own taint, never by its names (D46)", () => {
+test("taint: a _ is tainted only by an entry's own taint, never by its names (§12)", () => {
   const source = `${nat}${eq}fn mk() -> (n : Nat()) { Zero() }\nlet n = mk();\nlet s = sorry(s : Eq(Nat(), Zero(), Zero()));\nlet m = { let Refl(_, _) = s; n };\n` +
     "fn k(a : Nat(), erased b is a) -> (r : Nat()) { a }\nfn h1() -> (r : Nat()) {\n  let x = k(n, _);\n  inspect;\n  x\n}\nfn h2() -> (r : Nat()) {\n  let x = k(m, m);\n  inspect;\n  x\n}\n";
   const r = ok(source);

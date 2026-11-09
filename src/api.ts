@@ -39,7 +39,7 @@ export interface RefutationInfo {
 export interface GlobalInfo { kind: "fn" | "type" | "binding"; name: string; signature: Rendered; ctors?: { name: string; signature: Rendered }[] }
 
 export interface PositionInfo {
-  expected: ExpectedInfo | null;
+  expected: ExpectedInfo;
   termination: TerminationInfo | null;
   scope: EntryInfo[];
   refutations: RefutationInfo[] | null;

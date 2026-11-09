@@ -10,33 +10,31 @@ export interface FnDef { fn: Fn; globals: Env }
 
 export type Fns = ReadonlyMap<string, FnDef>;
 
-export class InternalError extends Error {}
+const internal = (message: string): never => { throw new Error(`internal error in the evaluator: ${message}`); };
 
-const fail = (message: string): never => { throw new InternalError(`internal error in the evaluator: ${message}`); };
-
-const bind = (env: Env, ids: readonly Id[], vs: readonly Value[]): Env => {
+const bindValues = (env: Env, ids: readonly Id[], vs: readonly Value[]): Env => {
   const out = new Map(env);
-  ids.forEach((id, i) => { if (id.name !== null) out.set(id.name, vs[i] ?? fail(`no value for ${id.name}`)); });
+  ids.forEach((id, i) => { if (id.name !== null) out.set(id.name, vs[i] ?? internal(`no value for ${id.name}`)); });
   return out;
 };
 
 const take = (vs: Value[], n: number): Value[] =>
   vs.length === n ? vs
   : vs.length === 1 && vs[0] === removed ? Array<Value>(n).fill(removed)
-  : fail(`expected ${n} values, got ${vs.length}`);
+  : internal(`expected ${n} values, got ${vs.length}`);
 
 const one = (vs: Value[]): Value => take(vs, 1)[0]!;
 
-const tag = (v: Value): string => v === removed ? fail("a removed value was inspected") : v.head;
+const tag = (v: Value): string => v === removed ? internal("a removed value was inspected") : v.head;
 
 export const evalOne = (fns: Fns, env: Env, e: Expr): Value => one(evalExpr(fns, env, e));
 
 export const bindPattern = (env: Env, pat: Pattern, v: Value, mult: Mult | null = null): Env =>
-  mult === "erased" ? bind(env, pat.fields, pat.fields.map(() => removed))
-  : tag(v) === pat.ctor.name ? bind(env, pat.fields, v.args) : fail(`pattern ${pat.ctor.name} met ${showValue(v)}`);
+  mult === "erased" ? bindValues(env, pat.fields, pat.fields.map(() => removed))
+  : tag(v) === pat.ctor.name ? bindValues(env, pat.fields, v.args) : internal(`pattern ${pat.ctor.name} met ${showValue(v)}`);
 
 const afterStmt = (env: Env, s: Stmt, vs: Value[]): Env =>
-  s.kind === "let" ? bind(env, s.binders.map(b => b.name), take(vs, s.binders.length))
+  s.kind === "let" ? bindValues(env, s.binders.map(b => b.name), take(vs, s.binders.length))
   : s.kind === "patlet" ? bindPattern(env, s.pat, one(vs), s.mult) : env;
 
 type Block = Expr & { kind: "block" };
@@ -59,9 +57,9 @@ export const evalExpr = (fns: Fns, env: Env, e: Expr): Value[] => {
     if (next) return stack.push({ kind: "seq", env, exprs, done, head }), { expr: next, env };
     if (!head) return done;
     const def = fns.get(head.name ?? "_");
-    if (!def) return [{ head: head.name ?? fail("application of _"), args: done }];
+    if (!def) return [{ head: head.name ?? internal("application of _"), args: done }];
     returning(def.fn.returns.length);
-    return { expr: def.fn.body, env: bind(def.globals, def.fn.params.map(p => p.name), done) };
+    return { expr: def.fn.body, env: bindValues(def.globals, def.fn.params.map(p => p.name), done) };
   };
   const block = (env: Env, b: Block, i: number): Step => {
     const s = b.stmts[i];
@@ -71,19 +69,19 @@ export const evalExpr = (fns: Fns, env: Env, e: Expr): Value[] => {
   };
   const branch = (env: Env, m: Match, v: Value): Step => {
     const [only, ...others] = m.branches;
-    const br = m.mult !== "erased" ? m.branches.find(b => b.pat.ctor.name === tag(v)) ?? fail(`no branch for ${showValue(v)}`)
-      : only && !others.length ? only : fail(`an erased match with ${m.branches.length} branches`);
+    const br = m.mult !== "erased" ? m.branches.find(b => b.pat.ctor.name === tag(v)) ?? internal(`no branch for ${showValue(v)}`)
+      : only && !others.length ? only : internal(`an erased match with ${m.branches.length} branches`);
     if (m.ann !== "_") returning(m.ann.length);
     return { expr: br.body, env: bindPattern(env, br.pat, v, m.mult) };
   };
   const enter = (env: Env, e: Expr): Step => {
     switch (e.kind) {
-      case "var": return [env.get(e.name.name ?? "_") ?? fail(`unbound ${e.name.name}`)];
+      case "var": return [env.get(e.name.name ?? "_") ?? internal(`unbound ${e.name.name}`)];
       case "app": return seq(env, e.args.map(a => a.expr), [], e.head);
       case "tuple": return seq(env, e.elems, [], null);
       case "block": return block(env, e, 0);
       case "match": return stack.push({ kind: "match", env, match: e }), { expr: e.scrut, env };
-      case "sorry": return fail("sorry was reached");
+      case "sorry": return internal("sorry was reached");
       case "removed": return [removed];
     }
   };

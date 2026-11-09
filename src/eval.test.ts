@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { Binder, Expr, Fn, Id, Param, Pattern, Stmt, Term } from "./syntax.ts";
-import { bindPattern, evalExpr, evalOne, evalStmt, InternalError, removed, showValue, type Env, type Fns, type Value } from "./eval.ts";
+import type { WrittenBinder, Expr, Fn, Id, Param, Pattern, Stmt, WrittenTerm } from "./syntax.ts";
+import { bindPattern, evalExpr, evalOne, evalStmt, removed, showValue, type Env, type Fns, type Value } from "./eval.ts";
 
 const span = { start: 0, end: 0 };
 const id = (name: string): Id => ({ name: name === "_" ? null : name, span });
-const term = (name: string): Term => ({ head: id(name), args: [], span });
-const binder = (name: string): Binder => ({ name: id(name), ann: { kind: "type", term: term("Nat") }, mult: null, span });
+const term = (name: string): WrittenTerm => ({ head: id(name), args: [], span });
+const binder = (name: string): WrittenBinder => ({ name: id(name), ann: { kind: "type", term: term("Nat") }, mult: null, span });
 const param = (name: string): Param => ({ ...binder(name), subterm: true });
 const v = (name: string): Expr => ({ kind: "var", name: id(name), span });
 const app = (head: string, ...args: Expr[]): Expr => ({ kind: "app", head: id(head), args: args.map(expr => ({ mark: null, expr, span })), span });
@@ -40,6 +40,8 @@ const vuncons = fn("vuncons", ["A", "n", "v"], 2, block([patlet(pat("VCons", "_"
 const fns: Fns = new Map([plus, ack, vuncons].map(f => [f.name.name!, { fn: f, globals: empty }]));
 const run = (e: Expr, env: Env = empty): string[] => evalExpr(fns, env, e).map(showValue);
 
+const internal = /internal error in the evaluator/;
+
 test("plus adds Nats", () => {
   assert.deepEqual(run(app("plus", nat(2), nat(3))), [natText(5)]);
   assert.deepEqual(run(app("plus", nat(0), nat(0))), [natText(0)]);
@@ -64,7 +66,7 @@ test("a block with lets, a wildcard binder and inspect", () => {
 test("a pattern let binds fields", () => {
   const env = evalStmt(fns, empty, patlet(pat("Succ", "p"), nat(3)));
   assert.equal(showValue(env.get("p")!), natText(2));
-  assert.throws(() => evalStmt(fns, empty, patlet(pat("Succ", "p"), nat(0))), InternalError);
+  assert.throws(() => evalStmt(fns, empty, patlet(pat("Succ", "p"), nat(0))), internal);
 });
 
 test("comptime helpers: evaluate once, then bind", () => {
@@ -84,16 +86,16 @@ test("a removed value flows through lets unobserved but throws when matched on",
   const two = fn("two", [], 2, block([], rem));
   const withTwo: Fns = new Map([...fns, ["two", { fn: two, globals: empty }]]);
   assert.deepEqual(evalExpr(withTwo, empty, block([letT(["a", "b"], app("two"))], tuple(v("b"), v("a")))).map(showValue), ["_", "_"]);
-  assert.throws(() => run(match(rem, 1, [pat("Zero"), nat(0)])), InternalError);
-  assert.throws(() => evalStmt(fns, empty, patlet(pat("Succ", "p"), rem)), InternalError);
-  assert.throws(() => run({ kind: "sorry", tele: "_", span }), InternalError);
+  assert.throws(() => run(match(rem, 1, [pat("Zero"), nat(0)])), internal);
+  assert.throws(() => evalStmt(fns, empty, patlet(pat("Succ", "p"), rem)), internal);
+  assert.throws(() => run({ kind: "sorry", tele: "_", span }), internal);
 });
 
 test("an erased match or pattern let binds its fields to the removed value and needs exactly one branch", () => {
   const erased = (m: Expr): Expr => ({ ...m, mult: "erased" } as Expr);
   assert.deepEqual(run(erased(match(rem, 1, [pat("Succ", "p"), app("Succ", v("p"))]))), ["Succ(_)"]);
-  assert.throws(() => run(erased(match(rem, 1, [pat("Zero"), nat(0)], [pat("Succ", "p"), nat(1)]))), InternalError);
-  assert.throws(() => run(erased(match(rem, 1))), InternalError);
+  assert.throws(() => run(erased(match(rem, 1, [pat("Zero"), nat(0)], [pat("Succ", "p"), nat(1)]))), internal);
+  assert.throws(() => run(erased(match(rem, 1))), internal);
   const env = evalStmt(fns, empty, { ...patlet(pat("Succ", "p"), rem), mult: "erased" } as Stmt);
   assert.equal(showValue(env.get("p")!), "_");
 });

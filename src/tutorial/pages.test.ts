@@ -1,9 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { check } from "../check.ts";
-import { pages } from "./pages.ts";
+import { readFileSync } from "node:fs";
+import { disclaimer, pages } from "./pages.ts";
+import { cited, citationUrl, sections } from "./links.ts";
 
 const program = (boxes: string[], learner: string): string => [...boxes, learner].join("\n");
+
+test("section links match DESIGN.md's headings, and every citation in the prose has a link", () => {
+  const headings = [...readFileSync(new URL("../../DESIGN.md", import.meta.url), "utf8").matchAll(/^## (.*)$/gm)]
+    .map(m => m[1]!.toLowerCase().replace(/[^a-z0-9 -]/g, "").replaceAll(" ", "-"));
+  assert.deepEqual(sections, headings);
+  for (const text of [disclaimer, ...pages.map(p => p.prose)])
+    for (const part of text.split(cited).filter((_, i) => i % 2)) assert.notEqual(citationUrl(part), null, part);
+});
 
 test("slugs are unique", () => {
   assert.equal(new Set(pages.map(p => p.slug)).size, pages.length);
@@ -56,7 +66,7 @@ const verdicts = (r: ReturnType<typeof check>) => [r.containsSorry, r.qedChecks,
 const scopeAt = (r: ReturnType<typeof check>, offset: number) => r.infoAt(offset).scope.map(e => `${e.names.join(",") || `?${e.origin.kind}`} : ${e.type.text}${e.rule ? ` is ${e.rule.text}` : ""}`);
 
 test("fine points: the new pages are the last ones, phase 1 unless they need phase 2", () => {
-  const slugs = ["tuple-let-telescope", "facts-escape", "poison", "hole-through-block", "hole-taint", "goal-comparison", "absurd-branches"];
+  const slugs = ["tuple-let-telescope", "facts-escape", "tainted-pattern-let", "hole-through-block", "hole-taint", "goal-comparison", "absurd-branches"];
   assert.deepEqual(pages.slice(-slugs.length).map(p => [p.slug, p.phase]), slugs.map(s => [s, ["hole-through-block", "hole-taint", "absurd-branches"].includes(s) ? 2 : 1]));
 });
 
@@ -81,7 +91,7 @@ test("iszero: the Succ branch cannot be filled with Refl", () => {
 
 test("tuple-let-telescope: Expected lists both binders, and dropping m's type is an error at the reference", () => {
   const { source, r } = run("tuple-let-telescope", page("tuple-let-telescope").solution);
-  assert.deepEqual(r.infoAt(source.indexOf("pair(x)")).expected?.entries?.map(e => `${e.name} : ${e.type?.text}`), ["m : Nat()", "v : Vec(Nat(), Succ(m))"]);
+  assert.deepEqual(r.infoAt(source.indexOf("pair(x)")).expected.entries?.map(e => `${e.name} : ${e.type?.text}`), ["m : Nat()", "v : Vec(Nat(), Succ(m))"]);
   assert.ok(scopeAt(r, source.indexOf("print v")).includes("v : Vec(Nat(), Succ(m))"));
   const dropped = run("tuple-let-telescope", page("tuple-let-telescope").solution.replace("m : Nat(),", "m,"));
   assert.match(dropped.r.error?.message() ?? "", /`m` has no type here/);
@@ -100,12 +110,12 @@ test("facts-escape: after the block, v's rule and the anonymous tail remain, and
   assert.equal(noEscape.goalProved, false);
 });
 
-test("poison: every statement checks, yet print shows sorry and the goal is not proved; in a branch only the match is tainted", () => {
-  const { r } = run("poison", page("poison").initial);
+test("tainted-pattern-let: every statement checks, yet print shows sorry and the goal is not proved; in a branch only the match is tainted", () => {
+  const { r } = run("tainted-pattern-let", page("tainted-pattern-let").initial);
   assert.equal(r.error, null);
   assert.deepEqual(verdicts(r), [true, true, false]);
   assert.deepEqual(r.prints.map(p => p.value), ["sorry", "Zero()", "sorry"]);
-  assert.deepEqual(run("poison", page("poison").solution).r.prints.map(p => p.value), ["sorry", "Zero()", "Zero()"]);
+  assert.deepEqual(run("tainted-pattern-let", page("tainted-pattern-let").solution).r.prints.map(p => p.value), ["sorry", "Zero()", "Zero()"]);
 });
 
 test("hole-through-block: the _s are solved through the block's final expression", () => {
@@ -113,7 +123,7 @@ test("hole-through-block: the _s are solved through the block's final expression
   assert.deepEqual(r.prints.map(p => p.value), ["Succ(Zero())", "Succ(Zero())"]);
   const at = source.indexOf("vhead(_, _, { let") + 6;
   assert.deepEqual([r.explainAt(at)?.canonical.text, r.explainAt(at + 3)?.canonical.text], ["Nat()", "Zero()"]);
-  assert.deepEqual(r.infoAt(at).expected?.entries?.map(e => [e.name, e.erased]), [["A", true]]);
+  assert.deepEqual(r.infoAt(at).expected.entries?.map(e => [e.name, e.erased]), [["A", true]]);
 });
 
 test("hole-taint: a _ solved to a sorry result taints the call; with Nat() the goal is proved", () => {

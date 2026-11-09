@@ -46,7 +46,7 @@ function globalInfo(scope: Scope, g: Global, st: State, limit: number): GlobalIn
 export function info(st: State, snap: Snapshot): PositionInfo {
   const { scope, tainted, erased } = snap.local;
   return {
-    expected: snap.given === "none" ? null : expected(scope, snap.given),
+    expected: expected(scope, snap.given),
     termination: snap.fn?.info ?? null,
     scope: entries(scope).filter(e => e.names.length || (e.origin.kind !== APP && e.origin.kind !== HOLE))
       .map(e => ({ ...entryInfo(scope, e.id), tainted: isTainted(e, tainted), erased: e.erased || (e.names.length > 0 && e.names.every(n => erased.has(n))) })),

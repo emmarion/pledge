@@ -1,11 +1,11 @@
-import type { Ann, Arg, Expr, Header, Id, LetBinder, Mult, Pattern, Span, Stmt, Tele, Term as Written } from "./syntax.ts";
+import type { Ann, Arg, Expr, Header, Id, LetBinder, Mult, Pattern, Span, Stmt, Tele, WrittenTerm } from "./syntax.ts";
 import { TYPE, abstract, addRule, app, canon, create, entry, forget, identical, isStrictSubterm, lookup, mark, mentions, occurs, ref, subst, typeOf, withName } from "./terms.ts";
 import type { Binder, EntryId, Ref, Scope, Signature, Telescope, Term } from "./terms.ts";
 import { force, open, unify } from "./telescope.ts";
 import type { Forced } from "./telescope.ts";
 import { label, render } from "./render.ts";
 import type { RefutationInfo } from "./api.ts";
-import { APP, HOLE, describe, fail, fresh, global, point, record, written } from "./context.ts";
+import { APP, HOLE, describe, fail, newName, global, point, record, written } from "./context.ts";
 import type { Ctx, FnCtx, FnSig, Given, Hole, Local, Result, Snapshot, Want } from "./context.ts";
 
 type App = Expr & { kind: "app" };
@@ -34,7 +34,7 @@ export function expr(ctx: Ctx, local: Local, e: Expr, given: Given | null): Out 
   const whole = ctx.erased || (given !== null && given.wants.every(w => w.mult === "erased"));
   const g = ctx.erased && given ? erase(given) : given, c = whole === ctx.erased ? ctx : { ...ctx, erased: whole };
   const built = build(c, local, e, g, record(c, local, e.span, g));
-  const out = built.local.poisoned ? { ...built, results: built.results.map(r => ({ ...r, tainted: true })) } : built;
+  const out = built.local.allTainted ? { ...built, results: built.results.map(r => ({ ...r, tainted: true })) } : built;
   const leak = whole ? -1 : out.results.findIndex((r, i) => r.erased && !erasedAt(g, i));
   if (leak >= 0) fail(e.span, () => `${e.kind === "var" ? `\`${e.name.name}\`` : out.results.length === 1 ? "this value" : `value ${leak + 1} of this`} is erased, ` +
     "and an erased value is allowed only in an erased position: a type, an argument for an erased parameter or field, or the result for an erased return or binder (§16)");
@@ -139,7 +139,7 @@ function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snaps
       }
       const fin = expr(ctx, inner, e.final, given);
       return {
-        local: { ...local, scope: forget(fin.local.scope, local.scope, named), poisoned: fin.local.poisoned },
+        local: { ...local, scope: forget(fin.local.scope, local.scope, named), allTainted: fin.local.allTainted },
         results: fin.results,
         tree: { ...e, stmts, final: fin.tree },
       };
@@ -332,7 +332,7 @@ function survivor(f: Forcing, span: Span, consequence: string): { scope: Scope; 
 
 function names(ctx: Ctx, local: Local, ids: readonly Id[]): void {
   const seen = new Set<string>();
-  for (const id of ids) fresh(ctx, local, id, seen);
+  for (const id of ids) newName(ctx, local, id, seen);
 }
 
 const never = (): boolean => false;
@@ -354,9 +354,9 @@ function bind(local: Local, ids: readonly Id[], entries: readonly EntryId[], tai
 function letWants(ctx: Ctx, site: Local, binders: readonly LetBinder[]): Want[] {
   let local = site;
   const ids: EntryId[] = [], untyped = new Set<string>();
-  const unknown = (t: Written): Written | undefined => untyped.has(t.head.name ?? "") ? t : (t.args ?? []).map(unknown).find(u => u);
+  const unknown = (t: WrittenTerm): WrittenTerm | undefined => untyped.has(t.head.name ?? "") ? t : (t.args ?? []).map(unknown).find(u => u);
   for (const b of binders) {
-    record(ctx, local, b.span, "none");
+    record(ctx, local, b.span, null);
     const u = b.ann && unknown(b.ann.term);
     if (u) fail(u.span, () => `\`${u.head.name}\` has no type here: give it one before referring to it`);
     const o = b.ann && opening(ctx, local, { ...b, ann: b.ann }, "binder");
@@ -373,17 +373,17 @@ function letWants(ctx: Ctx, site: Local, binders: readonly LetBinder[]): Want[] 
 export function stmt(ctx: Ctx, local: Local, s: Stmt, comptime?: Comptime): StmtOut {
   switch (s.kind) {
     case "inspect":
-      record(ctx, local, s.span, "none", true);
+      record(ctx, local, s.span, null, true);
       return { local, tree: s, bound: [] };
     case "let": {
-      record(ctx, local, s.span, "none");
+      record(ctx, local, s.span, null);
       names(ctx, local, s.binders.map(b => b.name));
       const out = expr(ctx, local, s.rhs, { wants: letWants(ctx, local, s.binders), env: [], whole: s.binders.every(b => b.ann) });
       const b = bind(out.local, s.binders.map(x => x.name), out.results.map(r => r.id), i => out.results[i]!.tainted, i => s.binders[i]!.mult === "erased");
       return { local: b.local, tree: { ...s, rhs: out.tree }, bound: b.bound };
     }
     case "patlet": {
-      const snap = record(ctx, local, s.span, "none"), erased = s.mult === "erased";
+      const snap = record(ctx, local, s.span, null), erased = s.mult === "erased";
       if (s.comptime && erased) fail(s.span, () => "a `comptime` pattern `let` evaluates its right-hand side (§11), so it cannot be erased (§16)");
       names(ctx, local, s.pat.fields);
       const out = expr(erased ? { ...ctx, erased } : ctx, local, s.rhs, null), r = single(out, s.rhs.span);
@@ -394,17 +394,17 @@ export function stmt(ctx: Ctx, local: Local, s: Stmt, comptime?: Comptime): Stmt
       const won = survivor(mine, s.pat.span, "this pattern `let` cannot match");
       const other = s.comptime ? undefined : fs.find(f => f !== mine && f.forced.ok);
       if (other) fail(s.pat.span, () => `${other.name} is not refuted here, and exactly one value constructor must survive forcing at a pattern \`let\` (§10)`);
-      const b = bind({ ...out.local, scope: won.scope, poisoned: out.local.poisoned || r.tainted }, s.pat.fields, won.fields);
+      const b = bind({ ...out.local, scope: won.scope, allTainted: out.local.allTainted || r.tainted }, s.pat.fields, won.fields);
       return { local: b.local, tree: { ...s, rhs: out.tree }, bound: b.bound };
     }
   }
 }
 
-const skeleton = (t: Written): Expr => t.args === null
+const skeleton = (t: WrittenTerm): Expr => t.args === null
   ? { kind: "var", name: t.head, span: t.span }
   : { kind: "app", head: t.head, args: t.args.map(a => ({ mark: null, expr: skeleton(a), span: a.span })), span: t.span };
 
-export function term(ctx: Ctx, local: Local, t: Written): Result & { local: Local } {
+export function term(ctx: Ctx, local: Local, t: WrittenTerm): Result & { local: Local } {
   const out = expr({ ...ctx, skeleton: true, erased: ctx.erased || ctx.st.phase >= 2, holes: [] }, local, skeleton(t), null);
   return { local: out.local, ...single(out, t.span) };
 }
@@ -438,8 +438,8 @@ export function telescope(ctx: Ctx, local: Local, binders: readonly Binderish[],
   const seen = new Set<string>(), ids: EntryId[] = [];
   let tainted = false;
   for (const b of binders) {
-    record(ctx, local, b.span, "none");
-    fresh(ctx, local, b.name, seen);
+    record(ctx, local, b.span, null);
+    newName(ctx, local, b.name, seen);
     const o = opening(ctx, local, b, kind);
     local = o.local;
     tainted ||= o.tainted;

@@ -1,6 +1,6 @@
 import type { Phase, Span } from "../syntax.ts";
 import { lex, type Token } from "../lexer.ts";
-import { lineCol } from "../render.ts";
+import { lineCol } from "../position.ts";
 import { fill, h, type Child } from "./dom.ts";
 
 export type NameKind = "type" | "ctor" | "fn";

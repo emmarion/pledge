@@ -5,8 +5,9 @@ import {
   rewrites, same, subst, withName,
 } from "./terms.ts";
 import type { Binder, Head, OpenTerm, Scope, Signature, Term } from "./terms.ts";
-import { entryInfo, explain, lineCol, position, render, renderSignature } from "./render.ts";
-import { apply, force, instantiate, open } from "./telescope.ts";
+import { entryInfo, explain, render } from "./render.ts";
+import { lineCol, position } from "./position.ts";
+import { force, open } from "./telescope.ts";
 
 const span = { start: 0, end: 0 };
 const T = (name: string): Head => ({ kind: "type", name });
@@ -64,42 +65,6 @@ test("canonicalization rewrites to a fixed point", () => {
   assert.ok(!identical(s, z, Succ(x)));
 });
 
-test("an application entry gets the rule F(args) and the instantiated return type", () => {
-  let s = base(), A, h;
-  [s, A] = add(s, "A", TYPE);
-  [s, h] = add(s, "h", A);
-  const step = (sg: Signature, args: Term[]) => {
-    const r = apply(s, sg, args.map(id), fresh("app")());
-    assert.ok(r.ok);
-    if (r.ok) s = r.scope;
-    return r.ok ? ref(r.id) : Nat;
-  };
-  const nil = step(sigs.VNil, [A]);
-  assert.equal(text(s, entry(s, id(nil)).type), "Vec(A, Zero())");
-  const cons = step(sigs.VCons, [A, step(sigs.Zero, []), h, nil]);
-  assert.equal(render(s, cons, { canonical: false }).text, "?app@1:1");
-  assert.equal(text(s, cons), "VCons(A, Zero(), h, VNil(A))");
-  assert.equal(text(s, entry(s, id(cons)).type), "Vec(A, Succ(Zero()))");
-  const bad = apply(s, sigs.VCons, [A, A, h, nil].map(id), fresh("app")());
-  assert.ok(!bad.ok && bad.mismatch.kind === "type" && bad.mismatch.index === 1);
-  if (!bad.ok) assert.equal(bad.mismatch.message(), "n (position 2): A has type Type(), not Nat()");
-});
-
-test("instantiation checks is binders and arity", () => {
-  let s = base(), n, m, k;
-  [s, n] = add(s, "n", Nat);
-  [s, m] = add(s, "m", Nat, Succ(n));
-  [s, k] = add(s, "k", Nat);
-  const tele = [b("p", Nat), b("q", Nat, Succ(bound(0)))];
-  const ok = instantiate(s, tele, [id(n), id(m)]);
-  assert.ok(ok.ok);
-  const bad = instantiate(s, tele, [id(n), id(k)]);
-  assert.ok(!bad.ok && bad.mismatch.kind === "is" && bad.mismatch.index === 1);
-  if (!bad.ok) assert.equal(bad.mismatch.message(), "q (position 2): k is k, not Succ(n)");
-  const arity = instantiate(s, tele, [id(n)]);
-  assert.ok(!arity.ok && arity.mismatch.kind === "arity");
-});
-
 test("opening a telescope gives each is binder's entry its rule", () => {
   const o = open(base(), [b("x", Nat), b("y", Nat, Succ(bound(0))), b("z", app(T("IsZero"), bound(1)))], [], fresh("param"));
   const [x, y, z] = o.entries;
@@ -120,9 +85,7 @@ test("abstract unfolds application entries that mention the telescope's entries"
 test("abstract leaves no entry made while checking the telescope, so the result outlives that scope", () => {
   const top = base();
   const o = open(top, [b("A", TYPE)], [], fresh("param"));
-  const zero = apply(o.scope, sigs.Zero, [], fresh("app")());
-  assert.ok(zero.ok);
-  if (!zero.ok) return;
+  const zero = create(o.scope, Nat, Zero, fresh("app")());
   const ret = abstract(zero.scope, app(T("Vec"), ref(o.entries[0] ?? -1), ref(zero.id)), o.entries);
   assert.ok(same(ret, app(T("Vec"), bound(0), Zero)));
   assert.equal(render(top, subst(ret, [Nat])).text, "Vec(Nat(), Zero())");
@@ -256,5 +219,4 @@ test("anonymous entries render as markers with line and column, and refs locate 
   const info = entryInfo(s, id(x));
   assert.equal(info.type.text, "Nat()");
   assert.equal(info.rule?.text, "Succ(?call@2:3)");
-  assert.equal(renderSignature(s, sigs.VCons).text, "VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n)) : Vec(A, Succ(n))");
 });

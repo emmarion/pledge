@@ -2,10 +2,10 @@ import type { CheckResult, EntryId, EntryInfo, GlobalInfo, PositionInfo } from "
 import { check } from "../check.ts";
 import { hasKeyword, lex } from "../lexer.ts";
 import type { Phase, Span } from "../syntax.ts";
-import { lineCol } from "../render.ts";
+import { lineCol } from "../position.ts";
 import { fill, h, load, save, type Child } from "./dom.ts";
 import { Editor, highlight, type NameKind } from "./editor.ts";
-import { entryTip, evalView, explainView, globalTip, infoView, inspectView, statusView, verdict, type Ctx } from "./panels.ts";
+import { entryTip, evalView, explainView, globalTip, infoView, inspectView, statusView, verdict, type Host } from "./panels.ts";
 
 interface Box { text: string; key: string | null; holdsQed?: boolean }
 
@@ -14,7 +14,7 @@ interface ProgramSpec { label: string; boxes: number[] }
 const nameKinds = (globals: GlobalInfo[]): Map<string, NameKind> => new Map<string, NameKind>([["Type", "type"],
   ...globals.flatMap(g => g.kind === "binding" ? [] : [[g.name, g.kind] as const, ...(g.ctors ?? []).map(c => [c.name, "ctor"] as const)])]);
 
-class Program implements Ctx {
+class Program implements Host {
   result: CheckResult | null = null;
   status: Child = null;
   stale = false;
