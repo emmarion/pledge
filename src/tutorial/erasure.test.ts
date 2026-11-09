@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { check } from "../check.ts";
-import { scopeOf } from "../../tests/helpers.ts";
+import { explainTerm, scopeOf } from "../../tests/helpers.ts";
 import { page, program, run } from "../../tests/tutorial.ts";
 
 const errorAt = (slug: string, learner: string, at: string, after = "") => {
@@ -49,7 +49,7 @@ test("holes: Expected and the term at a `_` show its parameter and solution", ()
   const { source, r } = run("holes", page("holes").solution);
   const at = source.indexOf("vhead(_, _, v)") + 6;
   assert.deepEqual(r.infoAt(at).expected.entries?.map(e => [e.name, e.erased]), [["A", true]]);
-  assert.deepEqual([r.explainAt(at)?.canonical.text, r.explainAt(at + 3)?.canonical.text], ["Nat()", "Succ(Zero())"]);
+  assert.deepEqual([explainTerm(r, at)?.canonical.text, explainTerm(r, at + 3)?.canonical.text], ["Nat()", "Succ(Zero())"]);
 });
 
 test("holes: each limit is reported at the `_`", () => {

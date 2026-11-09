@@ -89,7 +89,7 @@ test("a removed value flows through lets unobserved but throws when matched on",
   assert.deepEqual(evalExpr(withTwo, empty, block([letT(["a", "b"], app("two"))], tuple(v("b"), v("a")))).map(showValue), ["_", "_"]);
   assert.throws(() => run(match(rem, 1, [pat("Zero"), nat(0)])), internal);
   assert.throws(() => evalStmt(fns, empty, patlet(pat("Succ", "p"), rem)), internal);
-  assert.throws(() => run({ kind: "sorry", tele: "_", span }), internal);
+  assert.throws(() => run({ kind: "sorry", tele: { kind: "_", span }, span }), internal);
 });
 
 test("an erased match or pattern let binds its fields to the removed value and needs exactly one branch", () => {

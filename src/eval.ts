@@ -73,7 +73,7 @@ export const evalExpr = (fns: Fns, env: Env, e: Expr): Value[] => {
     const br = m.mult !== "erased" ? m.branches.find(b => b.pat.ctor.name === tag(v))
       ?? internal(`no branch for ${showValue(v)}`)
       : only && !others.length ? only : internal(`an erased match with ${m.branches.length} branches`);
-    if (m.ann !== "_") returning(m.ann.length);
+    if (Array.isArray(m.ann)) returning(m.ann.length);
     return { expr: br.body, env: bindPattern(env, br.pat, v, m.mult) };
   };
   const enter = (env: Env, e: Expr): Step => {

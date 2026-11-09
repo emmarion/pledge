@@ -1,13 +1,13 @@
 import type { CheckResult, EntryId, EntryInfo, NameInfo, PositionInfo } from "../api.ts";
 import { check } from "../check.ts";
-import { hasKeyword, lex } from "../lexer.ts";
+import { hasKeyword, lex, type Token } from "../lexer.ts";
 import type { Phase, Span } from "../syntax.ts";
 import { lineCol } from "../position.ts";
 import { fill, h, load, save, type Child } from "./dom.ts";
 import { Editor, highlight, type NameKind } from "./editor.ts";
 import { marked } from "./links.ts";
-import { entryTip, evalView, explainView, globalsView, globalTip, infoView, inspectView, section, statusView,
-  verdict, type Host } from "./panels.ts";
+import { entryTip, evalView, explainTip, explainView, globalsView, globalTip, infoView, inspectView, section,
+  statusView, verdict, type Host } from "./panels.ts";
 
 interface Box { text: string; key: string | null; holdsQed?: boolean }
 
@@ -73,11 +73,17 @@ class Program implements Host {
   }
 
   private named(box: number, local: number): NameInfo | null {
-    return this.result && !this.stale ? this.result.nameAt(this.offset(box, local)) : null;
+    return this.fresh()?.nameAt(this.offset(box, local)) ?? null;
   }
 
-  describe(box: number, local: number): Child {
-    const n = this.named(box, local);
+  private fresh(): CheckResult | null { return this.stale ? null : this.result; }
+
+  describe(box: number, { kind, span }: Token): Child {
+    if (kind === "underscore") {
+      const x = this.fresh()?.explainAt(this.offset(box, span.start));
+      return x && x.span.end === this.offset(box, span.end) ? explainTip(x, this.showErased) : null;
+    }
+    const n = this.named(box, span.start);
     return !n ? null : n.kind === "entry" ? entryTip(n.entry, this.showErased)
       : globalTip(kindNames[n.kind], n.name, n.signature);
   }
@@ -171,7 +177,7 @@ export class Workspace {
           clearTimeout(this.timer);
           this.timer = setTimeout(() => this.run(affected), 200);
         },
-        () => this.select(i), local => home().describe(i, local), (local, name) => home().kindAt(i, local, name));
+        () => this.select(i), token => home().describe(i, token), (local, name) => home().kindAt(i, local, name));
     });
     this.program = this.programs[0]!;
     this.active = this.program.members.at(-1)!;

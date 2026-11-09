@@ -1,4 +1,4 @@
-import type { CheckResult, EntryInfo, ExpectedInfo, GlobalInfo, PositionInfo, Rendered } from "./api.ts";
+import type { CheckResult, EntryInfo, ExpectedEntry, ExpectedInfo, GlobalInfo, PositionInfo, Rendered } from "./api.ts";
 import { bound, canon, entries, entry, lookup, mapLeaves, mentions } from "./terms.ts";
 import type { Entry, EntryId, OpenTerm, Scope, Signature, Term } from "./terms.ts";
 import { cat, entryInfo, explain, render, renderTelescope } from "./render.ts";
@@ -13,11 +13,15 @@ const shift = (t: OpenTerm, env: readonly Term[]): OpenTerm =>
 const givenTerms = (given: Given | null): OpenTerm[] =>
   given?.wants.flatMap(w => [w.type, w.is].flatMap(t => t ? [shift(t, given.env)] : [])) ?? [];
 
+function expectedEntries(scope: Scope, given: Given): ExpectedEntry[] {
+  const show = (t: OpenTerm) => render(scope, shift(t, given.env), { bound: given.wants.map(w => w.name) });
+  return given.wants.map(w => ({ name: w.name, type: w.type && show(w.type), rule: w.is && show(w.is),
+    undetermined: w.type === null, erased: w.mult === "erased" }));
+}
+
 function expected(scope: Scope, given: Given | null): ExpectedInfo {
   if (!given) return { entries: null };
-  const show = (t: OpenTerm) => render(scope, shift(t, given.env), { bound: given.wants.map(w => w.name) });
-  const entries = given.wants.map(w => ({ name: w.name, type: w.type && show(w.type), rule: w.is && show(w.is),
-    undetermined: w.type === null, erased: w.mult === "erased" }));
+  const entries = expectedEntries(scope, given);
   return given.params === undefined ? { entries } : { params: entries.slice(0, given.params),
     entries: entries.slice(given.params) };
 }
@@ -95,7 +99,8 @@ export function queries(st: State, fallback: (offset: number) => Snapshot):
     },
     explainAt: offset => {
       const p = innermost(st.explains, offset);
-      return p ? explain(p.scope, written(p.scope, p.term)) : null;
+      return p ? { span: p.span, ...("wants" in p.of ? { stands: expectedEntries(p.scope, p.of) }
+        : explain(p.scope, written(p.scope, p.of))) } : null;
     },
     evalAt: (offset, text) => {
       const parsed = parseExpr(text, st.phase);

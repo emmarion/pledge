@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { scopeOf } from "../../tests/helpers.ts";
+import { explainTerm, scopeOf } from "../../tests/helpers.ts";
 import { page, run } from "../../tests/tutorial.ts";
 import type { PositionInfo } from "../api.ts";
 
@@ -28,7 +28,7 @@ test("knowledge: Scope shows two's rule canonically, and the Term panel and the 
   const { source, r } = run("knowledge", page("knowledge").initial);
   const at = source.lastIndexOf("two");
   assert.ok(scopeOf(r.infoAt(at)).includes("two : Nat() is Succ(Succ(Zero()))"));
-  const explained = r.explainAt(at);
+  const explained = explainTerm(r, at);
   assert.equal(explained?.canonical.text, "Succ(Succ(Zero()))");
   assert.deepEqual(explained?.rewrites.map(w => `${w.from.text} -> ${w.to.text}`), ["two -> Succ(one)", "Succ(one) -> Succ(Succ(Zero()))"]);
   const typed = r.evalAt(at, "Succ(two)");

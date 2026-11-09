@@ -25,7 +25,7 @@ export interface Pattern { ctor: Name; fields: Id[]; span: Span }
 export type Mark = "subterm" | "same";
 export interface Arg { mark: Mark | null; expr: Expr; span: Span }
 
-export type Tele = WrittenBinder[] | "_";
+export type Tele = WrittenBinder[] | { kind: "_"; span: Span };
 
 export interface Branch { pat: Pattern; body: Expr; span: Span }
 

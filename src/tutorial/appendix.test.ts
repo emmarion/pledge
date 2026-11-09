@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { check } from "../check.ts";
-import { scopeOf, verdicts } from "../../tests/helpers.ts";
+import { explainTerm, scopeOf, verdicts } from "../../tests/helpers.ts";
 import { page, program, run } from "../../tests/tutorial.ts";
 
 test("tuple-let-telescope: Expected lists both binders, and dropping m's type is an error at the reference", () => {
@@ -38,14 +38,14 @@ test("hole-through-block: the _s are solved through the block's final expression
   const { source, r } = run("hole-through-block", page("hole-through-block").solution);
   assert.deepEqual(r.prints.map(p => p.value), ["Succ(Zero())", "Succ(Zero())"]);
   const at = source.indexOf("vhead(_, _, { let") + 6;
-  assert.deepEqual([r.explainAt(at)?.canonical.text, r.explainAt(at + 3)?.canonical.text], ["Nat()", "Zero()"]);
+  assert.deepEqual([explainTerm(r, at)?.canonical.text, explainTerm(r, at + 3)?.canonical.text], ["Nat()", "Zero()"]);
   assert.deepEqual(r.infoAt(at).expected.entries?.map(e => [e.name, e.erased]), [["A", true]]);
 });
 
 test("hole-taint: a _ solved to a sorry result taints the call; with Nat() the goal is proved", () => {
   const { source, r } = run("hole-taint", page("hole-taint").initial);
   assert.deepEqual([verdicts(r), r.prints.map(p => p.value)], [[true, true, false], ["sorry"]]);
-  assert.equal(r.explainAt(source.indexOf("VNil(_));") + 5)?.canonical.text, "A");
+  assert.equal(explainTerm(r, source.indexOf("VNil(_));") + 5)?.canonical.text, "A");
   const clean = run("hole-taint", page("hole-taint").solution).r;
   assert.deepEqual([verdicts(clean), clean.prints.map(p => p.value)], [[false, true, true], ["Zero()"]]);
 });

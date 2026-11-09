@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { CheckResult, EntryInfo, PositionInfo } from "./api.ts";
-import { file, files, harness, isZero, nat, qedChecks, vecBy, vheadBy, verdicts } from "../tests/helpers.ts";
+import { explainTerm, file, files, harness, isZero, nat, qedChecks, standsFor, vecBy, verdicts, vheadBy } from "../tests/helpers.ts";
 
 const { ok, err } = harness(2);
 const vec = vecBy("erased "), vhead = vheadBy("erased ");
@@ -141,16 +141,26 @@ test("_ stands for an erased argument, solved from later arguments and from what
   const r = ok(`${nat}fn f(n : Nat(), erased m is Succ(n)) -> (r : Nat()) { n }\nprint f(Zero(), _);\n`);
   assert.deepEqual(prints(r), ["Zero()"]);
   const source = `${nat}${vec}let x = VCons(_, _, Zero(), VNil(_));\n`;
-  assert.equal(ok(source).explainAt(source.indexOf("_"))?.canonical.text, "Nat()");
+  assert.equal(explainTerm(ok(source), source.indexOf("_"))?.canonical.text, "Nat()");
   assert.deepEqual(ok(source).infoAt(source.indexOf("_")).expected.entries?.map(e => [e.name, e.type?.text, e.erased]), [["A", "Type()", true]]);
 });
 
 test("explainAt shows a skeleton term with its _ solved", () => {
   const source = `${nat}${vec}fn g(erased A : Type(), v : Vec(A, Zero()), a : A) -> (r : A) { a }\nlet (z : Vec(Nat(), Zero())) = VNil(_);\nprint g(_, { VNil(_) }, Zero());\n`;
   const r = ok(source), nested = source.indexOf("VNil(_) }");
-  assert.equal(r.explainAt(source.indexOf("VNil(_);") + 1)?.canonical.text, "VNil(Nat())");
-  assert.equal(r.explainAt(nested + 1)?.canonical.text, "VNil(Nat())");
-  assert.equal(r.explainAt(nested + 5)?.canonical.text, "Nat()");
+  assert.equal(explainTerm(r, source.indexOf("VNil(_);") + 1)?.canonical.text, "VNil(Nat())");
+  assert.equal(explainTerm(r, nested + 1)?.canonical.text, "VNil(Nat())");
+  assert.equal(explainTerm(r, nested + 5)?.canonical.text, "Nat()");
+});
+
+test("explainAt on a _ standing for a telescope gives it with the multiplicities the _ takes", () => {
+  const source = `${nat}fn f(n : Nat()) -> (erased m : Nat(), r : Nat()) {\n  match n : _ {\n    Zero() => (Zero(), Zero());\n    Succ(k) => (k, k);\n  }\n}\nlet (erased a : Nat(), b is Zero()) = sorry(_);\n`;
+  const r = ok(source);
+  assert.deepEqual(standsFor(r, source.indexOf(": _") + 2), ["erased m : Nat()", "r : Nat()"]);
+  assert.deepEqual(standsFor(r, source.lastIndexOf("_")), ["erased a : Nat()", "b : Nat() is Zero()"]);
+  const hole = `${nat}${vec}let x = VCons(_, _, Zero(), VNil(_));\n`, at = hole.indexOf("_");
+  const solved = ok(hole).explainAt(at);
+  assert.deepEqual([solved && "canonical" in solved ? solved.canonical.text : null, solved?.span], ["Nat()", { start: at, end: at + 1 }]);
 });
 
 test("_ is an error for a many parameter and where it cannot be inferred", () => {

@@ -63,6 +63,8 @@ export type NameInfo =
 
 export interface Rewrite { from: Rendered; to: Rendered; by: EntryId; at: Span }
 
+export type Explained = { span: Span } & ({ canonical: Rendered; rewrites: Rewrite[] } | { stands: ExpectedEntry[] });
+
 export interface CheckResult {
   phase: Phase;
   error: Diagnostic | null;
@@ -74,7 +76,7 @@ export interface CheckResult {
   infoAt(offset: number): PositionInfo;
   nameAt(offset: number): NameInfo | null;
 
-  explainAt(offset: number): { canonical: Rendered; rewrites: Rewrite[] } | null;
+  explainAt(offset: number): Explained | null;
 
   evalAt(offset: number, text: string):
     | { type: Rendered; canonicalType: Rendered; rule: Rendered | null; canonicalRule: Rendered | null }

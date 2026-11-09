@@ -77,9 +77,7 @@ and never renumbered (rule 15); a removed item leaves a gap.
     `Type` is lexed as a name, not a keyword (§18).
 13. **Spans.** A statement, value-constructor declaration or branch
     spans through its own `;` but not extra ones; a binder's span
-    includes its `subterm` mark and multiplicity. A `_` standing for a
-    whole telescope has no span of its own, so an error about it
-    points at the enclosing `match` or `sorry`.
+    includes its `subterm` mark and multiplicity.
 
 ## Terms, scope and forcing
 

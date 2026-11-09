@@ -111,6 +111,7 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
   const tele = (): WrittenBinder[] => parens(binder, true);
   const isUnderscoreTele = (): boolean => peek().kind === "underscore" && !isText(peek(1), ":")
     && !isText(peek(1), "is");
+  const whole = (): Tele => ({ kind: "_", span: next().span });
 
   const param = (): Param => {
     const begin = start();
@@ -161,7 +162,7 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
       const m = mult();
       const scrut = expr();
       expect(":");
-      const ann: Tele = peek().kind === "underscore" ? (next(), "_") : tele();
+      const ann = peek().kind === "underscore" ? whole() : tele();
       const branches = braces((): Branch => {
         const branchBegin = start();
         const pat = pattern();
@@ -173,7 +174,7 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
     }
     if (eat("sorry")) {
       expect("(");
-      const sorryTele: Tele = isUnderscoreTele() ? (next(), "_") : commaList(binderWith(false), ")", true);
+      const sorryTele = isUnderscoreTele() ? whole() : commaList(binderWith(false), ")", true);
       expect(")");
       return { kind: "sorry", tele: sorryTele, span: spanFrom(begin) };
     }

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { check } from "./check.ts";
-import { file, files, harness, isZero, nat, qedChecks, scopeOf, vecBy, verdicts } from "../tests/helpers.ts";
+import { explainTerm, file, files, harness, isZero, nat, qedChecks, scopeOf, standsFor, vecBy, verdicts } from "../tests/helpers.ts";
 
 const { ok, err } = harness(1);
 const vec = vecBy("");
@@ -120,7 +120,8 @@ test("goal and qed: at most once each, qed after goal", () => {
 test("sorry: qed sorry(_) checks but proves nothing", () => {
   const r = ok("data False() : Type() {}\ngoal False();\nqed sorry(_);\n");
   assert.deepEqual(verdicts(r), [true, true, false]);
-  err(`${nat}fn f(n : Nat()) -> (r : Nat()) { Succ(sorry(_)) }\n`, "sorry(_)", /`_` stands for the whole telescope/);
+  err(`${nat}fn f(n : Nat()) -> (r : Nat()) { Succ(sorry(_)) }\n`, "_", /`_` stands for the whole telescope/, "sorry(");
+  err(`${nat}print match Zero() : _ { Zero() => Zero(); Succ(p) => p; };\n`, "_", /and none is given here \(§10\)/, ": _");
 });
 
 test("taint survives laundering through a function (§12)", () => {
@@ -213,11 +214,29 @@ test("inspect reports position information", () => {
 test("explainAt gives the canonical form and the rewrites of a skeleton term", () => {
   const source = file("design_let_is.pledge");
   const r = ok(source);
-  const ex = r.explainAt(offset(source, "= e;", 2));
+  const ex = explainTerm(r, offset(source, "= e;", 2));
   assert.equal(ex?.canonical.text, "Succ(Zero())");
   assert.deepEqual(ex?.rewrites.map(w => `${w.from.text} -> ${w.to.text}`), ["e -> Succ(n)", "Succ(n) -> Succ(Zero())"]);
-  assert.equal(r.explainAt(offset(source, "Succ(n) = e"))?.canonical.text, "Succ(Zero())");
-  assert.equal(r.explainAt(0), null);
+  assert.equal(explainTerm(r, offset(source, "Succ(n) = e"))?.canonical.text, "Succ(Zero())");
+  assert.equal(explainTerm(r, 0), null);
+});
+
+test("explainAt on a _ standing for a telescope gives that telescope, canonical where the annotation is checked", () => {
+  const vuncons = `${nat}${vec}fn vuncons(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (hd : A, tl : Vec(A, n)) {\n  match v : _ {\n    VCons(_, _, h, t) => (h, t);\n  }\n}\n`;
+  const r = ok(vuncons), at = offset(vuncons, ": _ {", 2);
+  assert.deepEqual(standsFor(r, at), ["hd : A", "tl : Vec(A, n)"]);
+  assert.deepEqual(r.explainAt(at)?.span, { start: at, end: at + 1 });
+  const sorry = `${nat}fn f(n : Nat()) -> (r : Nat(), s is Succ(n)) { sorry(_) }\nlet (m : Nat(), w is Succ(m)) = sorry(_);\n`;
+  const s = ok(sorry);
+  assert.deepEqual(standsFor(s, offset(sorry, "(_) }", 1)), ["r : Nat()", "s : Nat() is Succ(n)"]);
+  assert.deepEqual(standsFor(s, sorry.lastIndexOf("_")), ["m : Nat()", "w : Nat() is Succ(m)"]);
+  const nested = `${nat}fn g(n : Nat(), m : Nat()) -> (r : Nat(), s is n) {\n  match n : _ {\n    Zero() => match m : _ {\n      Zero() => (m, Zero());\n      Succ(k) => (k, Zero());\n    };\n    Succ(p) => (p, n);\n  }\n}\n`;
+  const g = ok(nested);
+  assert.deepEqual(standsFor(g, offset(nested, "n : _", 4)), ["r : Nat()", "s : Nat() is n"]);
+  assert.deepEqual(standsFor(g, offset(nested, "m : _", 4)), ["r : Nat()", "s : Nat() is Zero()"]);
+  const unnamed = `${nat}fn h(n : Nat()) -> (r : Nat()) { Succ(match n : (r : Nat()) { Zero() => n; Succ(_) => n; }) }\n`;
+  const field = offset(unnamed, "Succ(_)", 5);
+  assert.notEqual(ok(unnamed).explainAt(field)?.span.end, field + 1);
 });
 
 test("evalAt checks typed text in the scope at a position", () => {
@@ -264,7 +283,7 @@ test("function goals: plusZero proves the goal, binder names and subterm marks a
   const p = r.evalAt(inGoal, "p");
   if ("error" in p) assert.fail(p.error.message());
   assert.equal(p.type.text, "Plus(n, Zero(), r)");
-  assert.equal(r.explainAt(inGoal)?.canonical.text, "r");
+  assert.equal(explainTerm(r, inGoal)?.canonical.text, "r");
   assert.deepEqual(verdicts(ok(plusGoal("(a : Nat(), b : Nat(), _ : Plus(a, Zero(), b)) -> (_ : Eq(Nat(), b, a))"))), [false, true, true]);
 });
 
@@ -345,7 +364,7 @@ test("tuple let binders are a telescope, checked against the results they name (
   err(`${nat}let (m : Nat(), w is Succ(m)) = (Zero(), ${nats(2)});\n`, nats(2), /binder `w` must be `Succ\(Zero\(\)\)`, and this is `Succ\(Succ\(Zero\(\)\)\)`/);
   err(`${nat}let (m : Nat(), w is Succ(m)) = (Zero(), Zero());\n`, "Zero()", /binder `w` must be `Succ\(Zero\(\)\)`, and this is `Zero\(\)`/, ", Zero());");
   err(`${nat}${vec}let (m : Type(), w : Vec(Nat(), m)) = (Nat(), VNil(Nat()));\n`, "m", /parameter `n` of `Vec` must have type `Nat\(\)`, and this has type `Type\(\)`/, "Nat(), m)");
-  err(`${nat}let (m, w : Nat()) = sorry(_);\n`, "sorry(_)", /`_` stands for the whole telescope/);
+  err(`${nat}let (m, w : Nat()) = sorry(_);\n`, "_", /`_` stands for the whole telescope/, "sorry(");
   ok(`${nat}let (m : Nat(), w is Succ(m)) = sorry(_);\n`);
   ok(`${nat}let (m, w : Nat()) = (Zero(), Zero());\nprint m;\n`);
   err(`${nat}let (w is Succ(m), m : Nat()) = (Zero(), Zero());\n`, "m", /`m` is not in scope/);

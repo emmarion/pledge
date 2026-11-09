@@ -20,6 +20,14 @@ export const verdicts = (r: CheckResult) => [r.containsSorry, qedChecks(r), r.go
 const entryText = (e: EntryInfo): string =>
   `${e.names.join(",") || `?${e.origin.kind}`} : ${e.type.text}${e.rule ? ` is ${e.rule.text}` : ""}`;
 export const scopeOf = (info: PositionInfo): string[] => info.scope.map(entryText);
+export const explainTerm = (r: CheckResult, at: number) => {
+  const x = r.explainAt(at);
+  return x && "canonical" in x ? x : null;
+};
+export const standsFor = (r: CheckResult, at: number): string[] | null => {
+  const x = r.explainAt(at);
+  return x && "stands" in x ? x.stands.map(e => `${e.erased ? "erased " : ""}${e.name ?? "_"} : ${e.type?.text}${e.rule ? ` is ${e.rule.text}` : ""}`) : null;
+};
 
 export const harness = (phase: Phase) => ({
   ok(source: string, under: Phase = phase): CheckResult {

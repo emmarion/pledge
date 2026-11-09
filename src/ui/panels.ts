@@ -1,4 +1,5 @@
-import type { CheckResult, EntryId, EntryInfo, ExpectedEntry, PositionInfo, Rendered, Rewrite } from "../api.ts";
+import type { CheckResult, EntryId, EntryInfo, ExpectedEntry, Explained, PositionInfo, Rendered, Rewrite }
+  from "../api.ts";
 import { h, type Child } from "./dom.ts";
 import { linked, marked, unbroken } from "./links.ts";
 
@@ -110,12 +111,18 @@ export const globalsView = (info: PositionInfo, ctx: Host): HTMLElement => h("de
     g.ctors && h("ul", {}, g.ctors.map(c => h("li", {}, signed(c.name, rendered(c.signature, ctx))))))),
     "No top-level names in scope."));
 
+const text = (r: Rendered | null): Child => r && unbroken(r.text);
+
 export const entryTip = (e: EntryInfo, showErased: boolean): Child =>
-  [h("code", {}, typed(names(e), unbroken(e.type.text), e.rule && unbroken(e.rule.text))),
-    tag("erased", showErased && e.erased)];
+  [h("code", {}, typed(names(e), text(e.type), text(e.rule))), tag("erased", showErased && e.erased)];
 
 export const globalTip = (kind: string, name: string, signature: Rendered): Child =>
-  globalLine(kind, name, unbroken(signature.text));
+  globalLine(kind, name, text(signature));
+
+export const explainTip = (r: Explained, showErased: boolean): Child => h("code", {}, "stands" in r
+  ? ["(", r.stands.map((e, i) => [i > 0 && ", ", showErased && e.erased && "erased ",
+    typed(e.name ?? "_", text(e.type), text(e.rule))]), ")"]
+  : text(r.canonical));
 
 export const inspectView = (info: PositionInfo, ctx: Host): HTMLElement => {
   const body = h("div", { class: "inspect-body" });
@@ -130,9 +137,10 @@ const rewriteView = (r: Rewrite, ctx: Host): HTMLElement => {
     muted("by "), goto(ctx, r.at.start, by?.names.join(", ") || `the fact at ${ctx.where(r.at.start)}`));
 };
 
-export const explainView = (result: ReturnType<CheckResult["explainAt"]>, ctx: Host): Child =>
+export const explainView = (result: Explained | null, ctx: Host): Child =>
   result === null
     ? muted("No term at the caret.")
+    : "stands" in result ? [h("p", {}, "Stands for"), expectedList(result.stands, ctx)]
     : [h("p", {}, "Canonical form: ", rendered(result.canonical, ctx)),
       result.rewrites.length ? h("ol", { class: "rewrites" }, result.rewrites.map(r => rewriteView(r, ctx)))
         : muted("Already canonical.")];

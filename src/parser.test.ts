@@ -112,14 +112,14 @@ test("mutual data, empty match, comptime, sorry and statements", () => {
   });
   assert.deepEqual(strip(ok(`${nat}goal Nat(); qed sorry(_); inspect; print (Zero(), x);`).tops.slice(1)), [
     { kind: "goal", type: term("Nat") },
-    { kind: "qed", expr: { kind: "sorry", tele: "_" } },
+    { kind: "qed", expr: { kind: "sorry", tele: { kind: "_" } } },
     { kind: "inspect" },
     { kind: "print", expr: { kind: "tuple", elems: [app("Zero"), variable("x")] } },
   ]);
   assert.deepEqual(strip(ok("let (a, _ : Nat(), c is Zero()) = { inspect; match x : _ { Zero() => (y); } };").tops[0]), {
     kind: "let",
     binders: [{ name: id("a"), ann: null, mult: null }, { name: id(null), ann: { kind: "type", term: term("Nat") }, mult: null }, { name: id("c"), ann: { kind: "is", term: term("Zero") }, mult: null }],
-    rhs: { kind: "block", stmts: [{ kind: "inspect" }], final: { kind: "match", mult: null, scrut: variable("x"), ann: "_", branches: [{ pat: { ctor: id("Zero"), fields: [] }, body: { kind: "tuple", elems: [variable("y")] } }] } },
+    rhs: { kind: "block", stmts: [{ kind: "inspect" }], final: { kind: "match", mult: null, scrut: variable("x"), ann: { kind: "_" }, branches: [{ pat: { ctor: id("Zero"), fields: [] }, body: { kind: "tuple", elems: [variable("y")] } }] } },
   });
 });
 
@@ -206,7 +206,7 @@ let w = f(_, C(_, Zero()));
   assert.ok(patlet?.kind === "patlet" && tuple?.kind === "let" && single?.kind === "let");
   assert.equal(patlet.mult, "erased");
   assert.deepEqual(tuple.binders.map(b => b.mult), ["erased", "many"]);
-  assert.ok(tuple.rhs.kind === "match" && tuple.rhs.ann !== "_");
+  assert.ok(tuple.rhs.kind === "match" && Array.isArray(tuple.rhs.ann));
   assert.equal(tuple.rhs.mult, "erased");
   assert.deepEqual(tuple.rhs.ann.map(b => b.mult), ["erased", null]);
   assert.deepEqual(single.binders.map(b => [b.name.name, b.mult]), [["c", "erased"]]);

@@ -176,7 +176,7 @@ function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snaps
     }
     case "match": return match(ctx, local, e, given, snap);
     case "sorry": {
-      const ann = annotation(ctx, local, e.tele, given, e.span);
+      const ann = annotation(ctx, local, e.tele, given);
       const o = opened(local, ann.tele, ann.env, "sorry", e.span, () => true);
       return produced(ctx, o.local, given, o.results, e.span, e);
     }
@@ -310,7 +310,7 @@ function match(ctx: Ctx, local: Local, e: Match, given: Given | null, snap: Snap
   const erased = e.mult === "erased";
   const scrut = expr(erased ? { ...ctx, erased } : ctx, local, e.scrut, null, "the scrutinee of a `many` match");
   const s = single(scrut, e.scrut.span), inner = scrut.local;
-  const ann = annotation(ctx, inner, e.ann, given, e.span);
+  const ann = annotation(ctx, inner, e.ann, given);
   const fs = forcings(ctx, inner, s.id, e.scrut.span, e.branches.map(b => b.pat), e.span, erased);
   const refuted = snap.refutations = refutations(fs);
   const branchOf = (pat: Pattern): Forcing => fs.find(f => f.pat === pat)!;
@@ -329,8 +329,8 @@ function match(ctx: Ctx, local: Local, e: Match, given: Given | null, snap: Snap
       "a branch being absurd when its body is a match with no branches, possibly the final expression of a block, " +
       "since evaluation has no value to choose a branch by");
   const wants = ann.tele.map((b, i) => erasedAt(given, i) ? { ...b, mult: "erased" as const } : b);
-  const label = e.ann === "_" ? given?.label
-    : (i: number) => labelled("annotation entry", ann.tele[i]?.name ?? null, i);
+  const label = Array.isArray(e.ann) ? (i: number) => labelled("annotation entry", ann.tele[i]?.name ?? null, i)
+    : given?.label;
   const bodies = e.branches.map(br => {
     const won = survivor(branchOf(br.pat), br.pat.span, "");
     const bound = bind(ctx, { ...inner, scope: won.scope, taintedBy: reach(inner, s, e.scrut.span) }, br.pat.fields,
@@ -347,13 +347,14 @@ function match(ctx: Ctx, local: Local, e: Match, given: Given | null, snap: Snap
       ? [{ ...br, body: bodies[j]!.tree }] : []) });
 }
 
-function annotation(ctx: Ctx, local: Local, tele: Tele, given: Given | null,
-    span: Span): { tele: Telescope; env: readonly Ref[] } {
-  if (tele !== "_") return { tele: telescope(ctx, local, tele, "binder").tele, env: [] };
-  if (!given?.whole) return fail(span, () =>
+function annotation(ctx: Ctx, local: Local, tele: Tele, given: Given | null): { tele: Telescope; env: readonly Ref[] } {
+  if (Array.isArray(tele)) return { tele: telescope(ctx, local, tele, "binder").tele, env: [] };
+  if (!given?.whole) return fail(tele.span, () =>
     "`_` stands for the whole telescope given at its position, and none is given here (§10)");
-  return { tele: given.wants.map(w => w.type ? { ...w, type: w.type }
-    : fail(span, () => "internal: an undetermined entry in a whole telescope")), env: given.env };
+  const wants = given.wants.map(w => w.type ? { ...w, type: w.type }
+    : fail(tele.span, () => "internal: an undetermined entry in a whole telescope"));
+  point(ctx, local.scope, tele.span, given);
+  return { tele: wants, env: given.env };
 }
 
 function dataCtors(ctx: Ctx, scope: Scope, id: EntryId, span: Span): (Global & { kind: "ctor" })[] {

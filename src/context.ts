@@ -59,7 +59,7 @@ export interface Snapshot {
   decl: EntryId | null;
 }
 
-interface ExplainPoint { span: Span; scope: Scope; term: Term }
+interface ExplainPoint { span: Span; scope: Scope; of: Term | Given }
 
 export type Declared = Exclude<Global, { kind: "binding" }>;
 export interface Occurrence { span: Span; local: Local; of: EntryId | Declared }
@@ -120,8 +120,8 @@ export function record(ctx: Ctx, local: Local, span: Span, given: Given | null, 
   return snap;
 }
 
-export function point(ctx: Ctx, scope: Scope, span: Span, term: Term): void {
-  if (ctx.st.record) ctx.st.explains.push({ span, scope, term });
+export function point(ctx: Ctx, scope: Scope, span: Span, of: Term | Given): void {
+  if (ctx.st.record) ctx.st.explains.push({ span, scope, of });
 }
 
 export function occur(ctx: Ctx, span: Span, local: Local, of: EntryId | Declared): void {

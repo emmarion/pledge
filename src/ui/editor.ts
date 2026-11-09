@@ -101,7 +101,7 @@ export class Editor {
   private hoverTimer = 0;
 
   constructor(text: string, editable: boolean, label: string | null, private readonly phase: () => Phase,
-    onEdit: () => void, onCaret: () => void, private readonly describe: (offset: number) => Child,
+    onEdit: () => void, onCaret: () => void, private readonly describe: (token: Token) => Child,
     private readonly kinds: (offset: number, name: string) => NameKind | null | undefined) {
     this.area = h("textarea", {
       class: "source", wrap: "off", spellcheck: "false", autocomplete: "off", autocapitalize: "off",
@@ -181,17 +181,18 @@ export class Editor {
   }
 
   private hover(e: MouseEvent | null): void {
-    const at = e && [...this.layer.querySelectorAll<HTMLElement>(".hl-name")]
+    const at = e && [...this.layer.querySelectorAll<HTMLElement>(".hl-name, .hl-hole")]
       .find(el => within(el.getBoundingClientRect(), e.clientX, e.clientY));
     const offset = at ? Number(at.dataset.at) : -1;
-    const token = this.tokens.find(t => t.kind === "name" && t.span.start <= offset && offset < t.span.end) ?? null;
+    const token = this.tokens.find(t => (t.kind === "name" || t.kind === "underscore") && t.span.start <= offset
+      && offset < t.span.end) ?? null;
     if (token === this.hovered) return;
     this.hovered = token;
     clearTimeout(this.hoverTimer);
     tip.hidden = true;
     if (!token || !at) return;
     this.hoverTimer = setTimeout(() => {
-      const content = this.describe(token.span.start);
+      const content = this.describe(token);
       if (!content) return;
       fill(tip, content);
       if (!tip.isConnected) document.body.append(tip);

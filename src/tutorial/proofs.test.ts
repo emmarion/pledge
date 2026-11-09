@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { check } from "../check.ts";
-import { scopeOf, verdicts } from "../../tests/helpers.ts";
+import { explainTerm, scopeOf, verdicts } from "../../tests/helpers.ts";
 import { page, program, run } from "../../tests/tutorial.ts";
 
 const infoAt = (slug: string, learner: string, marker: string, nth = 0) => {
@@ -88,7 +88,7 @@ test("sorry: sorry(_) takes the let's type, taints p, and an explicit telescope 
 test("equality: two in the goal canonicalizes to Succ(Succ(Zero())) in two rewrites", () => {
   const p = page("equality");
   const source = program(p.boxes, p.initial);
-  const explained = check(source, p.phase).explainAt(source.indexOf("two, Succ(Succ"));
+  const explained = explainTerm(check(source, p.phase), source.indexOf("two, Succ(Succ"));
   assert.equal(explained?.canonical.text, "Succ(Succ(Zero()))");
   assert.equal(explained?.rewrites.length, 2);
 });
