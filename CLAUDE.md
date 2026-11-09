@@ -1,14 +1,8 @@
 # Working agreement for this project
 
-> **Origin of this file.** This file was copied from the working
-> agreement of [Sleight](https://github.com/emmarion/sleight), the
-> language Pledge is loosely based on, and is only partly adapted to
-> Pledge. Rules 2, 3, 14, 16 and 17 still describe Sleight: they name
-> OCaml, `dune`, `slc`, WARNINGS.md and an audit or bug index, none of
-> which this repo has. Where a rule refers to something this repo
-> lacks, ask the owner how it applies rather than guessing. The
-> owner's intent for each rule is presumably the same here, but that
-> has not been confirmed rule by rule.
+> **Origin of this file.** Adapted from the working agreement of
+> [Sleight](https://github.com/emmarion/sleight), the language Pledge
+> is loosely based on.
 
 This is a from-scratch prototype TypeScript implementation of a
 programming language design belonging to the repo owner. Ground rules below were set
@@ -22,23 +16,19 @@ by the owner and apply to every session.
    along, but even there, defaulting to the same hedging habit is safest.
 
 2. **Compile a claim rather than arguing it, when reasonable.** Prefer
-   `dune build` / running the type checker as the arbiter over prose
-   argument about whether something type-checks or behaves a given way.
-
-3. **This OCaml install may exceed what's in Claude's training weights**
-   for existential types, GADTs, `let rec` inlining, etc. — e.g. a `let` or plain function can
-   open an existential type *and* get proper GADT branch refutation of the
-   other variants at the same time. Don't assume training-data intuitions
-   about OCaml's type-system limits are current; check by compiling (rule 2).
+   `npm run typecheck`, `npm test`, or running Pledge's checker on a
+   program as the arbiter over prose argument about whether something
+   type-checks or behaves a given way.
 
 4. **Minimal comments.** Do not add comments unless the owner gives
    explicit permission for that instance. The one standing exception: brief
-   notes explaining GADT type variables, especially where a variable's
-   binding site is far from its use — those are welcome without asking.
+   notes explaining a type parameter whose binding site is far from its
+   use — those are welcome without asking.
 
 5. **Keep code succinct.** Optimize for a small overall codebase. Use
    descriptive names, but aggressively DRY — abstract away repetition
-   rather than duplicating variants of similar code.
+   rather than duplicating variants of similar code. Lines of code are
+   at most 120 columns; test files and the tutorial's prose are exempt.
 
 6. **Don't optimize for performance.** Correctness first, then
    readability. It's fine — expected — for edge cases to drive the core
@@ -49,9 +39,9 @@ by the owner and apply to every session.
 7. **Design first, implementation second.** Prioritize the quality of the
    resulting language design over ease/difficulty of implementing it.
 
-8. **This is a feature-showcase prototype, not a product.** No goals
-   around ergonomics or performance. Soundness/correctness is essential
-   and non-negotiable.
+8. **This is a teaching tool, not a product.** No goals around
+   performance. What the learner sees — messages, panels, the tutorial —
+   matters. Soundness/correctness is essential and non-negotiable.
 
 9. **Think like a mathematician.** Reach for abstraction and generality
    as primary tools, not just as cleanup after the fact.
@@ -101,8 +91,8 @@ by the owner and apply to every session.
     spec was silent and the code had to do something. An entry there
     saying the owner decided something is a contradiction in terms.
     When the owner does decide, the decision goes to DESIGN.md under
-    rules 11 and 12, the audit or bug index is marked
-    as those files' own conventions have it, and any ASSUMPTIONS entry
+    rules 11 and 12, it leaves DECISIONS.md once DESIGN.md states it,
+    and any ASSUMPTIONS entry
     that stood in for the question is removed rather than amended. Do
     not add an entry recording what the owner just said in chat,
     however faithfully — and do not take the entries already there that
@@ -114,13 +104,8 @@ by the owner and apply to every session.
     section that goes away is deleted and its number left as a gap;
     nothing after it moves.
 
-16. **Compiler warnings are documented in WARNINGS.md.**
-
-17. **Lazy diagnostics; time slc on slc.** Build message text only when
-    the message is reported. Before an elaborator change is pushed to
-    any branch other than the session's own working branch, time slc
-    compiling itself against `origin/main`'s slc on the same input; a
-    slowdown beyond noise is a regression.
+17. **Lazy diagnostics.** Build message text only when the message is
+    reported.
 
 18. **Docs state the present, not the past.** DESIGN.md, README.md
     and the other notes describe how things are now. They are not a
