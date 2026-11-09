@@ -1,7 +1,7 @@
 import type { Diagnostic, RefutationInfo, Rendered, TerminationInfo } from "./api.ts";
-import type { Id, Mult, Phase, Span } from "./syntax.ts";
+import type { Id, Phase, Span } from "./syntax.ts";
 import { entry, lookup, mapLeaves } from "./terms.ts";
-import type { EntryId, OpenTerm, Ref, Scope, Signature, Telescope, Term } from "./terms.ts";
+import type { Binder, EntryId, OpenTerm, Ref, Scope, Signature, Telescope, Term } from "./terms.ts";
 
 export class Failure {
   readonly diag: Diagnostic;
@@ -29,8 +29,14 @@ export type Global =
   | { kind: "ctor"; name: string; sig: Signature }
   | { kind: "binding"; name: string; id: EntryId };
 
-export interface Want { name: string | null; type: OpenTerm | null; is: OpenTerm | null; mult: Mult; span: Span }
-export interface Given { wants: readonly Want[]; env: readonly Ref[]; whole: boolean; params?: number }
+export type Want = Omit<Binder, "type"> & { type: OpenTerm | null };
+export interface Given {
+  wants: readonly Want[];
+  env: readonly Ref[];
+  whole: boolean;
+  params?: number;
+  label?: (i: number) => string;
+}
 
 export interface Local {
   scope: Scope;
@@ -78,10 +84,17 @@ export const HOLE = "_";
 
 const visible = (ctx: Ctx): number => ctx.limit ?? ctx.st.globals.length;
 
-export function global(ctx: Ctx, name: string): Global | undefined {
-  const i = ctx.st.index.get(name);
-  return i !== undefined && i < visible(ctx) ? ctx.st.globals[i] : undefined;
+export function globalAt(st: State, limit: number, name: string): Global | undefined {
+  const i = st.index.get(name);
+  return i !== undefined && i < limit ? st.globals[i] : undefined;
 }
+
+export const global = (ctx: Ctx, name: string): Global | undefined => globalAt(ctx.st, visible(ctx), name);
+
+export const code = (text: string | null): string => `\`${text ?? "_"}\``;
+
+export const labelled = (role: string, name: string | null, i: number, owner?: string): string =>
+  `${role} ${name === null ? i + 1 : code(name)}${owner === undefined ? "" : ` of ${code(owner)}`}`;
 
 export function declareGlobal(st: State, g: Global): void {
   if (g.kind !== "binding") st.index.set(g.name, st.globals.length);
@@ -111,9 +124,9 @@ export const written = (scope: Scope, t: Term): Term => mapLeaves(t, u => {
 export function newName(ctx: Ctx, local: Local, id: Id, seen: Set<string>): void {
   const name = id.name;
   if (name === null) return;
-  if (seen.has(name)) fail(id.span, () => `${name} is introduced twice here (§2)`);
+  if (seen.has(name)) fail(id.span, () => `${code(name)} is introduced twice here (§2)`);
   if (lookup(local.scope, name) || global(ctx, name))
-    fail(id.span, () => `${name} is already in scope here, and no name is allowed to be shadowed (§2)`);
+    fail(id.span, () => `${code(name)} is already in scope here, and no name is allowed to be shadowed (§2)`);
   seen.add(name);
 }
 

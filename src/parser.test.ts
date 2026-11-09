@@ -122,7 +122,12 @@ test("mutual data, empty match, comptime, sorry and statements", () => {
   });
 });
 
-test("spans are byte offsets", () => {
+test("a non-ASCII character's error spans that character alone", () => {
+  assert.deepEqual(err("let x = Zer\u00f6();").span, { start: 11, end: 12 });
+  assert.deepEqual(err("let x = \u{1d4b3};").span, { start: 8, end: 10 });
+});
+
+test("spans are offsets into the source string", () => {
   const program = ok("  let x = Zero(); -- c\nprint x;");
   assert.deepEqual(program.tops.map(t => t.span), [{ start: 2, end: 17 }, { start: 23, end: 31 }]);
   assert.deepEqual(program.span, { start: 0, end: 31 });

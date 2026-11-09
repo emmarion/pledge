@@ -129,7 +129,16 @@ header.top h1 a { color: inherit; text-decoration: none; }
   overflow: auto;
 }
 
+.toc h2 {
+  margin: 14px 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.toc h2:first-child { margin-top: 0; }
 .toc ol { list-style: none; padding: 0; margin: 0; }
+.toc .tag { white-space: nowrap; }
 .toc a {
   display: block;
   padding: 3px 0 3px 10px;
@@ -267,6 +276,14 @@ textarea.source::selection { background: var(--select); color: transparent; -web
   outline: none;
 }
 .message:focus-visible { box-shadow: 0 0 0 6px var(--surface), 0 0 0 8px var(--accent); }
+@media (max-width: 600px) {
+  .editor { display: grid; grid-template-columns: auto minmax(0, 1fr); }
+  .editor .code { width: auto; }
+  .outputs { grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--line); padding: 6px 0; }
+  .output { position: static; }
+  .output::before { content: "line " attr(data-line); color: var(--muted); font-size: 13px; }
+  .message { -webkit-line-clamp: unset; }
+}
 .print { color: var(--text); font-size: 14px; }
 .print::before { content: "\21d2\00a0"; color: var(--muted); }
 .message.bad { color: var(--bad); font-size: 13px; }

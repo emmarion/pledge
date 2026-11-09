@@ -22,8 +22,9 @@ and never renumbered (rule 15); a removed item leaves a gap.
    `npm run typecheck` checks the tests too, under `tsconfig.test.json`.
    The GitHub Actions workflow in `.github/` type-checks, tests, builds
    and deploys `web/` to GitHub Pages.
-3. **Positions** in the interface (§13) are byte offsets into the
-   source; the editor is a plain `textarea`, and the selected position
+3. **Positions** in the interface (§13) are offsets into the source
+   as a JavaScript string, which for ASCII source are also byte
+   offsets; the editor is a plain `textarea`, and the selected position
    is the caret. No editor library is used.
 4. **Dependencies.** The only dependencies are TypeScript itself and
    Node's type declarations, which the tests are type-checked against,
@@ -69,7 +70,7 @@ and never renumbered (rule 15); a removed item leaves a gap.
     element.
 12. **Lexing.** A maximal run of letters, digits and `_` is one token;
     one not starting with a letter, other than `_` alone, is an error
-    rather than being split. Any non-ASCII byte is an error, in a
+    rather than being split. Any non-ASCII character is an error, in a
     comment too. A lexical error is reported only when the parser
     reaches it, so an earlier syntax error wins (§13's first error).
     `Type` is lexed as a name, not a keyword (§18).
@@ -139,14 +140,18 @@ and never renumbered (rule 15); a removed item leaves a gap.
     parse, the previous colouring is kept rather than flickering off.
 44. **Beside the editor**, an output wraps onto free lines below its
     own and otherwise ends in an ellipsis, opening in full on hover or
-    focus. Hovering a name shows its entry's type and `is` rule, or a
-    global's signature.
+    focus. On a narrow screen the outputs are listed below the box
+    instead, each with its line number. Hovering a name shows its
+    entry's type and `is` rule, or a global's signature.
 62. **An error from a refuted value constructor** carries the
     derivation of the refutation (§13) apart from its message; the
     status line lists it under the message, and beside the statement
     only the message is shown. In a message, as in the tutorial's
     prose, text between backticks is shown as code and a citation is a
-    link (item 61).
+    link (item 61); a message writes every name and term of the program
+    that way. A message about a result that does not fit what its
+    position is given names the binder with its role and owner, as in
+    "parameter `v` of `vhead`".
 63. **A tainted scope** is reported in the Scope panel by one line
     above the entries, linking to the scrutinee whose taint reached
     the position first, the outermost when several did. A tainted name
@@ -192,6 +197,11 @@ and never renumbered (rule 15); a removed item leaves a gap.
     phase 2 example programs under `tests/` do; §16 does not say which
     fields should be erased. Where their prose describes behaviour
     DESIGN.md is silent on, it says "in this implementation".
+64. **Sections.** The tutorial's pages are grouped under headings in
+    the list of pages (Basics, Proofs, Erasure, Fine points), each page
+    shows its section above its title, and a page checked under a later
+    phase carries a tag saying so in the list; §12 says nothing about
+    how pages are arranged.
 61. **Citations in the tutorial's prose**, of a section (§) or of
     DESIGN.md or SOUNDNESS.md, link to the file on the `main` branch
     of the repository on GitHub, a section by its heading's anchor.

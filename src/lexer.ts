@@ -35,7 +35,7 @@ export function lex(source: string, phase: Phase): Token[] {
     const code = source.codePointAt(i)!;
     if (code > 0x7f) {
       const char = String.fromCodePoint(code);
-      return error(i, i + new TextEncoder().encode(char).length, () =>
+      return error(i, i + char.length, () =>
         `non-ASCII character ${JSON.stringify(char)}; source text is ASCII`);
     }
     if (/\s/.test(c)) { i++; continue; }

@@ -6,7 +6,7 @@ import { TYPE, abstract, declare, emptyScope, ref, signature } from "./terms.ts"
 import { position } from "./position.ts";
 import { bindPattern, evalOne, evalStmt, showValue } from "./eval.ts";
 import type { Env, FnDef, Value } from "./eval.ts";
-import { Failure, attempt, declareGlobal, fail, newName, record } from "./context.ts";
+import { Failure, attempt, code, declareGlobal, fail, labelled, newName, record } from "./context.ts";
 import type { Ctx, FnCtx, FnSig, Given, Global, Local, Snapshot, State } from "./context.ts";
 import { annotate, expr, header, single, stmt, telescope, term } from "./expr.ts";
 import { goalGiven, qedFn, rejectFn } from "./goal.ts";
@@ -68,7 +68,8 @@ export const check: Check = (source, phase, where = position(source)) => {
         const fields = telescope(ctx, top, c.fields, "binder");
         if (c.ret.head.name !== owner.name || c.ret.args === null)
           fail(c.ret.span, () =>
-            `${name} returns ${owner.name} applied to one argument per parameter of ${owner.name} (§5)`);
+            `${code(name)} returns ${code(owner.name)} applied to one argument per parameter ` +
+            `of ${code(owner.name)} (§5)`);
         const ret = term(ctx, fields.local, c.ret);
         const sig = { head: { kind: "ctor" as const, name }, params: fields.tele,
           ret: abstract(ret.local.scope, ref(ret.id), fields.ids) };
@@ -105,7 +106,8 @@ export const check: Check = (source, phase, where = position(source)) => {
     for (;;) {
       st.snapshots.length = marks[0];
       st.explains.length = marks[1];
-      const bodies = heads.map(h => expr(h.c, h.local, h.f.body, { wants: h.sig.returns, env: h.env, whole: true }));
+      const bodies = heads.map((h, i) => expr(h.c, h.local, h.f.body, { wants: h.sig.returns, env: h.env, whole: true,
+        label: j => labelled("return", h.sig.returns[j]?.name ?? null, j, names[i]) }));
       const now = bodies.map(b => b.results.some(r => r.tainted));
       if (!now.some((t, i) => t && !heads[i]!.sig.tainted)) {
         heads.forEach((h, i) => {
@@ -144,7 +146,7 @@ export const check: Check = (source, phase, where = position(source)) => {
           const v = ran.value = evaluated(t.rhs.span, tree, tainted);
           if (v && v.head !== t.pat.ctor.name)
             fail(t.rhs.span, () =>
-              `this evaluates to ${showValue(v)}, which is not headed by ${t.pat.ctor.name} (§11)`);
+              `this evaluates to ${code(showValue(v))}, which is not headed by ${code(t.pat.ctor.name)} (§11)`);
         });
         for (const b of o.bound) declareGlobal(st, { kind: "binding", ...b });
         const v = ran.value;

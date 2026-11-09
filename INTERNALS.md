@@ -8,7 +8,7 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
 ## Modules
 
 - `src/syntax.ts`: the abstract syntax (§19 and §16's additions). Every
-  node carries a `Span` of byte offsets. `Id.name` is `null` for `_`.
+  node carries a `Span` of offsets into the source string. `Id.name` is `null` for `_`.
   `Term.args` is `null` for a bare name. `Binder.mult` and the other
   `mult` fields are `null` when no multiplicity is written. `let x = e;`
   is parsed as a tuple `let` with one binder (§8).

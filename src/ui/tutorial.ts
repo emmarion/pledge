@@ -24,10 +24,12 @@ workspace.mount(
     h("span", { class: "muted" }, `Phase ${page.phase}`)],
   "Reset your box",
   [h("details", { class: "disclaimer" }, h("summary", {}, "Disclaimer"), h("p", {}, linked(disclaimer))),
-    h("h2", {}, page.title), prose],
+    h("p", { class: "muted" }, page.section), h("h2", {}, page.title), prose],
   [h("details", { class: "solution" }, h("summary", {}, "Show a solution"), workspace.editors.at(-1)!.root),
   h("p", { class: "pager" },
     index > 0 && h("a", { href: href(index - 1) }, `← ${pages[index - 1]!.title}`),
     index + 1 < pages.length && h("a", { href: href(index + 1), class: "next" }, `${pages[index + 1]!.title} →`))],
-  h("nav", { class: "toc", "aria-label": "Pages" }, h("ol", {}, pages.map((p, i) =>
-    h("li", {}, h("a", { href: href(i), "aria-current": i === index && "page" }, p.title))))));
+  h("nav", { class: "toc", "aria-label": "Pages" }, [...new Set(pages.map(p => p.section))].map(section =>
+    [h("h2", {}, section), h("ol", {}, pages.map((p, i) => p.section === section && h("li", {},
+      h("a", { href: href(i), "aria-current": i === index && "page" }, p.title,
+        p.phase > 1 && h("span", { class: "tag" }, `phase ${p.phase}`)))))])));

@@ -26,14 +26,9 @@ const tokenClass = (t: Token, kinds: Map<string, NameKind>): string | null =>
           : t.kind === "error" ? "hl-lex-error"
             : null;
 
-const tokenEnd = (text: string, t: Token): number =>
-  t.kind === "error" && text.codePointAt(t.span.start)! > 0x7f
-    ? t.span.start + String.fromCodePoint(text.codePointAt(t.span.start)!).length
-    : t.span.end;
-
 const comments = (text: string, tokens: Token[]): Decoration[] =>
   tokens.flatMap((t, i) => {
-    const from = i ? tokenEnd(text, tokens[i - 1]!) : 0;
+    const from = i ? tokens[i - 1]!.span.end : 0;
     return [...text.slice(from, t.span.start).matchAll(/--[^\n]*/g)]
       .map(m => ({ start: from + m.index, end: from + m.index + m[0].length, cls: "hl-comment" }));
   });
@@ -81,7 +76,7 @@ export const highlight = (text: string, tokens: Token[], kinds: Map<string, Name
   segments(text, [
     ...tokens.flatMap(t => {
       const cls = tokenClass(t, kinds);
-      return cls ? [{ start: t.span.start, end: tokenEnd(text, t), cls }] : [];
+      return cls ? [{ ...t.span, cls }] : [];
     }),
     ...comments(text, tokens),
     ...extra,
@@ -152,7 +147,7 @@ export class Editor {
     for (const { line, node } of outputs) byLine.set(line, [...byLine.get(line) ?? [], node]);
     const starts = [...byLine.keys()].sort((a, b) => a - b);
     fill(this.outputs, starts.map((line, i) => h("div", {
-      class: "output",
+      class: "output", "data-line": `${line}`,
       style: `top: ${padding + (line - 1) * lineHeight}px; --rows: ${(starts[i + 1] ?? lines.length + 1) - line}`,
     }, byLine.get(line)!)));
   }

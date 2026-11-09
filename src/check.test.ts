@@ -62,8 +62,8 @@ test("proof by reflection with a mutual decideEven, proving a goal", () => {
   const p = r.infoAt(offset(source, "print p", 6)).scope.find(e => e.names.includes("p"));
   assert.equal(p?.type.text, `Even(${nats(2)})`);
   assert.deepEqual([r.containsSorry, r.qedChecks, r.goalProved], [false, true, true]);
-  err(`${decide}let Some(_, p) = decideEven(${nats(2)});\n`, "Some(_, p)", /None is not refuted/);
-  err(`${decide}comptime let Some(_, p) = decideEven(${nats(1)});\n`, `decideEven(${nats(1)})`, /evaluates to None\(Even\(Succ\(Zero\(\)\)\)\), which is not headed by Some/);
+  err(`${decide}let Some(_, p) = decideEven(${nats(2)});\n`, "Some(_, p)", /`None` is not refuted/);
+  err(`${decide}comptime let Some(_, p) = decideEven(${nats(1)});\n`, `decideEven(${nats(1)})`, /evaluates to `None\(Even\(Succ\(Zero\(\)\)\)\)`, which is not headed by `Some`/);
 });
 
 test("a goal proved without sorry", () => {
@@ -81,31 +81,31 @@ test("names: no shadowing, no keyword, one namespace", () => {
 });
 
 test("type errors at the argument and at a tuple let binder's is clause", () => {
-  err(`${nat}${vec}let v = VCons(Nat(), Zero(), Nat(), VNil(Nat()));\n`, "Nat()", /`head` must have type Nat\(\), and this has type Type\(\)/, "Zero(), Nat()");
-  err(`${nat}let n = Zero();\nlet y is Succ(n) = n;\n`, "n", /`y` must be Succ\(Zero\(\)\), and this is Zero\(\)/, "= n;");
+  err(`${nat}${vec}let v = VCons(Nat(), Zero(), Nat(), VNil(Nat()));\n`, "Nat()", /field `head` of `VCons` must have type `Nat\(\)`, and this has type `Type\(\)`/, "Zero(), Nat()");
+  err(`${nat}let n = Zero();\nlet y is Succ(n) = n;\n`, "n", /binder `y` must be `Succ\(Zero\(\)\)`, and this is `Zero\(\)`/, "= n;");
   err(`${nat}fn f(n : Nat()) -> (r : Nat()) { n }\nprint f((Zero(), Zero()));\n`, "(Zero(), Zero())", /1 value is expected here, and this tuple has 2 elements/);
 });
 
 test("matching: refuted branches, missing branches, survivors and scrutinees", () => {
   const vfn = (body: string) => `${nat}${vec}fn f(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (r : Nat()) {\n  ${body}\n}\n`;
-  const refuted = err(vfn("match v : (r : Nat()) { VNil(_) => Zero(); VCons(_, _, _, _) => Zero(); }"), "VNil(_)", /VNil is refuted here/);
+  const refuted = err(vfn("match v : (r : Nat()) { VNil(_) => Zero(); VCons(_, _, _, _) => Zero(); }"), "VNil(_)", /`VNil` is refuted here/);
   assert.match(refuted.derivation?.().at(-1)?.text ?? "", /Succ and Zero are different heads/);
-  err(vfn("match n : (r : Nat()) { Zero() => Zero(); }"), "match n : (r : Nat()) { Zero() => Zero(); }", /no branch for Succ/);
-  err(vfn("let Succ(m) = n;\n  m"), "Succ(m)", /Zero is not refuted/);
-  err(vfn("match A : (r : Nat()) {}"), "A", /Type\(\) cannot be the scrutinee/, "match A");
+  err(vfn("match n : (r : Nat()) { Zero() => Zero(); }"), "match n : (r : Nat()) { Zero() => Zero(); }", /no branch for `Succ`/);
+  err(vfn("let Succ(m) = n;\n  m"), "Succ(m)", /`Zero` is not refuted/);
+  err(vfn("match A : (r : Nat()) {}"), "A", /`Type\(\)` cannot be the scrutinee/, "match A");
   err(`${nat}fn f(A : Type(), x : A) -> (r : Nat()) { match x : (r : Nat()) {} }\n`, "x", /not a data type/, "match x");
   err(vfn("match n : (r : Nat()) { Zero() => Zero(); Succ() => Zero(); }"), "Succ()", /1 field/);
 });
 
 test("termination marks follow §9 exactly", () => {
   const ack = file("design_ack.pledge");
-  err(ack.replace("ack(subterm m1, Succ(Zero()))", "ack(m1, Succ(Zero()))"), "ack(m1, Succ(Zero()))", /marks one of ack's `subterm` parameters/);
-  err(ack.replace("ack(same m, subterm n1)", "ack(same m1, subterm n1)"), "same m1", /m1 is not canonically identical to m/);
-  err(ack.replace("ack(subterm m1, Succ(Zero()))", "ack(subterm m, Succ(Zero()))"), "subterm m", /is not a strict subterm of m/, "Zero() => ack(");
+  err(ack.replace("ack(subterm m1, Succ(Zero()))", "ack(m1, Succ(Zero()))"), "ack(m1, Succ(Zero()))", /marks the argument for one of `ack`'s `subterm` parameters `subterm` \(/);
+  err(ack.replace("ack(same m, subterm n1)", "ack(same m1, subterm n1)"), "same m1", /`m1` is not canonically identical to `m`/);
+  err(ack.replace("ack(subterm m1, Succ(Zero()))", "ack(subterm m, Succ(Zero()))"), "subterm m", /is not a strict subterm of `m`/, "Zero() => ack(");
   const two = `${nat}mutual {\n  fn g(subterm n : Nat()) -> (r : Nat()) { match n : (r : Nat()) { Zero() => Zero(); Succ(m) => h(same n, subterm m); } }\n  fn h(subterm a : Nat(), subterm b : Nat()) -> (r : Nat()) { Zero() }\n}\n`;
-  err(two, "h(same n, subterm m)", /g has only 1 `subterm` parameter/);
+  err(two, "h(same n, subterm m)", /`g` has only 1 `subterm` parameter/);
   ok(ack.replace("ack(subterm m1, ack(same m, subterm n1))", "ack(same m, subterm n1)"));
-  err(`${nat}fn f(n : Nat()) -> (r : Nat()) { g(n) }\nfn g(n : Nat()) -> (r : Nat()) { n }\n`, "g", /g is not in scope/);
+  err(`${nat}fn f(n : Nat()) -> (r : Nat()) { g(n) }\nfn g(n : Nat()) -> (r : Nat()) { n }\n`, "g", /`g` is not in scope/);
   err(`${nat}print Succ(subterm Zero());\n`, "subterm Zero()", /only a call within its group has marks/);
   err(`${nat}fn f(subterm n : Nat()) -> (r : Nat()) { n }\nprint f(subterm Zero());\n`, "subterm Zero()", /only a call within its group/);
   err(`${nat}fn f(n : Nat()) -> (r : Type()) { Nat() }\nfn g(x : f(Zero())) -> (r : Nat()) { Zero() }\n`, "f(Zero())", /contains no function call/);
@@ -117,7 +117,7 @@ test("goal and qed: at most once each, qed after goal", () => {
   assert.match(r.error?.message() ?? "", /`qed` comes after `goal`/);
   assert.deepEqual([r.qedChecks, r.goalProved], [false, false]);
   err(`${nat}goal Nat();\ngoal Nat();\n`, "goal Nat();", /at most one `goal`/, "Nat();\ngoal");
-  err(`${nat}goal Nat();\nqed Nat();\n`, "Nat()", /must have type Nat\(\)/, "qed");
+  err(`${nat}goal Nat();\nqed Nat();\n`, "Nat()", /the value expected here must have type `Nat\(\)`/, "qed");
 });
 
 test("sorry: qed sorry(_) checks but proves nothing", () => {
@@ -234,7 +234,7 @@ test("evalAt checks typed text in the scope at a position", () => {
   assert.deepEqual([v.type.text, v.canonicalType.text, v.rule?.text, v.canonicalRule?.text],
     ["Vec(A, Succ(n))", "Vec(Nat(), Succ(Zero()))", "VCons(A, n, h, t)", "VCons(Nat(), Zero(), h, t)"]);
   const bad = r.evalAt(source.length, "Succ(Nat())");
-  assert.ok("error" in bad && bad.error.span.start === 5 && /must have type Nat\(\)/.test(bad.error.message()));
+  assert.ok("error" in bad && bad.error.span.start === 5 && /field `pred` of `Succ` must have type `Nat\(\)`/.test(bad.error.message()));
   const inBody = r.evalAt(offset(source, "(h, t)\n}"), "h");
   if ("error" in inBody) assert.fail(inBody.error.message());
   assert.equal(inBody.canonicalType.text, "A");
@@ -279,13 +279,13 @@ test("function goals: a telescope that differs does not prove the goal", () => {
     assert.deepEqual(verdicts(check(source, 1)), [false, false, false]);
   };
   mismatch("(n : Nat(), r : Nat(), p : Plus(n, Zero(), r)) -> (e : Eq(Nat(), n, r))",
-    /plusZero's return 1 is `e : Eq\(Nat\(\), r, n\)`, and the goal's is `e : Eq\(Nat\(\), n, r\)`.*canonically identical/);
+    /`plusZero`'s return 1 is `e : Eq\(Nat\(\), r, n\)`, and the goal's is `e : Eq\(Nat\(\), n, r\)`.*canonically identical/);
   mismatch("(n : Nat(), r : Nat(), p : Plus(r, Zero(), n)) -> (e : Eq(Nat(), r, n))",
-    /plusZero's parameter 3 is `p : Plus\(n, Zero\(\), r\)`, and the goal's is `p : Plus\(r, Zero\(\), n\)`/);
-  mismatch("(n : Nat(), r is Zero(), p : Plus(n, Zero(), r)) -> (e : Eq(Nat(), r, n))", /plusZero's parameter 2 is `r : Nat\(\)`, and the goal's is `r is Zero\(\)`/);
-  mismatch("(n : Nat(), p : Plus(n, Zero(), n)) -> (e : Eq(Nat(), n, n))", /plusZero has 3 parameters and 1 return, and the goal has 2 parameters and 1 return/);
+    /`plusZero`'s parameter 3 is `p : Plus\(n, Zero\(\), r\)`, and the goal's is `p : Plus\(r, Zero\(\), n\)`/);
+  mismatch("(n : Nat(), r is Zero(), p : Plus(n, Zero(), r)) -> (e : Eq(Nat(), r, n))", /`plusZero`'s parameter 2 is `r : Nat\(\)`, and the goal's is `r is Zero\(\)`/);
+  mismatch("(n : Nat(), p : Plus(n, Zero(), n)) -> (e : Eq(Nat(), n, n))", /`plusZero` has 3 parameters and 1 return, and the goal has 2 parameters and 1 return/);
   mismatch("(r : Nat(), n : Nat(), _ : Plus(n, Zero(), r)) -> (e : Eq(Nat(), r, n))",
-    /plusZero's parameter 3 is `_ : Plus\(r, Zero\(\), n\)`, and the goal's is `_ : Plus\(n, Zero\(\), r\)` \(binders named as in the goal\)/);
+    /`plusZero`'s parameter 3 is `_ : Plus\(r, Zero\(\), n\)`, and the goal's is `_ : Plus\(n, Zero\(\), r\)` \(binders named as in the goal\)/);
   assert.deepEqual(verdicts(ok(plusGoal("(r : Nat(), n : Nat(), _ : Plus(r, Zero(), n)) -> (e : Eq(Nat(), n, r))"))), [false, true, true]);
 });
 
@@ -299,7 +299,7 @@ test("function goals: the Expected panel shows the goal at a `qed` naming a func
 test("function goals: telescopes are compared with bound variables, an earlier is clause not in force (§12)", () => {
   const goal = `${nat}${eqData}goal fn (n is Zero(), e : Eq(Nat(), n, Zero())) -> (r : Nat());\n`;
   const source = `${goal}fn f(m is Zero(), e : Eq(Nat(), Zero(), m)) -> (r : Nat()) { m }\nqed f;\n`;
-  err(source, "f", /f's parameter 2 is `e : Eq\(Nat\(\), Zero\(\), n\)`, and the goal's is `e : Eq\(Nat\(\), n, Zero\(\)\)`/, "qed f");
+  err(source, "f", /`f`'s parameter 2 is `e : Eq\(Nat\(\), Zero\(\), n\)`, and the goal's is `e : Eq\(Nat\(\), n, Zero\(\)\)`/, "qed f");
   assert.deepEqual(verdicts(check(source, 1)), [false, false, false]);
   assert.deepEqual(verdicts(ok(`${goal}fn f(m is Zero(), e : Eq(Nat(), m, Zero())) -> (r : Nat()) { m }\nqed f;\n`)), [false, true, true]);
 });
@@ -319,7 +319,7 @@ test("function goals: taint, sorry and the identity on False()", () => {
 
 test("function goals: qed names a function exactly when the goal is a function goal", () => {
   const fn = `${nat}fn f(n : Nat()) -> (r : Nat()) { n }\n`;
-  err(`${fn}goal Nat();\nqed f;\n`, "f", /f is a function, and naming a function proves only a function goal.*this goal is a type/, "qed f");
+  err(`${fn}goal Nat();\nqed f;\n`, "f", /`f` is a function, and naming a function proves only a function goal.*this goal is a type/, "qed f");
   const fnGoal = `${nat}goal fn (n : Nat()) -> (r : Nat());\n`;
   err(`${fnGoal}qed Zero();\n`, "Zero()", /the goal is a function goal, so `qed` names a function declared before it/, "qed");
   err(`${fnGoal}let x = Zero();\nqed x;\n`, "x", /the goal is a function goal/, "qed x");
@@ -334,7 +334,7 @@ test("function goals in phase 2: multiplicities must match", () => {
   assert.equal(proved.error, null);
   assert.deepEqual(verdicts(proved), [false, true, true]);
   const differs = check(source(""), 2);
-  assert.match(differs.error?.message() ?? "", /f's parameter 1 is `n : Nat\(\)`, and the goal's is `erased n : Nat\(\)`/);
+  assert.match(differs.error?.message() ?? "", /`f`'s parameter 1 is `n : Nat\(\)`, and the goal's is `erased n : Nat\(\)`/);
   assert.deepEqual(verdicts(differs), [false, false, false]);
 });
 
@@ -346,17 +346,17 @@ test("tuple let binders are a telescope, checked against the results they name (
   err(`${nat}let (m, w is Succ(m)) = (Zero(), Succ(Zero()));\n`, "m", untyped, "Succ(m)");
   err(`${nat}let (m, k : Nat(), w is Succ(Succ(m))) = sorry(_);\n`, "m", untyped, "Succ(m)");
   assert.deepEqual(ok(`${nat}let (m : Nat(), w is Succ(m)) = (Zero(), Succ(Zero()));\nprint w;\n`).prints.map(p => p.value), [nats(1)]);
-  err(`${nat}let (m : Nat(), w is Succ(m)) = (Zero(), ${nats(2)});\n`, nats(2), /`w` must be Succ\(Zero\(\)\), and this is Succ\(Succ\(Zero\(\)\)\)/);
-  err(`${nat}let (m : Nat(), w is Succ(m)) = (Zero(), Zero());\n`, "Zero()", /`w` must be Succ\(Zero\(\)\), and this is Zero\(\)/, ", Zero());");
-  err(`${nat}${vec}let (m : Type(), w : Vec(Nat(), m)) = (Nat(), VNil(Nat()));\n`, "m", /`n` must have type Nat\(\), and this has type Type\(\)/, "Nat(), m)");
+  err(`${nat}let (m : Nat(), w is Succ(m)) = (Zero(), ${nats(2)});\n`, nats(2), /binder `w` must be `Succ\(Zero\(\)\)`, and this is `Succ\(Succ\(Zero\(\)\)\)`/);
+  err(`${nat}let (m : Nat(), w is Succ(m)) = (Zero(), Zero());\n`, "Zero()", /binder `w` must be `Succ\(Zero\(\)\)`, and this is `Zero\(\)`/, ", Zero());");
+  err(`${nat}${vec}let (m : Type(), w : Vec(Nat(), m)) = (Nat(), VNil(Nat()));\n`, "m", /parameter `n` of `Vec` must have type `Nat\(\)`, and this has type `Type\(\)`/, "Nat(), m)");
   err(`${nat}let (m, w : Nat()) = sorry(_);\n`, "sorry(_)", /`_` stands for the whole telescope/);
   ok(`${nat}let (m : Nat(), w is Succ(m)) = sorry(_);\n`);
   ok(`${nat}let (m, w : Nat()) = (Zero(), Zero());\nprint m;\n`);
-  err(`${nat}let (w is Succ(m), m : Nat()) = (Zero(), Zero());\n`, "m", /m is not in scope/);
+  err(`${nat}let (w is Succ(m), m : Nat()) = (Zero(), Zero());\n`, "m", /`m` is not in scope/);
   err(`${nat}let (m, m) = (Zero(), Zero());\n`, "m", /introduced twice/, ", m)");
   const source = `${nat}${vec}let (m : Nat(), v : Vec(Nat(), m)) = { let k = Zero(); (k, VNil(Nat())) };\n`;
   ok(source);
-  err(source.replace("Vec(Nat(), m)", "Vec(Nat(), k)"), "k", /k is not in scope/);
+  err(source.replace("Vec(Nat(), m)", "Vec(Nat(), k)"), "k", /`k` is not in scope/);
 });
 
 const isZero = "data IsZero(n : Nat()) : Type() {\n  IsZeroHere() : IsZero(Zero());\n}\n";
@@ -367,18 +367,18 @@ test("a pattern let's facts and fields survive its block; only its names end the
     "A : Type()", "n : Nat()", "v : Vec(A, Succ(n)) is VCons(A, n, ?VCons.head@11:43, t)",
     "?VCons.A : Type() is A", "?VCons.n : Nat() is n", "?VCons.head : A", "t : Vec(A, n)",
   ]);
-  err(source.replace("  t\n}", "  r\n}"), "r", /r is not in scope/, "  r\n}");
+  err(source.replace("  t\n}", "  r\n}"), "r", /`r` is not in scope/, "  r\n}");
   const isSucc = "data IsSucc(n : Nat()) : Type() {\n  IsSuccHere(m : Nat()) : IsSucc(Succ(m));\n}\n";
   const refuted = `${nat}${vec}${isSucc}fn h(A : Type(), k : Nat(), w : Vec(A, k), p : IsSucc(k)) -> (r : A) {\n  let x = { let IsSuccHere(j) = p; let VCons(_, _, hd, _) = w; hd };\n  inspect;\n  x\n}\n`;
   const after = scopeOf(ok(refuted).inspects[0]!.info);
   assert.ok(after.some(e => /^k : Nat\(\) is Succ\(\?IsSuccHere\.m@/.test(e)), after.join("; "));
   assert.ok(after.some(e => /^w : .* is VCons\(A, \?IsSuccHere\.m@[\d:]+, x, /.test(e)), after.join("; "));
-  err(refuted.replace("let IsSuccHere(j) = p; ", ""), "VCons(_, _, hd, _)", /VNil is not refuted/);
+  err(refuted.replace("let IsSuccHere(j) = p; ", ""), "VCons(_, _, hd, _)", /`VNil` is not refuted/);
 });
 
 test("a branch's facts end with the branch, a pattern let's in a block in it included", () => {
   err(`${nat}${vec}fn h(n : Nat(), v : Vec(Nat(), n)) -> (r : Nat()) {\n  let x = match n : (r : Nat()) { Zero() => Zero(); Succ(m) => { let VCons(_, _, hd, _) = v; hd }; };\n  let VCons(_, _, h2, _) = v;\n  h2\n}\n`,
-    "VCons(_, _, h2, _)", /VNil is not refuted/);
+    "VCons(_, _, h2, _)", /`VNil` is not refuted/);
 });
 
 test("soundness: a tainted pattern let in a block taints the rest of the program (§12)", () => {
@@ -401,7 +401,7 @@ test("soundness: a tainted pattern let in a match branch taints the match's resu
   const top = ok(`${fab}let c = ${m};\nprint c;\nprint n;\ngoal Nat();\nqed n;\n`);
   assert.deepEqual([verdicts(top), top.prints.map(p => p.value)], [[true, true, true], ["sorry", nats(1)]]);
   assert.deepEqual(verdicts(ok(`${fab}let c = ${m};\ngoal Nat();\nqed c;\n`)), [true, true, false]);
-  err(`${fab}let c = ${m};\nlet (q : Eq(Nat(), n, Zero())) = Refl(Nat(), n);\n`, "Refl(Nat(), n)", /`q` must have type Eq\(Nat\(\), n, Zero\(\)\)/, "let (q");
+  err(`${fab}let c = ${m};\nlet (q : Eq(Nat(), n, Zero())) = Refl(Nat(), n);\n`, "Refl(Nat(), n)", /binder `q` must have type `Eq\(Nat\(\), n, Zero\(\)\)`/, "let (q");
   const fns = `${fab}fn g(x : Nat()) -> (r : Nat()) {\n  let c = ${m};\n  x\n}\nfn h(x : Nat()) -> (r : Nat()) {\n  let c = ${m};\n  c\n}\ngoal Nat();\n`;
   assert.deepEqual(verdicts(ok(`${fns}qed g(Zero());\n`)), [true, true, true]);
   assert.deepEqual(verdicts(ok(`${fns}qed h(Zero());\n`)), [true, true, false]);

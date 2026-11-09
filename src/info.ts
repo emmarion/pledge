@@ -3,7 +3,7 @@ import { bound, entries, entry, lookup, mapLeaves } from "./terms.ts";
 import type { OpenTerm, Scope, Signature, Term } from "./terms.ts";
 import { cat, entryInfo, explain, render, renderTelescope } from "./render.ts";
 import { parseExpr } from "./parser.ts";
-import { APP, HOLE, attempt, innermost, written } from "./context.ts";
+import { APP, HOLE, attempt, globalAt, innermost, written } from "./context.ts";
 import type { Given, Global, Snapshot, State } from "./context.ts";
 import { expr, single } from "./expr.ts";
 
@@ -33,7 +33,7 @@ function globalInfo(scope: Scope, g: Global, st: State, limit: number): GlobalIn
     }
     case "type": {
       const ctors = (g.ctors ?? []).flatMap(name => {
-        const i = st.index.get(name), c = i !== undefined && i < limit ? st.globals[i] : undefined;
+        const c = globalAt(st, limit, name);
         return c?.kind === "ctor" ? [{ name, signature: signatureOf(c.sig) }] : [];
       });
       return [{ kind: "type", name: g.name, signature: signatureOf(g.sig), ...(g.ctors ? { ctors } : {}) }];

@@ -78,8 +78,8 @@ test("comptime: n is known only by its type, so only the run proves Even(n)", ()
   const { r } = run("comptime", page("comptime").solution);
   assert.deepEqual(verdicts(r), [false, true, true]);
   assert.equal(r.prints[0]?.value, `${"Succ(".repeat(100)}Zero()${")".repeat(100)}`);
-  assert.match(run("comptime", page("comptime").initial).r.error?.message() ?? "", /None is not refuted/);
-  assert.match(run("comptime", "qed EvenSucc(Succ(Zero()), OddSucc(Zero(), EvenZero()));\n").r.error?.message() ?? "", /type Even\(n\)/);
+  assert.match(run("comptime", page("comptime").initial).r.error?.message() ?? "", /`None` is not refuted/);
+  assert.match(run("comptime", "qed EvenSucc(Succ(Zero()), OddSucc(Zero(), EvenZero()));\n").r.error?.message() ?? "", /type `Even\(n\)`/);
   const fallback = run("comptime", "let p = match decideEven(n) : (p : Even(n)) {\n  None(_) => sorry(_);\n  Some(_, q) => q;\n};\nqed p;\n").r;
   assert.deepEqual(verdicts(fallback), [true, true, false]);
 });
@@ -104,7 +104,7 @@ test("facts-escape: after the block, v's rule and the anonymous tail remain, and
   assert.ok(after.some(e => /^v : .* is VCons\(Nat\(\), n, h, \?VCons\.rest@/.test(e)), after.join("; "));
   assert.ok(after.includes("?VCons.rest : Vec(Nat(), n)"), after.join("; "));
   assert.ok(!after.some(e => /^(hd|tl)\b/.test(e)));
-  assert.match(run("facts-escape", `let k = tl;\n${page("facts-escape").solution}`).r.error?.message() ?? "", /tl is not in scope/);
+  assert.match(run("facts-escape", `let k = tl;\n${page("facts-escape").solution}`).r.error?.message() ?? "", /`tl` is not in scope/);
   const p = page("facts-escape");
   const noEscape = check(program(p.boxes.map(b => b.replace("{ let VCons(_, _, hd, tl) = v; hd }", "Zero()")), p.solution), p.phase);
   assert.equal(noEscape.goalProved, false);
@@ -136,7 +136,7 @@ test("hole-taint: a _ solved to a sorry result taints the call; with Nat() the g
 
 test("goal-comparison: an earlier is clause is not in force, so the starting text names return 1; changing the goal also works", () => {
   const { r } = run("goal-comparison", page("goal-comparison").initial);
-  assert.match(r.error?.message() ?? "", /succEq's return 1 is `e : Eq\(Nat\(\), Succ\(a\), b\)`, and the goal's is `e : Eq\(Nat\(\), b, Succ\(a\)\)`/);
+  assert.match(r.error?.message() ?? "", /`succEq`'s return 1 is `e : Eq\(Nat\(\), Succ\(a\), b\)`, and the goal's is `e : Eq\(Nat\(\), b, Succ\(a\)\)`/);
   assert.deepEqual(verdicts(r), [false, false, false]);
   const goalChanged = run("goal-comparison", page("goal-comparison").initial.replace("Eq(Nat(), b, Succ(a))", "Eq(Nat(), Succ(a), b)")).r;
   assert.deepEqual(verdicts(goalChanged), [false, true, true]);
@@ -147,5 +147,5 @@ test("absurd-branches: Succ is absurd, IsZeroHere refuted, and print runs the li
   assert.deepEqual(r.prints.map(p => p.value), ["Zero()"]);
   assert.deepEqual(r.infoAt(source.indexOf("match erased") + 2).refutations?.map(x => [x.ctor, x.kind]), [["Succ", "absurd"]]);
   assert.deepEqual(r.infoAt(source.indexOf("match p") + 2).refutations?.map(x => [x.ctor, x.kind]), [["IsZeroHere", "refuted"]]);
-  assert.match(run("absurd-branches", page("absurd-branches").initial).r.error?.message() ?? "", /no branch for Succ/);
+  assert.match(run("absurd-branches", page("absurd-branches").initial).r.error?.message() ?? "", /no branch for `Succ`/);
 });

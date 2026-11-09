@@ -101,7 +101,7 @@ test("match erased: absurd branches beside the one that is not (§16)", () => {
   assert.deepEqual(r.infoAt(source.indexOf("match p") + 2).refutations?.map(x => [x.ctor, x.kind]), [["IsZeroHere", "refuted"]]);
   assert.deepEqual(prints(ok(f("    Succ(m) => { let q = p; inspect; match q : _ {} };\n    Zero() => Succ(Zero());"))), ["Succ(Zero())"]);
   err(f("    Zero() => Succ(Zero());\n    Succ(m) => Zero();"), "Succ(m) => Zero();", /at most one branch that is not absurd, a branch being absurd when its body is a match with no branches, possibly the final expression of a block/);
-  err(f("    Zero() => match p : _ {};\n    Succ(m) => Zero();"), "match p : _ {}", /no branch for IsZeroHere, which is not refuted here/);
+  err(f("    Zero() => match p : _ {};\n    Succ(m) => Zero();"), "match p : _ {}", /no branch for `IsZeroHere`, which is not refuted here/);
   const many = f("    Zero() => Succ(Zero());\n    Succ(m) => match p : _ {};").replace("match erased n", "match n");
   assert.deepEqual(ok(many).infoAt(many.indexOf("match n") + 2).refutations, []);
 });
@@ -155,16 +155,16 @@ test("explainAt shows a skeleton term with its _ solved", () => {
 });
 
 test("_ is an error for a many parameter and where it cannot be inferred", () => {
-  err(`${nat}${vec}print VCons(_, _, _, VNil(_));\n`, "_", /`head` of VCons is not erased/, "_, VNil");
-  err(`${nat}fn f(n : Nat()) -> (r : Nat()) { n }\nprint f(_);\n`, "_", /`n` of f is not erased/);
+  err(`${nat}${vec}print VCons(_, _, _, VNil(_));\n`, "_", /field `head` of `VCons` is not erased/, "_, VNil");
+  err(`${nat}fn f(n : Nat()) -> (r : Nat()) { n }\nprint f(_);\n`, "_", /parameter `n` of `f` is not erased/);
   err(`${nat}${vec}print VNil(_);\n`, "_", /cannot be inferred/);
   err(`${nat}${vec}fn mk(erased B : Type()) -> (v : Vec(B, Zero())) { VNil(_) }\nlet x = mk(_);\n`, "_", /cannot be inferred/, "mk(_)");
 });
 
 test("soundness: unification gives a rule only to the entry of a _", () => {
-  err(`${nat}${vec}${vhead}fn g(n : Nat(), v : Vec(Nat(), n)) -> (r : Nat()) { vhead(_, _, v) }\n`, "_", /cannot be inferred: it would need Succ\(\?_@\d+:\d+\) and n to be equal/, "_, v)");
-  err(`${nat}${vec}fn g(n : Nat()) -> (v : Vec(Nat(), n)) { VNil(_) }\n`, "VNil(_)", /must have type Vec\(Nat\(\), n\)/);
-  err(`${nat}${eq}fn bad(a : Nat(), b : Nat()) -> (q : Eq(Nat(), a, b)) { Refl(_, _) }\n`, "Refl(_, _)", /must have type Eq\(Nat\(\), a, b\)/);
+  err(`${nat}${vec}${vhead}fn g(n : Nat(), v : Vec(Nat(), n)) -> (r : Nat()) { vhead(_, _, v) }\n`, "_", /cannot be inferred: it would need `Succ\(\?_@\d+:\d+\)` and `n` to be equal/, "_, v)");
+  err(`${nat}${vec}fn g(n : Nat()) -> (v : Vec(Nat(), n)) { VNil(_) }\n`, "VNil(_)", /return `v` of `g` must have type `Vec\(Nat\(\), n\)`/);
+  err(`${nat}${eq}fn bad(a : Nat(), b : Nat()) -> (q : Eq(Nat(), a, b)) { Refl(_, _) }\n`, "Refl(_, _)", /return `q` of `bad` must have type `Eq\(Nat\(\), a, b\)`/);
   err(`${nat}${eq}goal Eq(Nat(), Succ(Zero()), Zero());\nqed Refl(_, _);\n`, "Refl(_, _)", /must have type/);
 });
 

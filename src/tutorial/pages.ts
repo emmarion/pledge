@@ -2,6 +2,7 @@ import type { Phase } from "../syntax.ts";
 import { nat, vec, vecBy, vheadBy } from "../examples.ts";
 
 export interface Page {
+  section: string;
   slug: string;
   title: string;
   phase: Phase;
@@ -24,11 +25,78 @@ const twoVec = `let one = Succ(Zero());
 let xs = VCons(Nat(), one, Zero(),
   VCons(Nat(), Zero(), one, VNil(Nat())));`;
 
-const vhead = `fn vhead(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (x : A) {
-  match v : (x : A) {
-    VCons(_, _, hd, _) => hd;
+const twoThenThree = (rest: string): string => `let two = Succ(Succ(Zero()));
+print two;
+${rest}`;
+
+const isZeroFn = (succBranch: string): string => `fn isZero(n : Nat()) -> (b : Bool()) {
+  match n : (b : Bool()) {
+    Zero() => True();${succBranch}
+  }
+}
+print isZero(Succ(Zero()));
+`;
+
+const assertion = (comment: string, term: string): string => `let one = Succ(Zero());
+let two = Succ(one);
+inspect;
+${comment}let y is ${term} = two;
+`;
+
+const vheadWith = (branch: string): string => `fn vhead(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (x : A) {
+  match v : (x : A) {${branch}
   }
 }`;
+
+const vhead = vheadWith(`
+    VCons(_, _, hd, _) => hd;`);
+
+const vheadUse = (fn: string): string => `${fn}
+let v = VCons(Nat(), Zero(), Succ(Zero()), VNil(Nat()));
+print vhead(Nat(), Zero(), v);
+`;
+
+const vuncons = (body: string, use: string): string => `fn vuncons(A : Type(), n : Nat(), v : Vec(A, Succ(n)))
+    -> (hd : A, tl : Vec(A, n)) {
+  match v : (hd : A, tl : Vec(A, n)) {
+    VCons(_, _, h, t) => ${body};
+  }
+}
+${use}
+`;
+
+const cons = (m: string): string => `fn cons(A : Type(), n : Nat(), x : A, v : Vec(A, n))
+    -> (${m}, w : Vec(A, m)) {
+  (Succ(n), VCons(A, n, x, v))
+}
+let (m, w) = cons(Nat(), Zero(), Zero(), VNil(Nat()));
+print vhead(Nat(), Zero(), w);
+`;
+
+const vsecond = (rest: string): string => `fn vsecond(A : Type(), n : Nat(), v : Vec(A, Succ(Succ(n))))
+    -> (x : A) {
+  let VCons(_, _, _, rest) = v;
+  ${rest}
+}
+print vsecond(Nat(), Zero(), xs);
+`;
+
+const isEvenOdd = (succBranch: string, proof: string): string => `mutual {
+  fn isEven(subterm n : Nat()) -> (b : Bool()) {
+    match n : (b : Bool()) {
+      Zero() => True();
+      Succ(m) => isOdd(subterm m);
+    }
+  }
+  fn isOdd(subterm n : Nat()) -> (b : Bool()) {
+    match n : (b : Bool()) {
+      Zero() => False();${succBranch}
+    }
+  }
+}
+print isEven(Succ(Succ(Zero())));
+let p : Even(Succ(Succ(Zero())))${proof};
+`;
 
 const evenOdd = `mutual {
   data Even(n : Nat()) : Type() {
@@ -342,7 +410,7 @@ print f(Zero(), IsZeroHere());
 
 export const disclaimer = "This tutorial was written by a Claude session, not by Pledge's owner. DESIGN.md is the specification; where the two disagree, DESIGN.md is right and this tutorial is wrong. Section numbers (§) point to the DESIGN.md text a claim is based on.";
 
-export const pages: Page[] = [
+const sections: { title: string; pages: Omit<Page, "section">[] }[] = [{ title: "Basics", pages: [
   {
     slug: "nat",
     title: "Data and Nat()",
@@ -354,15 +422,11 @@ export const pages: Page[] = [
       "Task: bind `three` to the number three and `print` it."),
     boxes: [nat],
     initial: `-- Bind three to the number three, then print it.
-let two = Succ(Succ(Zero()));
-print two;
-`,
+${twoThenThree("")}`,
     requireQed: false,
-    solution: `let two = Succ(Succ(Zero()));
-print two;
-let three = Succ(two);
+    solution: twoThenThree(`let three = Succ(two);
 print three;
-`,
+`),
   },
   {
     slug: "functions",
@@ -370,27 +434,15 @@ print three;
     phase: 1,
     prose: paragraphs(
       "A function names its parameters and its returns: `fn isZero(n : Nat()) -> (b : Bool())`. Its body is a block, `{ statements; final expression }` (§8).",
-      "A `match` is annotated with the telescope it produces, here `(b : Bool())` (§10); `_` is allowed in its place where a whole telescope is given, as at a function body. Each value constructor of the scrutinee's type has one branch, unless it is refuted (a later page). Patterns do not nest: a branch names the fields of one value constructor.",
+      "A `match` takes apart the value of an expression, its scrutinee, here `n`. It is annotated with the telescope it produces, a parenthesized list of binders (§1), here `(b : Bool())` (§10); `_` is allowed in its place where a whole telescope is given, as at a function body. Each value constructor of the scrutinee's type has one branch, unless it is refuted (a later page). Patterns do not nest: a branch names the fields of one value constructor.",
       "The program is rejected as it stands. Put the caret on the `match` and read the error and the Expected panel.",
       "Task: add the missing branch so that `isZero` returns `False()` for any `Succ`."),
     boxes: [box(nat, bool)],
     initial: `-- Add the branch for Succ, returning False().
-fn isZero(n : Nat()) -> (b : Bool()) {
-  match n : (b : Bool()) {
-    Zero() => True();
-  }
-}
-print isZero(Succ(Zero()));
-`,
+${isZeroFn("")}`,
     requireQed: false,
-    solution: `fn isZero(n : Nat()) -> (b : Bool()) {
-  match n : (b : Bool()) {
-    Zero() => True();
-    Succ(_) => False();
-  }
-}
-print isZero(Succ(Zero()));
-`,
+    solution: isZeroFn(`
+    Succ(_) => False();`),
   },
   {
     slug: "knowledge",
@@ -402,18 +454,9 @@ print isZero(Succ(Zero()));
       "In `let y is e = e2;`, the binder `y is e` asserts a fact the checker must already know: `e2` must canonicalize to the same term as `e` (§6).",
       "Task: the assertion on the last line is wrong. Fix the term after `is` so that the line checks."),
     boxes: [nat],
-    initial: `let one = Succ(Zero());
-let two = Succ(one);
-inspect;
--- This assertion is wrong: fix the term after is.
-let y is Succ(Zero()) = two;
-`,
+    initial: assertion("-- This assertion is wrong: fix the term after is.\n", "Succ(Zero())"),
     requireQed: false,
-    solution: `let one = Succ(Zero());
-let two = Succ(one);
-inspect;
-let y is Succ(Succ(Zero())) = two;
-`,
+    solution: assertion("", "Succ(Succ(Zero()))"),
   },
   {
     slug: "vhead",
@@ -425,22 +468,9 @@ let y is Succ(Succ(Zero())) = two;
       "Task: give the match its one branch. Then put the caret on the `match` and open `VNil` in the Refutations panel to see the derivation."),
     boxes: [box(nat, vec)],
     initial: `-- Give the match its branch for VCons.
-fn vhead(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (x : A) {
-  match v : (x : A) {
-  }
-}
-let v = VCons(Nat(), Zero(), Succ(Zero()), VNil(Nat()));
-print vhead(Nat(), Zero(), v);
-`,
+${vheadUse(vheadWith(""))}`,
     requireQed: false,
-    solution: `fn vhead(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (x : A) {
-  match v : (x : A) {
-    VCons(_, _, hd, _) => hd;
-  }
-}
-let v = VCons(Nat(), Zero(), Succ(Zero()), VNil(Nat()));
-print vhead(Nat(), Zero(), v);
-`,
+    solution: vheadUse(vhead),
   },
   {
     slug: "vuncons",
@@ -452,26 +482,12 @@ print vhead(Nat(), Zero(), v);
       "Task: make the branch produce both the head and the tail, then bind both results of the call and print them."),
     boxes: [box(nat, vec), twoVec],
     initial: `-- Return both the head and the tail, then bind and print both.
-fn vuncons(A : Type(), n : Nat(), v : Vec(A, Succ(n)))
-    -> (hd : A, tl : Vec(A, n)) {
-  match v : (hd : A, tl : Vec(A, n)) {
-    VCons(_, _, h, t) => h;
-  }
-}
-let h = vuncons(Nat(), one, xs);
-print h;
-`,
+${vuncons("h", `let h = vuncons(Nat(), one, xs);
+print h;`)}`,
     requireQed: false,
-    solution: `fn vuncons(A : Type(), n : Nat(), v : Vec(A, Succ(n)))
-    -> (hd : A, tl : Vec(A, n)) {
-  match v : (hd : A, tl : Vec(A, n)) {
-    VCons(_, _, h, t) => (h, t);
-  }
-}
-let (h, t) = vuncons(Nat(), one, xs);
+    solution: vuncons("(h, t)", `let (h, t) = vuncons(Nat(), one, xs);
 print h;
-print t;
-`,
+print t;`),
   },
   {
     slug: "is-binders",
@@ -483,21 +499,9 @@ print t;
       "Task: change `m`'s binder in `cons`'s returns so that the last line checks."),
     boxes: [box(nat, vec, vhead)],
     initial: `-- Change m : Nat() to an is binder, so that the last line checks.
-fn cons(A : Type(), n : Nat(), x : A, v : Vec(A, n))
-    -> (m : Nat(), w : Vec(A, m)) {
-  (Succ(n), VCons(A, n, x, v))
-}
-let (m, w) = cons(Nat(), Zero(), Zero(), VNil(Nat()));
-print vhead(Nat(), Zero(), w);
-`,
+${cons("m : Nat()")}`,
     requireQed: false,
-    solution: `fn cons(A : Type(), n : Nat(), x : A, v : Vec(A, n))
-    -> (m is Succ(n), w : Vec(A, m)) {
-  (Succ(n), VCons(A, n, x, v))
-}
-let (m, w) = cons(Nat(), Zero(), Zero(), VNil(Nat()));
-print vhead(Nat(), Zero(), w);
-`,
+    solution: cons("m is Succ(n)"),
   },
   {
     slug: "pattern-let",
@@ -509,22 +513,10 @@ print vhead(Nat(), Zero(), w);
       "Task: finish `vsecond` with a second pattern `let`."),
     boxes: [box(nat, vec), twoVec],
     initial: `-- Return v's second element, with a second pattern let on rest.
-fn vsecond(A : Type(), n : Nat(), v : Vec(A, Succ(Succ(n))))
-    -> (x : A) {
-  let VCons(_, _, _, rest) = v;
-  rest
-}
-print vsecond(Nat(), Zero(), xs);
-`,
+${vsecond("rest")}`,
     requireQed: false,
-    solution: `fn vsecond(A : Type(), n : Nat(), v : Vec(A, Succ(Succ(n))))
-    -> (x : A) {
-  let VCons(_, _, _, rest) = v;
-  let VCons(_, _, y, _) = rest;
-  y
-}
-print vsecond(Nat(), Zero(), xs);
-`,
+    solution: vsecond(`let VCons(_, _, y, _) = rest;
+  y`),
   },
   {
     slug: "termination",
@@ -557,42 +549,13 @@ print plus(two, ack(Succ(Zero()), two));
     boxes: [box(nat, bool, evenOdd)],
     initial: `-- Give isOdd a Succ branch calling isEven, then replace EvenZero()
 -- with a proof of Even(Succ(Succ(Zero()))).
-mutual {
-  fn isEven(subterm n : Nat()) -> (b : Bool()) {
-    match n : (b : Bool()) {
-      Zero() => True();
-      Succ(m) => isOdd(subterm m);
-    }
-  }
-  fn isOdd(subterm n : Nat()) -> (b : Bool()) {
-    match n : (b : Bool()) {
-      Zero() => False();
-    }
-  }
-}
-print isEven(Succ(Succ(Zero())));
-let p : Even(Succ(Succ(Zero()))) = EvenZero();
-`,
+${isEvenOdd("", " = EvenZero()")}`,
     requireQed: false,
-    solution: `mutual {
-  fn isEven(subterm n : Nat()) -> (b : Bool()) {
-    match n : (b : Bool()) {
-      Zero() => True();
-      Succ(m) => isOdd(subterm m);
-    }
-  }
-  fn isOdd(subterm n : Nat()) -> (b : Bool()) {
-    match n : (b : Bool()) {
-      Zero() => False();
-      Succ(m) => isEven(subterm m);
-    }
-  }
-}
-print isEven(Succ(Succ(Zero())));
-let p : Even(Succ(Succ(Zero())))
-  = EvenSucc(Succ(Zero()), OddSucc(Zero(), EvenZero()));
-`,
+    solution: isEvenOdd(`
+      Succ(m) => isEven(subterm m);`, `
+  = EvenSucc(Succ(Zero()), OddSucc(Zero(), EvenZero()))`),
   },
+] }, { title: "Proofs", pages: [
   {
     slug: "equality",
     title: "Propositions as types: equality",
@@ -820,6 +783,7 @@ qed loop(Zero());
 qed loop(Zero());
 `,
   },
+] }, { title: "Erasure", pages: [
   {
     slug: "erased",
     title: "Erasure",
@@ -905,9 +869,10 @@ ${castUse}`,
 }
 ${castUse}`,
   },
+] }, { title: "Fine points", pages: [
   {
     slug: "tuple-let-telescope",
-    title: "Fine points: a let's binders as a telescope",
+    title: "A let's binders as a telescope",
     phase: 1,
     prose: paragraphs(
       "The pages from here on are a closing section, Fine points. Each shows one rule in detail and names where DESIGN.md states it; one shows behaviour of this implementation on which DESIGN.md is silent.",
@@ -928,7 +893,7 @@ print v;
   },
   {
     slug: "facts-escape",
-    title: "Fine points: facts outlive names",
+    title: "Facts outlive names",
     phase: 1,
     prose: paragraphs(
       "A pattern `let`'s names are in scope for the rest of the enclosing block, but its fields and facts last to the end of the enclosing match branch or function body, or of the program (§7, §10). So what forcing learned inside a block is still known after it, though the names the pattern gave are gone.",
@@ -947,7 +912,7 @@ qed Refl(Vec(Nat(), Succ(n)), v);
   },
   {
     slug: "tainted-pattern-let",
-    title: "Fine points: a tainted pattern let",
+    title: "A tainted pattern let",
     phase: 1,
     prose: paragraphs(
       "Your box has the previous page's shape, but `v` comes from `sorry`. Forcing `VCons` on it adds facts that nothing backs, and they last as long as any pattern `let`'s facts: to the end of the enclosing match branch or function body, or of the program (§7). So the taint reaches as far: a pattern `let` whose scrutinee is tainted taints every result of the match branch or function body it is in, or, at the top level, every result of the top-level statements after it (§12). After it, at the top level, nothing evaluates, every `print` shows `sorry` and no `qed` proves the goal, though checking goes on.",
@@ -963,7 +928,7 @@ ${taintedLet("sorry(v : Vec(Nat(), Succ(Zero())))")}`,
   },
   {
     slug: "hole-through-block",
-    title: "Fine points: _ through a block",
+    title: "_ through a block",
     phase: 2,
     prose: paragraphs(
       "In this implementation, a block used as an argument takes part in solving the call's `_`s through its final expression, as a direct argument does; the block's statements do not, nor does a match branch's body. DESIGN.md is silent on this.",
@@ -979,7 +944,7 @@ ${throughBlock("Nat()", "Zero()")}`,
   },
   {
     slug: "hole-taint",
-    title: "Fine points: _ and taint",
+    title: "_ and taint",
     phase: 2,
     prose: paragraphs(
       "A `_` is tainted when the term it is solved to mentions a tainted entry (§12). Here `count`'s parameter has type `Vec(A, Zero())`, and `A` comes from `sorry`, so the `_` in `VNil(_)` is solved to `A` and is tainted, and so is the call, as it would be with `VNil(A)` written out.",
@@ -995,7 +960,7 @@ ${taintedHole("sorry(A : Type())")}`,
   },
   {
     slug: "goal-comparison",
-    title: "Fine points: comparing a function with a goal",
+    title: "Comparing a function with a goal",
     phase: 1,
     prose: paragraphs(
       "`qed f;` checks `f`'s parameters and returns against a function goal's, position by position (§12). They are compared as terms whose bound variables refer to their binders, so binder names play no part, and an earlier binder's `is` clause is not in force for later ones; `is` clauses, and in phase 2 multiplicities, must agree; `subterm` marks are not compared.",
@@ -1010,7 +975,7 @@ ${succEq("Succ(x), y")}`,
   },
   {
     slug: "absurd-branches",
-    title: "Fine points: absurd branches",
+    title: "Absurd branches",
     phase: 2,
     prose: paragraphs(
       "An erased match with a `many` annotation entry is allowed at most one branch that is not absurd; a branch is absurd when its body is a match with no branches, possibly the final expression of a block. Evaluation runs the branch that is not absurd (§16).",
@@ -1026,4 +991,6 @@ ${absurdUse}`,
     Succ(m) => match p : _ {};
 ${absurdUse}`,
   },
-];
+] }];
+
+export const pages: Page[] = sections.flatMap(s => s.pages.map(p => ({ ...p, section: s.title })));
