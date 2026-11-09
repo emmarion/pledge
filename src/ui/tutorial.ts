@@ -1,5 +1,7 @@
 import { pages } from "../tutorial/pages.ts";
-import { h } from "./dom.ts";
+import { lex } from "../lexer.ts";
+import { fill, h } from "./dom.ts";
+import { highlight } from "./editor.ts";
 import { Workspace } from "./workspace.ts";
 
 const slug = new URLSearchParams(location.search).get("page");
@@ -19,7 +21,10 @@ workspace.mount(
   [h("h1", {}, h("a", { href: "index.html" }, "Pledge"), " tutorial"), h("span", { class: "muted" }, `Phase ${page.phase}`)],
   "Reset your box",
   [h("h2", {}, page.title), prose],
-  [h("details", { class: "solution" }, h("summary", {}, "Show a solution"), h("pre", {}, page.solution)),
+  [h("details", {
+    class: "solution",
+    ontoggle: (e: Event) => fill((e.currentTarget as HTMLElement).querySelector("pre")!, highlight(page.solution, lex(page.solution, page.phase), workspace.kinds)),
+  }, h("summary", {}, "Show a solution"), h("pre", {}, page.solution)),
   h("p", { class: "pager" },
     index > 0 && h("a", { href: href(index - 1) }, `← ${pages[index - 1]!.title}`),
     index + 1 < pages.length && h("a", { href: href(index + 1), class: "next" }, `${pages[index + 1]!.title} →`))],

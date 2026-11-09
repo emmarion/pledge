@@ -212,3 +212,13 @@ and never renumbered (rule 15); a removed item leaves a gap.
 42. **Within a group**, bodies are re-checked until no further function
     becomes tainted, and the §13 information is kept from the final
     pass only.
+43. **Syntax highlighting** lexes each box under the page's phase, so
+    `erased` is coloured as a name in phase 1 and a keyword in phase 2.
+    Names are coloured by what the last check's Globals say they are
+    (type constructor, value constructor, function); locals and
+    top-level bindings keep the text colour. When a program does not
+    parse, the previous colouring is kept rather than flickering off.
+44. **Beside the editor**, an output wraps onto free lines below its
+    own and otherwise ends in an ellipsis, opening in full on hover or
+    focus. Hovering a name shows its entry's type and `is` rule, or a
+    global's signature.

@@ -39,9 +39,15 @@ export function rendered(r: Rendered, ctx: Ctx): HTMLElement {
 
 const tag = (text: string, show: boolean): Child => show && h("span", { class: "tag" }, text);
 
+const typed = (name: Child, type: Child, rule: Child): Child =>
+  [h("span", { class: "name" }, name), type && [" : ", type], rule && [" is ", rule]];
+
 const binding = (ctx: Ctx, name: Child, type: Rendered | null, rule: Rendered | null, ...tags: Child[]): HTMLElement =>
-  h("li", { class: "binding" }, h("span", { class: "name" }, name),
-    type && [" : ", rendered(type, ctx)], rule && [" is ", rendered(rule, ctx)], tags);
+  h("li", { class: "binding" }, typed(name, type && rendered(type, ctx), rule && rendered(rule, ctx)), tags);
+
+const signed = (name: string, signature: Child): HTMLElement => h("code", {}, h("span", { class: "name" }, name), signature);
+
+const globalLine = (kind: string, name: string, signature: Child): Child => [h("span", { class: "kind" }, kind), " ", signed(name, signature)];
 
 const section = (title: string, ...body: Child[]): HTMLElement =>
   h("section", { class: "panel" }, h("h3", {}, title), body);
@@ -76,12 +82,16 @@ export function infoView(info: PositionInfo, ctx: Ctx): HTMLElement[] {
       class: "panel globals", open: ctx.globalsOpen,
       ontoggle: (e: Event) => { ctx.globalsOpen = (e.currentTarget as HTMLDetailsElement).open; },
     }, h("summary", {}, `Globals (${info.globals.length})`),
-      list(info.globals.map(g => h("li", { class: "global" },
-        h("span", { class: "kind" }, g.kind), " ", h("code", {}, h("span", { class: "name" }, g.name), rendered(g.signature, ctx)),
-        g.ctors && h("ul", {}, g.ctors.map(c => h("li", {}, h("code", {}, h("span", { class: "name" }, c.name), rendered(c.signature, ctx))))))),
+      list(info.globals.map(g => h("li", { class: "global" }, globalLine(g.kind, g.name, rendered(g.signature, ctx)),
+        g.ctors && h("ul", {}, g.ctors.map(c => h("li", {}, signed(c.name, rendered(c.signature, ctx))))))),
         "No top-level names in scope.")),
   ];
 }
+
+export const entryTip = (e: EntryInfo, showErased: boolean): Child =>
+  [h("code", {}, typed(e.names.join(", "), e.type.text, e.rule?.text)), tag("erased", showErased && e.erased)];
+
+export const globalTip = (kind: string, name: string, signature: Rendered): Child => globalLine(kind, name, signature.text);
 
 export const inspectView = (info: PositionInfo, ctx: Ctx): HTMLElement => {
   const body = h("div", { class: "inspect-body" });
@@ -110,19 +120,18 @@ export const evalView = (result: ReturnType<CheckResult["evalAt"]>, ctx: Ctx): C
       h("dt", {}, "is"), h("dd", {}, result.rule ? rendered(result.rule, ctx) : muted("no rule")),
       h("dt", {}, "canonical"), h("dd", {}, result.canonicalRule ? rendered(result.canonicalRule, ctx) : muted("no rule")));
 
-export const verdict = (good: boolean | null, text: string): HTMLElement =>
+export const verdict = (good: boolean | null, ...text: Child[]): HTMLElement =>
   h("span", { class: good === null ? "verdict" : good ? "verdict good" : "verdict bad" }, text);
 
 export const statusView = (r: CheckResult, error: string | null, qedMissing: boolean, ctx: Ctx): Child[] => {
   const proved = r.goalProved === null ? null : r.goalProved && !qedMissing;
   return [
-    r.error
-      ? h("span", { class: "verdict bad" }, "Error at ", goto(ctx, r.error.span.start), ": ", error)
-      : verdict(true, "No errors"),
-    verdict(r.containsSorry ? false : null, r.containsSorry ? "Contains sorry" : "No sorry"),
-    qedMissing
-      ? verdict(null, "No qed in your box")
-      : verdict(r.qedChecks, r.qedChecks === null ? "No qed" : r.qedChecks ? "qed checks" : "qed does not check"),
-    verdict(proved, proved === null ? "No goal" : proved ? "Goal proved" : "Goal not proved"),
+    r.error ? verdict(false, "Error at ", goto(ctx, r.error.span.start), ": ", error) : verdict(true, "No errors"),
+    h("span", { class: "verdicts" },
+      verdict(r.containsSorry ? false : null, r.containsSorry ? "Contains sorry" : "No sorry"),
+      qedMissing
+        ? verdict(null, "No qed in your box")
+        : verdict(r.qedChecks, r.qedChecks === null ? "No qed" : r.qedChecks ? "qed checks" : "qed does not check"),
+      verdict(proved, proved === null ? "No goal" : proved ? "Goal proved" : "Goal not proved")),
   ];
 };
