@@ -133,7 +133,7 @@ export const statusView = (r: CheckResult, error: string | null, qedMissing: boo
   return [
     r.error ? verdict(false, "Error at ", goto(ctx, r.error.span.start), ": ", error) : verdict(true, "No errors"),
     h("span", { class: "verdicts" },
-      verdict(r.containsSorry ? false : null, r.containsSorry ? "Contains sorry" : "No sorry"),
+      verdict(!r.containsSorry, r.containsSorry ? "Contains sorry" : "No sorry"),
       qedMissing
         ? verdict(null, "No qed in your box")
         : verdict(r.qedChecks, r.qedChecks === null ? "No qed" : r.qedChecks ? "qed checks" : "qed does not check"),
