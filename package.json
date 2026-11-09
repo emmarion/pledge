@@ -1,0 +1,17 @@
+{
+  "name": "pledge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A language for teaching restricted dependent types; runs in the browser.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test 'src/**/*.test.ts'",
+    "serve": "node serve.mjs"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}
