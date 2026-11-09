@@ -23,10 +23,14 @@ export function lineCol(source: string, offset: number): { line: number; col: nu
   return { line: lines.length, col: (lines.at(-1) ?? "").length + 1 };
 }
 
+export const position = (source: string) => (offset: number): string => {
+  const { line, col } = lineCol(source, offset);
+  return `${line}:${col}`;
+};
+
 export function label(scope: Scope, id: EntryId): string {
   const e = entry(scope, id);
-  const { line, col } = lineCol(scope.source, e.origin.span.start);
-  return e.names[0] ?? `?${e.origin.kind}@${line}:${col}`;
+  return e.names[0] ?? `?${e.origin.kind}@${scope.where(e.origin.span.start)}`;
 }
 
 export function entryRef(scope: Scope, id: EntryId): Rendered {

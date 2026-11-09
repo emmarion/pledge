@@ -63,4 +63,4 @@ export interface CheckResult {
   evalAt(offset: number, text: string): { type: Rendered; canonicalType: Rendered; rule: Rendered | null; canonicalRule: Rendered | null } | { error: Diagnostic };
 }
 
-export type Check = (source: string, phase: Phase) => CheckResult;
+export type Check = (source: string, phase: Phase, where?: (offset: number) => string) => CheckResult;

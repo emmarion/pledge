@@ -5,7 +5,7 @@ import {
   rewrites, same, subst, withName,
 } from "./terms.ts";
 import type { Binder, Head, OpenTerm, Scope, Signature, Term } from "./terms.ts";
-import { entryInfo, explain, lineCol, render, renderSignature } from "./render.ts";
+import { entryInfo, explain, lineCol, position, render, renderSignature } from "./render.ts";
 import { apply, force, instantiate, open } from "./telescope.ts";
 
 const span = { start: 0, end: 0 };
@@ -35,7 +35,7 @@ const sigs = {
 };
 
 function base(source = ""): Scope {
-  return Object.values(sigs).reduce(declare, emptyScope(source));
+  return Object.values(sigs).reduce(declare, emptyScope(position(source)));
 }
 
 function add(scope: Scope, name: string | null, type: Term, rule: Term | null = null): [Scope, Term] {

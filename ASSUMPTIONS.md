@@ -101,9 +101,10 @@ and never renumbered (rule 15); a removed item leaves a gap.
     being processed first in, first out, the scrutinee's before the
     type's. That this has the fewest steps is presumed, not proved.
 20. **Anonymous entries** render as `?kind@line:col`, with the kind the
-    checker gives the entry's origin; two anonymous entries of the same
-    kind at the same position are not told apart, so the checker
-    chooses distinct kinds.
+    checker gives the entry's origin, and as `?kind@boxN:line:col` on a
+    tutorial page, where the interface supplies the position format;
+    two anonymous entries of the same kind at the same position are not
+    told apart, so the checker chooses distinct kinds.
 21. **Forcing two applications with the same head but different
     argument counts**, impossible for well-formed terms, is treated as
     a refutation by different heads rather than an internal error.

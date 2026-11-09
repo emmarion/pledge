@@ -33,7 +33,7 @@ type PMap<V> = PNode<V> | null;
 interface Cons { readonly id: EntryId; readonly prev: Cons | null }
 
 export interface Scope {
-  readonly source: string;
+  readonly where: (offset: number) => string;
   readonly supply: { next: EntryId };
   readonly table: PMap<Entry>;
   readonly names: PMap<EntryId>;
@@ -63,8 +63,8 @@ export const TYPE: App = app({ kind: "type", name: "Type" });
 export const declare = (scope: Scope, sig: Signature): Scope => ({ ...scope, sigs: pset(scope.sigs, sig.head.name, sig) });
 export const signature = (scope: Scope, name: string): Signature | undefined => pget(scope.sigs, name);
 
-export const emptyScope = (source: string): Scope =>
-  declare({ source, supply: { next: 0 }, table: null, names: null, sigs: null, order: null }, { head: TYPE.head, params: [], ret: TYPE });
+export const emptyScope = (where: (offset: number) => string): Scope =>
+  declare({ where, supply: { next: 0 }, table: null, names: null, sigs: null, order: null }, { head: TYPE.head, params: [], ret: TYPE });
 
 export function entry(scope: Scope, id: EntryId): Entry {
   const e = pget(scope.table, id);

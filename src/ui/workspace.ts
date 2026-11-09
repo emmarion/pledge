@@ -49,11 +49,13 @@ class Program implements Ctx {
     return this.locate(span.start).index === index ? { start: span.start - start, end: Math.min(span.end - start, length) } : null;
   }
 
-  where(offset: number): string {
+  private place(offset: number, box: (n: number) => string, line: string): string {
     const { index, local } = this.locate(offset);
-    const { line, col } = lineCol(this.editors[index]!.text, local);
-    return `${this.members.length > 1 ? `box ${index + 1}, ` : ""}line ${line}:${col}`;
+    const at = lineCol(this.editors[index]!.text, local);
+    return `${this.members.length > 1 ? box(index + 1) : ""}${line}${at.line}:${at.col}`;
   }
+
+  where(offset: number): string { return this.place(offset, n => `box ${n}, `, "line "); }
 
   entry(id: EntryId): EntryInfo | undefined { return this.known.get(id); }
 
@@ -96,7 +98,7 @@ class Program implements Ctx {
     const source = this.editors.map(e => e.text).join("\n");
     this.stale = false;
     try {
-      this.result = check(source, phase);
+      this.result = check(source, phase, offset => this.place(offset, n => `box${n}:`, ""));
     } catch (e) {
       this.result = null;
       this.status = verdict(false, `Internal error in the checker: ${String(e)}`);

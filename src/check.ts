@@ -5,7 +5,7 @@ import { hasKeyword } from "./lexer.ts";
 import { TYPE, abstract, declare, emptyScope, ref, signature } from "./terms.ts";
 import type { Telescope, Term } from "./terms.ts";
 import { difference } from "./telescope.ts";
-import { renderBinder } from "./render.ts";
+import { position, renderBinder } from "./render.ts";
 import { bindPattern, evalOne, evalStmt, showValue } from "./eval.ts";
 import type { Env, FnDef, Value } from "./eval.ts";
 import { Failure, attempt, declareGlobal, fail, fresh, global, record } from "./context.ts";
@@ -26,7 +26,7 @@ function run<T>(span: Span, f: () => T): T {
   }
 }
 
-export const check: Check = (source, phase) => {
+export const check: Check = (source, phase, where = position(source)) => {
   const parsed = parse(source, phase);
   const containsSorry = hasKeyword(source, phase, "sorry");
   if ("error" in parsed)
@@ -35,7 +35,7 @@ export const check: Check = (source, phase) => {
       infoAt: () => nothing, explainAt: () => null, evalAt: () => ({ error: parsed.error }),
     };
   const { tops } = parsed.program;
-  let top: Local = { scope: emptyScope(source), tainted: new Set(), erased: new Set(), poisoned: false };
+  let top: Local = { scope: emptyScope(where), tainted: new Set(), erased: new Set(), poisoned: false };
   const st: State = { phase, globals: [], index: new Map(), snapshots: [], explains: [], record: true };
   declareGlobal(st, { kind: "type", name: "Type", sig: signature(top.scope, "Type")!, ctors: null, done: true });
   const ctx: Ctx = { st, fn: null, skeleton: false, limit: null, erased: false, holes: [] };

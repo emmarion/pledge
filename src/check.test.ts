@@ -176,6 +176,13 @@ test("a tainted comptime pattern let evaluates nothing", () => {
   assert.deepEqual(r.prints.map(p => p.value), ["sorry"]);
 });
 
+test("anonymous markers place their origin with the given formatter", () => {
+  const source = file("design_vhead.pledge");
+  const info = check(source, 1, at => `<${at}>`).infoAt(offset(source, "hd\n}", 1));
+  const rest = info.scope.find(e => e.origin.kind === "VCons.rest")!;
+  assert.equal(info.scope.find(e => e.names[0] === "v")?.rule?.text, `VCons(A, n, hd, ?VCons.rest@<${rest.origin.span.start}>)`);
+});
+
 test("infoAt inside vhead's body: scope, expected and termination", () => {
   const source = file("design_vhead.pledge");
   const info = ok(source).infoAt(offset(source, "hd\n}", 1));
