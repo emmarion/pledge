@@ -21,7 +21,7 @@ test("functions: the starting text fails at the match for want of a Succ branch,
   assert.match(r.error?.message() ?? "", /no branch for `Succ`/);
   assert.deepEqual(expected(r.infoAt(source.indexOf("match n"))), ["b : Bool()"]);
   assert.deepEqual(printsOf("functions"), ["False()"]);
-  assert.match(errorAt("functions", page("functions").solution.replace("Succ(_)", "Succ(Succ(m))")).message, /expected `\)`/);
+  assert.match(errorAt("functions", page("functions").solution.replace("Succ(_)", "Succ(Succ(m))")).message, /a pattern does not nest/);
 });
 
 test("knowledge: Scope shows two's rule canonically, and the Term panel and the At the caret field show the rewrites", () => {
