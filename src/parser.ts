@@ -12,7 +12,19 @@ type Block = Expr & { kind: "block" };
 const describe = (token: Token): string =>
   token.kind === "eof" ? "end of input" : token.kind === "keyword" ? `keyword \`${token.text}\`` : `\`${token.text}\``;
 
+interface Grammar { program(): Program; expression(): Expr }
+
 export function parse(source: string, phase: Phase): { program: Program } | { error: Diagnostic } {
+  const r = parseWith(source, phase, g => g.program());
+  return "error" in r ? r : { program: r.value };
+}
+
+export function parseExpr(source: string, phase: Phase): { expr: Expr } | { error: Diagnostic } {
+  const r = parseWith(source, phase, g => g.expression());
+  return "error" in r ? r : { expr: r.value };
+}
+
+function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { value: T } | { error: Diagnostic } {
   const tokens = lex(source, phase);
   let pos = 0;
   let prevEnd = 0;
@@ -252,10 +264,18 @@ export function parse(source: string, phase: Phase): { program: Program } | { er
     return fail("a declaration or a top-level statement");
   };
 
-  try {
+  const program = (): Program => {
     const tops: Top[] = [];
     while (peek().kind !== "eof") tops.push(top());
-    return { program: { tops, span: { start: 0, end: source.length } } };
+    return { tops, span: { start: 0, end: source.length } };
+  };
+  const expression = (): Expr => {
+    const e = expr();
+    return peek().kind === "eof" ? e : fail("end of input");
+  };
+
+  try {
+    return { value: root({ program, expression }) };
   } catch (e) {
     if (e instanceof ParseError) return { error: e.diag };
     throw e;

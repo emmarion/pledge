@@ -136,3 +136,79 @@ and never renumbered (rule 15); a removed item leaves a gap.
     `localStorage`, with a button to restore the starting text;
     checking runs shortly after the last edit, and the panels follow
     the caret without rechecking.
+
+## Tutorial
+
+26. **Solutions.** Each tutorial page carries a solution, shown in a
+    closed "Show a solution" disclosure below the learner's box; §12
+    says nothing about solutions.
+27. **Starting texts** of several pages do not check (a missing branch,
+    a wrong `is`, unmarked recursion), so the learner first sees the
+    checker's error; §12 does not say whether a page's starting text
+    should check.
+28. **Stating `plus(n, Zero())` equals `n`.** Since a type contains no
+    call (§3), the tutorial states it through a data type constructor
+    `Plus(m, n, r)`, with `plus` returning its result together with a
+    `Plus` value, and proves `Eq(Nat(), r, n)` from `Plus(n, Zero(), r)`.
+    This is a session's reading of how such a fact is meant to be
+    expressed; the owner may intend another idiom.
+29. **Names.** `Bool`'s value constructors are `True` and `False`, and
+    the empty type on a later page is also `False`; they never share a
+    program. The closing page's solution uses `sorry` deliberately, so
+    its goal stays unproved.
+
+## Checking
+
+30. **Tuple `let` binders** are not a telescope: each binder's type or
+    `is` clause is checked in the scope before the `let`, since §8
+    puts the binders in scope only after it, so
+    `let (a : Nat(), b is Succ(a)) = e;` is rejected.
+31. **What survives a block.** §7 and §8 seem not to say what happens
+    to the entries a block creates, though its results can be such
+    entries. The checker keeps every entry created in the block, with
+    the rules it has at the block's end, and drops the rules the block
+    added to older entries (related to DECISIONS.md O5). In a block
+    whose results are tainted by a pattern `let` inside it, a kept
+    entry's rules can be inconsistent with the facts outside; a review
+    found no way to reach such an entry from an untainted value, but
+    this is an open question rather than a proof.
+32. **A later error** anywhere in the program leaves the goal unproved,
+    even when the `qed` checked before it; §12 does not say.
+33. **Functions declared after a tainted top-level pattern `let`** are
+    not tainted by it, §12's rule speaking of top-level statements;
+    this seems harmless since nothing evaluates after that `let`.
+34. **Every top-level `let` is evaluated** as DESIGN.md §11 says;
+    SOUNDNESS.md part 8 says ordinary top-level `let`s are never
+    evaluated, which the two files should settle between them.
+35. **Taint of `goal`'s type**, a skeleton term, is computed as for an
+    expression: a variable is tainted when it names a tainted binder,
+    an application when an argument is.
+36. **Order of declarations.** A type constructor's own name is not in
+    scope in its parameter telescope, nor a value constructor's in its
+    fields; a group's functions are all registered, then all their
+    telescopes checked in written order, then their bodies.
+37. **Positions given nothing** (a scrutinee, a pattern `let`'s
+    right-hand side, `print`'s expression) must produce exactly one
+    value, reading §8's "anywhere else".
+38. **The first error** is the first the checker meets in its own order,
+    not the first in text order: a group's telescopes before its
+    bodies, and a match's patterns before its branch bodies.
+39. **`qedChecks`** is false, not null, when checking stops before the
+    `qed`. **`containsSorry`** is read off the tokens, even when the
+    program does not parse. A `qed`'s expression is evaluated as any
+    top-level statement, its value discarded; `qed sorry(_);` is
+    allowed (§14).
+40. **An exception from the evaluator**, such as a JavaScript stack
+    overflow on a deep recursion, is reported as the program's error at
+    the statement being evaluated.
+41. **§13 snapshots.** Information is recorded at every expression,
+    statement, binder and declaration, and `infoAt` answers from the
+    smallest recorded span containing the position. The Scope panel
+    lists every entry in scope, top-level ones included, but not
+    anonymous application entries; refutations are shown at the
+    `match` or pattern `let` itself. Anonymous entries are labelled by
+    origin: `app`, `param`, `binder`, `f.r` for return `r` of a call to
+    `f`, `match.r`, `sorry.r` and `C.f` for a forced field.
+42. **Within a group**, bodies are re-checked until no further function
+    becomes tainted, and the §13 information is kept from the final
+    pass only.
