@@ -3,7 +3,7 @@ import { bound, entries, entry, lookup, mapLeaves } from "./terms.ts";
 import type { OpenTerm, Scope, Signature, Term } from "./terms.ts";
 import { cat, entryInfo, explain, render, renderTelescope } from "./render.ts";
 import { parseExpr } from "./parser.ts";
-import { APP, HOLE, attempt, innermost, isTainted, written } from "./context.ts";
+import { APP, HOLE, attempt, innermost, written } from "./context.ts";
 import type { Given, Global, Snapshot, State } from "./context.ts";
 import { expr, single } from "./expr.ts";
 
@@ -54,8 +54,9 @@ export function info(st: State, snap: Snapshot): PositionInfo {
     expected: expected(scope, snap.given),
     termination: snap.fn?.info ?? null,
     scope: entries(scope).filter(e => e.names.length || (e.origin.kind !== APP && e.origin.kind !== HOLE))
-      .map(e => ({ ...entryInfo(scope, e.id), tainted: isTainted(e, tainted), erased: e.erased
+      .map(e => ({ ...entryInfo(scope, e.id), tainted: e.names.filter(n => tainted.has(n)), erased: e.erased
         || (e.names.length > 0 && e.names.every(n => erased.has(n))) })),
+    taintedBy: snap.local.taintedBy,
     refutations: snap.refutations,
     globals: st.globals.slice(0, snap.limit).flatMap(g => globalInfo(scope, g, st, snap.limit)),
   };

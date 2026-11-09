@@ -23,7 +23,18 @@ D35. For D16's "may": DESIGN.md says "is allowed to" for permission and
 
 ## Approved rules awaiting wording
 
-None at present.
+D50. A scope is tainted when a fact forced from a tainted scrutinee is
+     in force in it: each branch of a match on a tainted scrutinee,
+     and, for a pattern `let`, the reach of its facts (§7). Every
+     result produced in a tainted scope is tainted, so a function
+     written in one is tainted. A match's result is also tainted when
+     its scrutinee's is, which covers a match with no branches.
+D51. A name is tainted when it is a tuple `let` binder bound to a
+     tainted result. A use of a name is tainted when the name is or
+     the scope is.
+D52. The Scope panel says when the scope is tainted, linking to the
+     scrutinee responsible, and tags each tainted name; an entry gets
+     no tag of its own. The hover tip tags a tainted name the same way.
 
 ## Proposals, not approved
 

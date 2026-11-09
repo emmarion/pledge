@@ -147,6 +147,11 @@ and never renumbered (rule 15); a removed item leaves a gap.
     only the message is shown. In a message, as in the tutorial's
     prose, text between backticks is shown as code and a citation is a
     link (item 61).
+63. **A tainted scope** is reported in the Scope panel by one line
+    above the entries, linking to the scrutinee whose taint reached
+    the position first, the outermost when several did. A tainted name
+    carries a `tainted` tag after it, in the panel and in the hover
+    tip.
 
 ## Tutorial
 
@@ -201,10 +206,6 @@ and never renumbered (rule 15); a removed item leaves a gap.
     the statement holding the pattern `let`.
 32. **A later error** anywhere in the program leaves the goal unproved,
     even when the `qed` checked before it; §12 does not say.
-33. **Functions declared after a top-level statement containing a
-    tainted pattern `let`** are not tainted by it, §12's rule speaking
-    of top-level statements; a review found this harmless, since
-    nothing after that statement evaluates or proves a goal.
 35. **Taint of `goal`'s type**, a skeleton term, is computed as for an
     expression: a variable is tainted when it names a tainted binder,
     an application when an argument is.

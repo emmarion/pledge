@@ -54,7 +54,7 @@ export function entryInfo(scope: Scope, id: EntryId, canonical = true): EntryInf
     id, names: [...e.names], origin: e.origin,
     type: render(scope, e.type, { canonical }),
     rule: e.rule && render(scope, e.rule.term, { canonical }),
-    erased: e.erased, tainted: e.tainted,
+    erased: e.erased, tainted: [],
   };
 }
 

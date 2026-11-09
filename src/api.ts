@@ -14,7 +14,7 @@ export interface EntryInfo {
   type: Rendered;
   rule: Rendered | null;
   erased: boolean;
-  tainted: boolean;
+  tainted: string[];
 }
 
 export interface ExpectedEntry {
@@ -53,6 +53,7 @@ export interface PositionInfo {
   expected: ExpectedInfo;
   termination: TerminationInfo | null;
   scope: EntryInfo[];
+  taintedBy: Span | null;
   refutations: RefutationInfo[] | null;
   globals: GlobalInfo[];
 }

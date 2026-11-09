@@ -212,13 +212,15 @@ test("taint: a _ whose solution mentions a tainted entry taints the application,
     assert.deepEqual([clean.goalProved, prints(clean)], [true, ["Zero()"]], arg);
   }
   const source = `${nat}${vec}let T = sorry(T : Type());\nlet (y : Vec(T, Zero())) = VNil(_);\nlet (z : Vec(Nat(), Zero())) = VNil(_);\ninspect;\n`;
-  assert.deepEqual(ok(source).inspects[0]?.info.scope.map(e => [e.names.join(","), e.tainted]), [["T", true], ["y", true], ["z", false]]);
+  assert.deepEqual(ok(source).inspects[0]?.info.scope.map(e => [e.names.join(","), e.tainted]), [["T", ["T"]], ["y", ["y"]], ["z", []]]);
 });
 
-test("taint: a _ is tainted only by an entry's own taint, never by its names (§12)", () => {
+test("taint: a function written after a tainted pattern let in a top-level block is in a tainted scope (§12)", () => {
   const source = `${nat}${eq}fn mk() -> (n : Nat()) { Zero() }\nlet n = mk();\nlet s = sorry(s : Eq(Nat(), Zero(), Zero()));\nlet m = { let Refl(_, _) = s; n };\n` +
     "fn k(a : Nat(), erased b is a) -> (r : Nat()) { a }\nfn h1() -> (r : Nat()) {\n  let x = k(n, _);\n  inspect;\n  x\n}\nfn h2() -> (r : Nat()) {\n  let x = k(m, m);\n  inspect;\n  x\n}\n";
   const r = ok(source);
   assert.deepEqual(r.inspects.map(i => i.info.scope.filter(e => e.names.includes("x") || e.names.includes("m")).map(e => [e.names.join(","), e.tainted])),
-    [[["n,m", true], ["x", false]], [["n,m", true], ["x", true]]]);
+    [[["n,m", ["m"]], ["x", ["x"]]], [["n,m", ["m"]], ["x", ["x"]]]]);
+  const scrutinee = source.indexOf("s; n }");
+  assert.deepEqual(r.inspects.map(i => i.info.taintedBy), [1, 2].map(() => ({ start: scrutinee, end: scrutinee + 1 })));
 });

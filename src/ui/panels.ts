@@ -70,8 +70,11 @@ const section = (title: string, ...body: Child[]): HTMLElement =>
 const list = (items: Child[], empty: string): Child =>
   items.length ? h("ul", { class: "entries" }, items) : muted(empty);
 
+const names = (e: EntryInfo): Child =>
+  e.names.map((name, i) => [i > 0 && ", ", name, tag("tainted", e.tainted.includes(name))]);
+
 const entryName = (e: EntryInfo, ctx: Host): Child =>
-  e.names.length ? e.names.join(", ") : h("span", { class: "anon" }, `‹${e.origin.kind} `,
+  e.names.length ? names(e) : h("span", { class: "anon" }, `‹${e.origin.kind} `,
     goto(ctx, e.origin.span.start), "›");
 
 const expectedList = (entries: readonly ExpectedEntry[], ctx: Host): Child =>
@@ -97,9 +100,11 @@ export function infoView(info: PositionInfo, ctx: Host): HTMLElement[] {
         row("subterm parameters", termination.subtermParams.length
           ? h("code", {}, termination.subtermParams.join(", ")) : muted("none")),
         row("Group", h("code", {}, termination.group.join(", "))))),
-    section("Scope", list(info.scope.map(e =>
-      binding(ctx, entryName(e, ctx), e.type, e.rule, tag("erased", ctx.showErased && e.erased),
-        tag("tainted", e.tainted))),
+    section("Scope",
+      info.taintedBy && h("p", { class: "muted" }, "This scope is tainted, so every result here is: the scrutinee at ",
+        goto(ctx, info.taintedBy.start), " is tainted (", linked("§12"), ")."),
+      list(info.scope.map(e =>
+        binding(ctx, entryName(e, ctx), e.type, e.rule, tag("erased", ctx.showErased && e.erased))),
         "No local entries.")),
     ...refutations === null ? [] : [section("Refutations", list(refutations.map(r => {
       if (r.kind === "absurd") return h("li", {}, h("code", {}, r.ctor), " ", tag("absurd", true));
@@ -119,7 +124,7 @@ export function infoView(info: PositionInfo, ctx: Host): HTMLElement[] {
 }
 
 export const entryTip = (e: EntryInfo, showErased: boolean): Child =>
-  [h("code", {}, typed(e.names.join(", "), e.type.text, e.rule?.text)), tag("erased", showErased && e.erased)];
+  [h("code", {}, typed(names(e), e.type.text, e.rule?.text)), tag("erased", showErased && e.erased)];
 
 export const globalTip = (kind: string, name: string, signature: Rendered): Child =>
   globalLine(kind, name, signature.text);

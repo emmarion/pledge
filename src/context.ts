@@ -1,7 +1,7 @@
 import type { Diagnostic, RefutationInfo, Rendered, TerminationInfo } from "./api.ts";
 import type { Id, Mult, Phase, Span } from "./syntax.ts";
 import { entry, lookup, mapLeaves } from "./terms.ts";
-import type { Entry, EntryId, OpenTerm, Ref, Scope, Signature, Telescope, Term } from "./terms.ts";
+import type { EntryId, OpenTerm, Ref, Scope, Signature, Telescope, Term } from "./terms.ts";
 
 export class Failure {
   readonly diag: Diagnostic;
@@ -32,11 +32,13 @@ export type Global =
 export interface Want { name: string | null; type: OpenTerm | null; is: OpenTerm | null; mult: Mult; span: Span }
 export interface Given { wants: readonly Want[]; env: readonly Ref[]; whole: boolean; params?: number }
 
-export interface Local { scope: Scope; tainted: ReadonlySet<string>; erased: ReadonlySet<string>; allTainted: boolean }
+export interface Local {
+  scope: Scope;
+  tainted: ReadonlySet<string>;
+  erased: ReadonlySet<string>;
+  taintedBy: Span | null;
+}
 export interface Result { id: EntryId; tainted: boolean; erased: boolean }
-
-export const isTainted = (e: Entry, tainted: ReadonlySet<string>): boolean => e.tainted
-  || e.names.some(n => tainted.has(n));
 
 export interface FnCtx { name: string; group: readonly string[]; subterms: EntryId[]; info: TerminationInfo }
 

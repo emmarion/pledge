@@ -203,7 +203,7 @@ test("infoAt: undetermined binders, nothing given, and globals with bindings", (
   assert.equal(r.infoAt(offset(source, "let s")).expected.entries, null);
   const end = r.infoAt(source.length);
   assert.deepEqual(end.globals.filter(g => g.kind === "binding").map(g => g.name + g.signature.text), ["s : Nat()", "a : Nat()", "b : Nat() is Zero()"]);
-  assert.deepEqual(end.scope.filter(e => e.tainted).map(e => e.names.join(",")), ["s,a"]);
+  assert.deepEqual(end.scope.filter(e => e.tainted.length).map(e => e.names.join(",")), ["s,a"]);
 });
 
 test("inspect reports position information", () => {
@@ -405,4 +405,14 @@ test("soundness: a tainted pattern let in a match branch taints the match's resu
   const fns = `${fab}fn g(x : Nat()) -> (r : Nat()) {\n  let c = ${m};\n  x\n}\nfn h(x : Nat()) -> (r : Nat()) {\n  let c = ${m};\n  c\n}\ngoal Nat();\n`;
   assert.deepEqual(verdicts(ok(`${fns}qed g(Zero());\n`)), [true, true, true]);
   assert.deepEqual(verdicts(ok(`${fns}qed h(Zero());\n`)), [true, true, false]);
+});
+
+test("a tainted scrutinee taints the scope its facts reach, and names are tainted apart from it (§7, §12)", () => {
+  const source = `${nat}data Unit() : Type() {\n  U() : Unit();\n}\nlet n = Zero();\nlet s = sorry(s : Unit());\nlet r = match s : (r : Nat()) {\n  U() => { inspect; n };\n};\ninspect;\nprint n;\nlet U() = s;\ninspect;\nprint n;\n`;
+  const r = ok(source), at = (needle: string) => ({ start: source.indexOf(needle), end: source.indexOf(needle) + 1 });
+  assert.deepEqual(r.inspects.map(i => i.info.taintedBy), [at("s : (r"), null, at("s;\ninspect")]);
+  assert.deepEqual(r.inspects.map(i => i.info.scope.flatMap(e => e.tainted)), [["s"], ["s", "r"], ["s", "r"]]);
+  assert.deepEqual(r.prints.map(p => p.value), ["Zero()", "sorry"]);
+  const empty = ok(`${nat}data False() : Type() {}\nlet x = match sorry(p : False()) : (r : Nat()) {};\ninspect;\nprint x;\n`);
+  assert.deepEqual([empty.inspects[0]?.info.taintedBy, empty.prints[0]?.value], [null, "sorry"]);
 });

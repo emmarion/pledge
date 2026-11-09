@@ -30,6 +30,9 @@ export function single(out: Out, span: Span): Result {
   return r && out.results.length === 1 ? r : miscount(span, 1, `produces ${out.results.length}`);
 }
 
+const reach = (local: Local, scrutinee: Result, span: Span): Span | null =>
+  local.taintedBy ?? (scrutinee.tainted ? span : null);
+
 const erasedAt = (given: Given | null, i: number): boolean => given?.wants[i]?.mult === "erased";
 const erase = (given: Given): Given => ({ ...given, wants: given.wants.map(w => ({ ...w, mult: "erased" as const })) });
 
@@ -37,7 +40,7 @@ export function expr(ctx: Ctx, local: Local, e: Expr, given: Given | null): Out 
   const whole = ctx.erased || (given !== null && given.wants.every(w => w.mult === "erased"));
   const g = ctx.erased && given ? erase(given) : given, c = whole === ctx.erased ? ctx : { ...ctx, erased: whole };
   const built = build(c, local, e, g, record(c, local, e.span, g));
-  const out = built.local.allTainted ? { ...built, results: built.results.map(r => ({ ...r, tainted: true })) } : built;
+  const out = built.local.taintedBy ? { ...built, results: built.results.map(r => ({ ...r, tainted: true })) } : built;
   const leak = whole ? -1 : out.results.findIndex((r, i) => r.erased && !erasedAt(g, i));
   if (leak >= 0) fail(e.span, () =>
     (e.kind === "var" ? `\`${e.name.name}\`` : out.results.length === 1 ? "this value" : `value ${leak + 1} of this`) +
@@ -158,7 +161,7 @@ function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snaps
       }
       const fin = expr(ctx, inner, e.final, given);
       return {
-        local: { ...local, scope: forget(fin.local.scope, local.scope, named), allTainted: fin.local.allTainted },
+        local: { ...local, scope: forget(fin.local.scope, local.scope, named), taintedBy: fin.local.taintedBy },
         results: fin.results,
         tree: { ...e, stmts, final: fin.tree },
       };
@@ -313,8 +316,8 @@ function match(ctx: Ctx, local: Local, e: Match, given: Given | null, snap: Snap
   const wants = ann.tele.map((b, i) => erasedAt(given, i) ? { ...b, mult: "erased" as const } : b);
   const bodies = e.branches.map(br => {
     const won = survivor(branchOf(br.pat), br.pat.span, "");
-    return expr({ ...ctx, holes: [] }, bind({ ...inner, scope: won.scope }, br.pat.fields, won.fields).local, br.body,
-      { wants, env: ann.env, whole: true });
+    return expr({ ...ctx, holes: [] }, bind({ ...inner, scope: won.scope, taintedBy: reach(inner, s, e.scrut.span) },
+      br.pat.fields, won.fields).local, br.body, { wants, env: ann.env, whole: true });
   });
   snap.refutations = [...refuted, ...e.branches.filter(br => !live.includes(br)).map(br =>
     ({ ctor: br.pat.ctor.name ?? "_", kind: "absurd" as const, derivation: () => [] }))];
@@ -452,7 +455,7 @@ export function stmt(ctx: Ctx, local: Local, s: Stmt, comptime?: Comptime): Stmt
       if (other) fail(s.pat.span, () =>
         `${other.name} is not refuted here, ` +
         "and exactly one value constructor must survive forcing at a pattern `let` (§10)");
-      const b = bind({ ...out.local, scope: won.scope, allTainted: out.local.allTainted || r.tainted }, s.pat.fields,
+      const b = bind({ ...out.local, scope: won.scope, taintedBy: reach(out.local, r, s.rhs.span) }, s.pat.fields,
         won.fields);
       return { local: b.local, tree: { ...s, rhs: out.tree }, bound: b.bound };
     }

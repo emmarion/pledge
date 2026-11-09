@@ -14,7 +14,7 @@ import type { Goal } from "./goal.ts";
 import { info, queries } from "./info.ts";
 
 const nothing: PositionInfo = { expected: { entries: null }, termination: null, scope: [], refutations: null,
-  globals: [] };
+  globals: [], taintedBy: null };
 
 function run<T>(span: Span, f: () => T): T {
   try {
@@ -34,7 +34,7 @@ export const check: Check = (source, phase, where = position(source)) => {
       infoAt: () => nothing, explainAt: () => null, evalAt: () => ({ error: parsed.error }),
     };
   const { tops } = parsed.program;
-  let top: Local = { scope: emptyScope(where), tainted: new Set(), erased: new Set(), allTainted: false };
+  let top: Local = { scope: emptyScope(where), tainted: new Set(), erased: new Set(), taintedBy: null };
   const st: State = { phase, globals: [], index: new Map(), snapshots: [], explains: [], record: true };
   declareGlobal(st, { kind: "type", name: "Type", sig: signature(top.scope, "Type")!, ctors: null, done: true });
   const ctx: Ctx = { st, fn: null, skeleton: false, limit: null, erased: false, holes: [] };
@@ -94,7 +94,7 @@ export const check: Check = (source, phase, where = position(source)) => {
         info: { fn: name, subtermParams: f.params.filter(p => p.subterm).map(p => p.name.name ?? "_"), group: names } };
       const c: Ctx = { ...ctx, fn };
       record(c, top, f.span, null);
-      const { params, returns } = header(c, { ...top, allTainted: false }, f);
+      const { params, returns } = header(c, top, f);
       fn.subterms.push(...params.ids.filter((_, j) => f.params[j]!.subterm));
       const sig: FnSig = { params: params.tele, returns: returns.tele, subterm: f.params.map(p => p.subterm),
         tainted: false };
@@ -148,7 +148,7 @@ export const check: Check = (source, phase, where = position(source)) => {
         });
         for (const b of o.bound) declareGlobal(st, { kind: "binding", ...b });
         const v = ran.value;
-        if (!o.local.allTainted) env = t.kind === "patlet" && v ? bindPattern(env, t.pat, v)
+        if (!o.local.taintedBy) env = t.kind === "patlet" && v ? bindPattern(env, t.pat, v)
           : run(t.span, () => evalStmt(fns, env, o.tree));
         top = o.local;
         return;
@@ -167,12 +167,12 @@ export const check: Check = (source, phase, where = position(source)) => {
         if ("params" in t.type) {
           const { params, returns } = header(ctx, top, t.type);
           goal = { type: { params: params.tele, returns: returns.tele }, tainted: params.tainted || returns.tainted
-            || top.allTainted, span: t.span };
+            || top.taintedBy !== null, span: t.span };
           return;
         }
         const g = annotate(ctx, top, { kind: "type", term: t.type });
         top = g.local;
-        goal = { type: g.type, tainted: g.tainted || top.allTainted, span: t.type.span };
+        goal = { type: g.type, tainted: g.tainted || top.taintedBy !== null, span: t.type.span };
         return;
       }
       case "qed": {
@@ -183,7 +183,7 @@ export const check: Check = (source, phase, where = position(source)) => {
         const tainted = "params" in goal.type ? qedFn(ctx, top, goal.type, t.expr, goalGiven(goal))
           : qedExpr(t.expr, goalGiven(goal), t.span);
         qedChecks = true;
-        proved = !tainted && !top.allTainted && !goal.tainted;
+        proved = !tainted && !top.taintedBy && !goal.tainted;
         return;
       }
     }
