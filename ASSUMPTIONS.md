@@ -209,7 +209,9 @@ and never renumbered (rule 15); a removed item leaves a gap.
     `Plus(m, n, r)`, with `plus` returning its result together with a
     `Plus` value, and proves `Eq(Nat(), r, n)` from `Plus(n, Zero(), r)`.
     This is a session's reading of how such a fact is meant to be
-    expressed; the owner may intend another idiom.
+    expressed; the owner may intend another idiom. The page "Appending
+    vectors" follows it where a type would need a call: `vappend`
+    returns the result's length and a `Plus` value with the vector.
 29. **Names.** `Bool`'s value constructors are `True` and `False`, and
     the empty type on a later page is also `False`; they never share a
     program. The solution of the page "Why Pledge appears sound" uses
