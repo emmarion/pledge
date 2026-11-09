@@ -1,7 +1,7 @@
 import type { Span } from "./syntax.ts";
 import type { Rendered } from "./api.ts";
 import { addRule, app, canon, create, entry, identical, occurs, ref, rewrites, same, sameHead, subst, typeOf } from "./terms.ts";
-import type { App, Binder, EntryId, Fresh, Head, OpenTerm, Origin, Ref, Scope, Signature, Telescope, Term } from "./terms.ts";
+import type { App, Binder, EntryId, Fresh, Head, OpenTerm, Ref, Scope, Signature, Telescope, Term } from "./terms.ts";
 import { cat, entryRef, join, render } from "./render.ts";
 
 interface Opened { scope: Scope; entries: EntryId[]; env: Term[] }
@@ -45,9 +45,8 @@ export function instantiate(scope: Scope, tele: Telescope, given: readonly Entry
   return { ok: true, env: out };
 }
 
-export function difference(scope: Scope, a: Telescope, b: Telescope, origin: Origin): number {
-  const { scope: s, env } = open(scope, a, [], () => ({ origin }));
-  const agree = (x: OpenTerm | null, y: OpenTerm | null): boolean => x === null || y === null ? x === y : identical(s, subst(x, env), subst(y, env));
+export function difference(scope: Scope, a: Telescope, b: Telescope): number {
+  const agree = (x: OpenTerm | null, y: OpenTerm | null): boolean => x === null || y === null ? x === y : identical(scope, x, y);
   const i = a.findIndex((x, j) => { const y = b[j]; return !y || x.mult !== y.mult || !agree(x.type, y.type) || !agree(x.is, y.is); });
   return i >= 0 ? i : a.length < b.length ? a.length : -1;
 }

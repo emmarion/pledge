@@ -132,8 +132,13 @@ and never renumbered (rule 15); a removed item leaves a gap.
 ## Tutorial
 
 26. **Solutions.** Each tutorial page carries a solution, shown in a
-    closed "Show a solution" disclosure below the learner's box; §12
-    says nothing about solutions.
+    closed "Show a solution" disclosure below the learner's box as a
+    read-only box of its own; §12 says nothing about solutions. The
+    caret in it makes the panels and the status describe a second
+    program, the fixed boxes followed by the solution, checked under
+    the page's phase and ignoring the learner's box; the status says
+    which program it describes. The fixed boxes' outputs come from the
+    learner's program.
 27. **Starting texts** of several pages do not check (a missing branch,
     a wrong `is`, unmarked recursion), so the learner first sees the
     checker's error; §12 does not say whether a page's starting text

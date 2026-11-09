@@ -1,18 +1,18 @@
-import type { Ann, Arg, Expr, Header, Id, Mult, Pattern, Span, Stmt, Tele, Term as Written } from "./syntax.ts";
-import { TYPE, abstract, addRule, adopt, app, canon, create, entry, identical, isStrictSubterm, lookup, mark, mentions, occurs, ref, subst, typeOf, withName } from "./terms.ts";
-import type { EntryId, Scope, Signature, Telescope, Term } from "./terms.ts";
+import type { Ann, Arg, Expr, Header, Id, LetBinder, Mult, Pattern, Span, Stmt, Tele, Term as Written } from "./syntax.ts";
+import { TYPE, abstract, addRule, app, canon, create, entry, forget, identical, isStrictSubterm, lookup, mark, mentions, occurs, ref, subst, typeOf, withName } from "./terms.ts";
+import type { Binder, EntryId, Ref, Scope, Signature, Telescope, Term } from "./terms.ts";
 import { force, open, unify } from "./telescope.ts";
 import type { Forced } from "./telescope.ts";
 import { label, render } from "./render.ts";
 import type { RefutationInfo } from "./api.ts";
-import { APP, HOLE, describe, fail, fresh, global, isTainted, point, record, written } from "./context.ts";
+import { APP, HOLE, describe, fail, fresh, global, point, record, written } from "./context.ts";
 import type { Ctx, FnCtx, FnSig, Given, Hole, Local, Result, Snapshot, Want } from "./context.ts";
 
 type App = Expr & { kind: "app" };
 type Match = Expr & { kind: "match" };
 interface Out { local: Local; results: Result[]; tree: Expr }
 interface Named { name: string; id: EntryId }
-interface StmtOut { local: Local; poison: boolean; tree: Stmt; bound: Named[] }
+interface StmtOut { local: Local; tree: Stmt; bound: Named[] }
 type Comptime = (tree: Expr, tainted: boolean) => void;
 interface Forcing { name: string; forced: Forced; pat: Pattern | undefined }
 interface Binderish { name: Id; ann: Ann; mult: Mult | null; span: Span }
@@ -33,7 +33,8 @@ const erase = (given: Given): Given => ({ ...given, wants: given.wants.map(w => 
 export function expr(ctx: Ctx, local: Local, e: Expr, given: Given | null): Out {
   const whole = ctx.erased || (given !== null && given.wants.every(w => w.mult === "erased"));
   const g = ctx.erased && given ? erase(given) : given, c = whole === ctx.erased ? ctx : { ...ctx, erased: whole };
-  const out = build(c, local, e, g, record(c, local, e.span, g));
+  const built = build(c, local, e, g, record(c, local, e.span, g));
+  const out = built.local.poisoned ? { ...built, results: built.results.map(r => ({ ...r, tainted: true })) } : built;
   const leak = whole ? -1 : out.results.findIndex((r, i) => r.erased && !erasedAt(g, i));
   if (leak >= 0) fail(e.span, () => `${e.kind === "var" ? `\`${e.name.name}\`` : out.results.length === 1 ? "this value" : `value ${leak + 1} of this`} is erased, ` +
     "and an erased value is allowed only in an erased position: a type, an argument for an erased parameter or field, or the result for an erased return or binder (§16)");
@@ -74,12 +75,12 @@ function against(ctx: Ctx, before: Scope, given: Given, ids: readonly EntryId[],
   }, before);
 }
 
-function settle(ctx: Ctx, local: Local, given: Given | null, ids: readonly EntryId[], since: number): boolean {
-  const mine = ctx.holes.slice(since), { scope } = local;
+function settle(ctx: Ctx, scope: Scope, given: Given | null, ids: readonly EntryId[], since: number): boolean {
+  const mine = ctx.holes.slice(since);
   if (!mine.length) return false;
   const among = (holes: readonly Hole[], t: Term | null): boolean => t !== null && mentions(canon(scope, t), id => holes.some(h => h.id === id));
   const outer = ctx.holes.slice(0, since);
-  if (given?.wants.some((_, i) => { const { type, is } = wanted(given, ids, i); return among(outer, type) || among(outer, is); })) return false;
+  if (outer.length && given?.wants.some((_, i) => { const { type, is } = wanted(given, ids, i); return among(outer, type) || among(outer, is); })) return false;
   const values = mine.map(({ id, span, is, from }) => {
     const value = canon(scope, ref(id)), type = entry(scope, id).type, has = typeOf(scope, value);
     point(ctx, scope, span, ref(id));
@@ -93,7 +94,7 @@ function settle(ctx: Ctx, local: Local, given: Given | null, ids: readonly Entry
     return value;
   });
   ctx.holes.length = since;
-  return values.some(v => mentions(v, x => isTainted(entry(scope, x), local.tainted)));
+  return values.some(v => mentions(v, x => entry(scope, x).tainted));
 }
 
 function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snapshot): Out {
@@ -128,19 +129,18 @@ function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snaps
       return { local, results, tree: { ...e, elems } };
     }
     case "block": {
-      const since = local.scope.supply.next, level: Ctx = { ...ctx, holes: [] };
-      let inner = local, poisoned = false;
-      const stmts: Stmt[] = [];
+      const level: Ctx = { ...ctx, holes: [] }, stmts: Stmt[] = [], named: Named[] = [];
+      let inner = local;
       for (const s of e.stmts) {
-        const o = stmt(level, inner, s, false);
+        const o = stmt(level, inner, s);
         inner = o.local;
-        poisoned ||= o.poison;
+        named.push(...o.bound);
         stmts.push(o.tree);
       }
-      const fin = expr(level, inner, e.final, given);
+      const fin = expr(ctx, inner, e.final, given);
       return {
-        local: { ...local, scope: adopt(local.scope, fin.local.scope, since) },
-        results: fin.results.map(r => ({ ...r, tainted: r.tainted || poisoned })),
+        local: { ...local, scope: forget(fin.local.scope, local.scope, named), poisoned: fin.local.poisoned },
+        results: fin.results,
         tree: { ...e, stmts, final: fin.tree },
       };
     }
@@ -207,7 +207,7 @@ function construct(ctx: Ctx, local: Local, e: App, sig: Signature, given: Given 
 
 function applied(ctx: Ctx, local: Local, given: Given | null, results: Result[], e: App, a: { trees: Arg[]; mark: number }): Out {
   const out = produced(ctx, local, given, results, e.span, { ...e, args: a.trees });
-  if (!settle(ctx, out.local, given, results.map(r => r.id), a.mark)) return out;
+  if (!settle(ctx, out.local.scope, given, results.map(r => r.id), a.mark)) return out;
   const scope = results.reduce((s, r) => mark(s, r.id, { tainted: true }), out.local.scope);
   return { ...out, local: { ...out.local, scope }, results: results.map(r => ({ ...r, tainted: true })) };
 }
@@ -259,7 +259,7 @@ function match(ctx: Ctx, local: Local, e: Match, given: Given | null, snap: Snap
   const s = single(scrut, e.scrut.span), inner = scrut.local;
   const ann = annotation(ctx, inner, e.ann, given, e.span);
   const fs = forcings(ctx, inner, s.id, e.scrut.span, e.branches.map(b => b.pat), e.span, erased);
-  snap.refutations = refutations(fs);
+  const refuted = snap.refutations = refutations(fs);
   const branchOf = (pat: Pattern): Forcing => fs.find(f => f.pat === pat)!;
   for (const br of e.branches) {
     survivor(branchOf(br.pat), br.pat.span, "the match has no branch for it");
@@ -267,21 +267,23 @@ function match(ctx: Ctx, local: Local, e: Match, given: Given | null, snap: Snap
   }
   const missing = fs.filter(f => f.forced.ok && !f.pat).map(f => f.name);
   if (missing.length) fail(e.span, () => `no branch for ${missing.join(", ")}, which ${missing.length === 1 ? "is" : "are"} not refuted here (§10)`);
-  const second = e.branches[1];
+  const live = erased ? e.branches.filter(br => !absurd(br.body)) : e.branches, second = live[1];
   if (erased && second && ann.tele.some(b => b.mult === "many"))
-    fail(second.span, () => "an erased match with a `many` annotation entry has at most one branch, since evaluation has no value to choose a branch by (§16)");
+    fail(second.span, () => "an erased match with a `many` annotation entry has at most one branch that is not absurd, a branch being absurd when its body is " +
+      "a match with no branches, possibly the final expression of a block, since evaluation has no value to choose a branch by");
   const wants = ann.tele.map((b, i) => erasedAt(given, i) ? { ...b, mult: "erased" as const } : b);
   const bodies = e.branches.map(br => {
     const won = survivor(branchOf(br.pat), br.pat.span, "");
     return expr({ ...ctx, holes: [] }, bind({ ...inner, scope: won.scope }, br.pat.fields, won.fields).local, br.body, { wants, env: ann.env, whole: true });
   });
+  snap.refutations = [...refuted, ...e.branches.filter(br => !live.includes(br)).map(br => ({ ctor: br.pat.ctor.name ?? "_", kind: "absurd" as const, derivation: () => [] }))];
   const taint = (i: number) => s.tainted || bodies.some(b => b.results[i]?.tainted === true);
   const o = opened(inner, ann.tele, ann.env, "match", e.span, taint);
   return produced(ctx, o.local, given, o.results, e.span,
-    { ...e, scrut: scrut.tree, branches: e.branches.map((br, j) => ({ ...br, body: bodies[j]!.tree })) });
+    { ...e, scrut: scrut.tree, branches: e.branches.flatMap((br, j) => live.includes(br) ? [{ ...br, body: bodies[j]!.tree }] : []) });
 }
 
-function annotation(ctx: Ctx, local: Local, tele: Tele, given: Given | null, span: Span): { tele: Telescope; env: readonly Term[] } {
+function annotation(ctx: Ctx, local: Local, tele: Tele, given: Given | null, span: Span): { tele: Telescope; env: readonly Ref[] } {
   if (tele !== "_") return { tele: telescope(ctx, local, tele, "binder").tele, env: [] };
   if (!given?.whole) return fail(span, () => "`_` stands for the whole telescope given at its position, and none is given here (§10)");
   return { tele: given.wants.map(w => w.type ? { ...w, type: w.type } : fail(span, () => "internal: an undetermined entry in a whole telescope")), env: given.env };
@@ -318,7 +320,9 @@ function forcings(ctx: Ctx, local: Local, id: EntryId, scrutSpan: Span, pats: re
 }
 
 const refutations = (fs: readonly Forcing[]): RefutationInfo[] =>
-  fs.flatMap(f => f.forced.ok ? [] : [{ ctor: f.name, derivation: f.forced.derivation }]);
+  fs.flatMap(f => f.forced.ok ? [] : [{ ctor: f.name, kind: "refuted" as const, derivation: f.forced.derivation }]);
+
+const absurd = (e: Expr): boolean => e.kind === "match" ? !e.branches.length : e.kind === "block" && absurd(e.final);
 
 function survivor(f: Forcing, span: Span, consequence: string): { scope: Scope; fields: EntryId[] } {
   const forced = f.forced;
@@ -344,42 +348,54 @@ function bind(local: Local, ids: readonly Id[], entries: readonly EntryId[], tai
     if (tainted(i)) sets.tainted.add(name);
     if (erased(i)) sets.erased.add(name);
   });
-  return { local: { scope, ...sets }, bound };
+  return { local: { ...local, scope, ...sets }, bound };
 }
 
-export function stmt(ctx: Ctx, local: Local, s: Stmt, poison: boolean, comptime?: Comptime): StmtOut {
+function letWants(ctx: Ctx, site: Local, binders: readonly LetBinder[]): Want[] {
+  let local = site;
+  const ids: EntryId[] = [], untyped = new Set<string>();
+  const unknown = (t: Written): Written | undefined => untyped.has(t.head.name ?? "") ? t : (t.args ?? []).map(unknown).find(u => u);
+  for (const b of binders) {
+    record(ctx, local, b.span, "none");
+    const u = b.ann && unknown(b.ann.term);
+    if (u) fail(u.span, () => `\`${u.head.name}\` has no type here: give it one before referring to it`);
+    const o = b.ann && opening(ctx, local, { ...b, ann: b.ann }, "binder");
+    if (!o && b.name.name !== null) untyped.add(b.name.name);
+    local = o?.local ?? local;
+    ids.push(o?.id ?? -1);
+  }
+  return binders.map((b, i) => {
+    const id = ids[i]!;
+    return id >= 0 ? abstracted(local.scope, b, id, ids) : { name: b.name.name, type: null, is: null, mult: b.mult ?? "many", span: b.span };
+  });
+}
+
+export function stmt(ctx: Ctx, local: Local, s: Stmt, comptime?: Comptime): StmtOut {
   switch (s.kind) {
     case "inspect":
       record(ctx, local, s.span, "none", true);
-      return { local, poison: false, tree: s, bound: [] };
+      return { local, tree: s, bound: [] };
     case "let": {
       record(ctx, local, s.span, "none");
       names(ctx, local, s.binders.map(b => b.name));
-      const wants: Want[] = s.binders.map(b => {
-        const base = { name: b.name.name, mult: b.mult ?? "many", span: b.span };
-        if (!b.ann) return { ...base, type: null, is: null };
-        const a = annotate(ctx, local, b.ann);
-        local = a.local;
-        return { ...base, type: a.type, is: a.is };
-      });
-      const out = expr(ctx, local, s.rhs, { wants, env: [], whole: s.binders.every(b => b.ann) });
-      const b = bind(out.local, s.binders.map(x => x.name), out.results.map(r => r.id), i => out.results[i]!.tainted || poison, i => s.binders[i]!.mult === "erased");
-      return { local: b.local, poison: false, tree: { ...s, rhs: out.tree }, bound: b.bound };
+      const out = expr(ctx, local, s.rhs, { wants: letWants(ctx, local, s.binders), env: [], whole: s.binders.every(b => b.ann) });
+      const b = bind(out.local, s.binders.map(x => x.name), out.results.map(r => r.id), i => out.results[i]!.tainted, i => s.binders[i]!.mult === "erased");
+      return { local: b.local, tree: { ...s, rhs: out.tree }, bound: b.bound };
     }
     case "patlet": {
       const snap = record(ctx, local, s.span, "none"), erased = s.mult === "erased";
       if (s.comptime && erased) fail(s.span, () => "a `comptime` pattern `let` evaluates its right-hand side (§11), so it cannot be erased (§16)");
       names(ctx, local, s.pat.fields);
-      const out = expr(erased ? { ...ctx, erased } : ctx, local, s.rhs, null), r = single(out, s.rhs.span), tainted = r.tainted || poison;
+      const out = expr(erased ? { ...ctx, erased } : ctx, local, s.rhs, null), r = single(out, s.rhs.span);
       const fs = forcings(ctx, out.local, r.id, s.rhs.span, [s.pat], s.span, erased);
       snap.refutations = refutations(fs);
-      if (s.comptime) comptime?.(out.tree, tainted);
+      if (s.comptime) comptime?.(out.tree, r.tainted);
       const mine = fs.find(f => f.pat === s.pat)!;
       const won = survivor(mine, s.pat.span, "this pattern `let` cannot match");
       const other = s.comptime ? undefined : fs.find(f => f !== mine && f.forced.ok);
       if (other) fail(s.pat.span, () => `${other.name} is not refuted here, and exactly one value constructor must survive forcing at a pattern \`let\` (§10)`);
-      const b = bind({ ...out.local, scope: won.scope }, s.pat.fields, won.fields);
-      return { local: b.local, poison: tainted, tree: { ...s, rhs: out.tree }, bound: b.bound };
+      const b = bind({ ...out.local, scope: won.scope, poisoned: out.local.poisoned || r.tainted }, s.pat.fields, won.fields);
+      return { local: b.local, tree: { ...s, rhs: out.tree }, bound: b.bound };
     }
   }
 }
@@ -407,26 +423,30 @@ export function annotate(ctx: Ctx, local: Local, ann: Ann): { local: Local; type
 
 interface Checked { local: Local; ids: EntryId[]; tele: Telescope; tainted: boolean }
 
+function opening(ctx: Ctx, local: Local, b: Binderish, kind: string): { local: Local; id: EntryId; tainted: boolean } {
+  const a = annotate(ctx, local, b.ann);
+  const made = create(a.local.scope, a.type, a.is, { origin: { kind, span: b.span }, erased: b.mult === "erased" });
+  return { local: bind({ ...a.local, scope: made.scope }, [b.name], [made.id]).local, id: made.id, tainted: a.tainted };
+}
+
+function abstracted(scope: Scope, b: { name: Id; mult: Mult | null; span: Span }, id: EntryId, all: readonly EntryId[]): Binder {
+  const e = entry(scope, id);
+  return { name: b.name.name, type: abstract(scope, e.type, all), is: e.rule && abstract(scope, e.rule.term, all), mult: b.mult ?? "many", span: b.span };
+}
+
 export function telescope(ctx: Ctx, local: Local, binders: readonly Binderish[], kind: string, outer: readonly EntryId[] = []): Checked {
   const seen = new Set<string>(), ids: EntryId[] = [];
   let tainted = false;
   for (const b of binders) {
     record(ctx, local, b.span, "none");
     fresh(ctx, local, b.name, seen);
-    const a = annotate(ctx, local, b.ann);
-    tainted ||= a.tainted;
-    const made = create(a.local.scope, a.type, a.is, { origin: { kind, span: b.span }, erased: b.mult === "erased" });
-    local = bind({ ...a.local, scope: made.scope }, [b.name], [made.id]).local;
-    ids.push(made.id);
+    const o = opening(ctx, local, b, kind);
+    local = o.local;
+    tainted ||= o.tainted;
+    ids.push(o.id);
   }
-  const all = [...outer, ...ids], scope = local.scope;
-  return {
-    local, ids, tainted,
-    tele: binders.map((b, i) => {
-      const e = entry(scope, ids[i]!);
-      return { name: b.name.name, type: abstract(scope, e.type, all), is: e.rule && abstract(scope, e.rule.term, all), mult: b.mult ?? "many", span: b.span };
-    }),
-  };
+  const all = [...outer, ...ids];
+  return { local, ids, tainted, tele: binders.map((b, i) => abstracted(local.scope, b, ids[i]!, all)) };
 }
 
 export function header(ctx: Ctx, local: Local, h: Header): { params: Checked; returns: Checked } {

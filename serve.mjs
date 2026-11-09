@@ -7,7 +7,8 @@ createServer(async (req, res) => {
   const path = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname));
   const file = join("web", path.endsWith("/") ? path + "index.html" : path);
   try {
+    const body = await readFile(file);
     res.writeHead(200, { "content-type": types[extname(file)] ?? "application/octet-stream" });
-    res.end(await readFile(file));
+    res.end(body);
   } catch { res.writeHead(404); res.end("not found"); }
 }).listen(port, () => console.log(`http://localhost:${port}/`));

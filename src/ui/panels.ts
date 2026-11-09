@@ -80,6 +80,7 @@ export function infoView(info: PositionInfo, ctx: Ctx): HTMLElement[] {
     section("Scope", list(info.scope.map(e =>
       binding(ctx, entryName(e, ctx), e.type, e.rule, tag("erased", ctx.showErased && e.erased))), "No local entries.")),
     ...refutations === null ? [] : [section("Refutations", list(refutations.map(r => {
+      if (r.kind === "absurd") return h("li", {}, h("code", {}, r.ctor), " ", tag("absurd", true));
       const derivation = h("ol", { class: "derivation" });
       return h("li", {}, h("details", {
         ontoggle: () => { if (!derivation.hasChildNodes()) derivation.append(...r.derivation().map(step => h("li", {}, rendered(step, ctx)))); },

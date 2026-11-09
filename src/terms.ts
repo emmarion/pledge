@@ -99,11 +99,8 @@ export function withName(scope: Scope, id: EntryId, name: string): Scope {
   return { ...put(scope, { ...e, names: [...e.names, name] }), names: pset(scope.names, name, id) };
 }
 
-export function adopt(outer: Scope, inner: Scope, since: EntryId): Scope {
-  const ids: EntryId[] = [];
-  for (let c = inner.order; c && c.id >= since; c = c.prev) ids.push(c.id);
-  return ids.reduceRight((s, id) => ({ ...put(s, { ...entry(inner, id), names: [] }), order: { id, prev: s.order } }), outer);
-}
+export const forget = (inner: Scope, outer: Scope, named: readonly { name: string; id: EntryId }[]): Scope =>
+  named.reduce((s, { name, id }) => put(s, { ...entry(s, id), names: entry(s, id).names.filter(n => n !== name) }), { ...inner, names: outer.names });
 
 export const mark = (scope: Scope, id: EntryId, flags: { erased?: boolean; tainted?: boolean }): Scope =>
   put(scope, { ...entry(scope, id), ...flags });

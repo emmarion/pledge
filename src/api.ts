@@ -32,6 +32,7 @@ export interface TerminationInfo {
 
 export interface RefutationInfo {
   ctor: string;
+  kind: "refuted" | "absurd";
   derivation: () => Rendered[];
 }
 

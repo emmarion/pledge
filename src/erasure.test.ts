@@ -111,6 +111,40 @@ test("match erased: at most one branch with a many annotation entry", () => {
   err(one.replace("=> w;", "=> h;"), "h", leak, "=> h");
 });
 
+const isZero = "data IsZero(n : Nat()) : Type() {\n  IsZeroHere() : IsZero(Zero());\n}\n";
+
+test("match erased: absurd branches beside the one that is not (D49)", () => {
+  const f = (branches: string) => `${nat}${isZero}fn f(n : Nat(), p : IsZero(n)) -> (r : Nat()) {\n  match erased n : (r : Nat()) {\n${branches}\n  }\n}\nprint f(Zero(), IsZeroHere());\n`;
+  const source = f("    Zero() => Succ(Zero());\n    Succ(m) => match p : _ {};");
+  const r = ok(source);
+  assert.deepEqual(prints(r), ["Succ(Zero())"]);
+  const at = r.infoAt(source.indexOf("match erased") + 2).refutations;
+  assert.deepEqual(at?.map(x => [x.ctor, x.kind]), [["Succ", "absurd"]]);
+  assert.deepEqual(r.infoAt(source.indexOf("match p") + 2).refutations?.map(x => [x.ctor, x.kind]), [["IsZeroHere", "refuted"]]);
+  assert.deepEqual(prints(ok(f("    Succ(m) => { let q = p; inspect; match q : _ {} };\n    Zero() => Succ(Zero());"))), ["Succ(Zero())"]);
+  err(f("    Zero() => Succ(Zero());\n    Succ(m) => Zero();"), "Succ(m) => Zero();", /at most one branch that is not absurd, a branch being absurd when its body is a match with no branches, possibly the final expression of a block/);
+  err(f("    Zero() => match p : _ {};\n    Succ(m) => Zero();"), "match p : _ {}", /no branch for IsZeroHere, which is not refuted here/);
+  const many = f("    Zero() => Succ(Zero());\n    Succ(m) => match p : _ {};").replace("match erased n", "match n");
+  assert.deepEqual(ok(many).infoAt(many.indexOf("match n") + 2).refutations, []);
+});
+
+test("soundness: an absurd branch that relies on sorry taints the match, and an erased match whose branches are all absurd never runs (D49)", () => {
+  const g = (pre: string, absurd: string) => `${nat}${isZero}${eq}fn g(n : Nat(), k : Nat(), p : IsZero(k)) -> (r : Nat()) {\n${pre}  match erased n : (r : Nat()) {\n` +
+    `    Zero() => Succ(Zero());\n    Succ(m) => ${absurd};\n  }\n}\nprint g(Succ(Zero()), Zero(), IsZeroHere());\ngoal Nat();\nqed g(Succ(Zero()), Zero(), IsZeroHere());\n`;
+  for (const [pre, absurd] of [
+    ["", "match sorry(q : IsZero(Succ(m))) : _ {}"],
+    ["  let (erased q : IsZero(Succ(Zero()))) = sorry(_);\n", "match erased q : _ {}"],
+    ["", "{ let Refl(_, _) = sorry(e : Eq(Nat(), k, Succ(Zero()))); { match p : _ {} } }"],
+  ]) {
+    const r = ok(g(pre, absurd));
+    assert.deepEqual([prints(r), r.goalProved], [["sorry"], false], absurd);
+  }
+  err(g("", "match erased Nat() : _ {}"), "Nat()", /cannot be the scrutinee/, "erased Nat");
+  const never = `${nat}${isZero}fn h(n : Nat(), p : IsZero(Succ(n))) -> (r : Nat()) {\n  match erased n : (r : Nat()) {\n    Zero() => match p : _ {};\n    Succ(m) => match p : _ {};\n  }\n}\n` +
+    "let (a, b) = (h(Zero(), sorry(q : IsZero(Succ(Zero())))), Zero());\nprint b;\nprint a;\n";
+  assert.deepEqual(prints(ok(never)), ["Zero()", "sorry"]);
+});
+
 test("let erased: tuple binders and pattern lets bind erased; comptime cannot be erased", () => {
   const source = `${nat}${vec}let v = VCons(_, _, Zero(), VNil(_));\nlet (erased a, b) = (Succ(Zero()), Zero());\nlet erased c = b;\nlet erased VCons(x, y, z, w) = v;\nlet VCons(_, _, h, t) = v;\nprint VCons(x, y, h, t);\n`;
   const r = ok(source);
@@ -125,6 +159,8 @@ test("_ stands for an erased argument, solved from later arguments and from what
   assert.deepEqual(prints(ok(`${nat}${vec}fn e() -> (v : Vec(Nat(), Zero())) { VNil(_) }\nprint e();\n`)), ["VNil(_)"]);
   const later = `${nat}${vec}fn g(erased A : Type(), v : Vec(A, Zero()), a : A) -> (r : A) { a }\nprint g(_, VNil(_), Succ(Zero()));\nprint g(_, { VNil(_) }, Zero());\n`;
   assert.deepEqual(prints(ok(later)), ["Succ(Zero())", "Zero()"]);
+  const block = `${nat}${vec}fn g(erased A : Type(), v : Vec(A, Zero()), a : A) -> (r : A) { a }\nlet v = VNil(Nat());\nprint g(_, v, Zero());\nprint g(_, { v }, Zero());\nprint g(_, { let w = v; w }, Succ(Zero()));\n`;
+  assert.deepEqual(prints(ok(block)), ["Zero()", "Zero()", "Succ(Zero())"]);
   const r = ok(`${nat}fn f(n : Nat(), erased m is Succ(n)) -> (r : Nat()) { n }\nprint f(Zero(), _);\n`);
   assert.deepEqual(prints(r), ["Zero()"]);
   const source = `${nat}${vec}let x = VCons(_, _, Zero(), VNil(_));\n`;
@@ -199,4 +235,12 @@ test("taint: a _ whose solution mentions a tainted entry taints the application,
   }
   const source = `${nat}${vec}let T = sorry(T : Type());\nlet (y : Vec(T, Zero())) = VNil(_);\nlet (z : Vec(Nat(), Zero())) = VNil(_);\ninspect;\n`;
   assert.deepEqual(ok(source).inspects[0]?.info.scope.map(e => [e.names.join(","), e.tainted]), [["T", true], ["y", true], ["z", false]]);
+});
+
+test("taint: a _ is tainted only by an entry's own taint, never by its names (D46)", () => {
+  const source = `${nat}${eq}fn mk() -> (n : Nat()) { Zero() }\nlet n = mk();\nlet s = sorry(s : Eq(Nat(), Zero(), Zero()));\nlet m = { let Refl(_, _) = s; n };\n` +
+    "fn k(a : Nat(), erased b is a) -> (r : Nat()) { a }\nfn h1() -> (r : Nat()) {\n  let x = k(n, _);\n  inspect;\n  x\n}\nfn h2() -> (r : Nat()) {\n  let x = k(m, m);\n  inspect;\n  x\n}\n";
+  const r = ok(source);
+  assert.deepEqual(r.inspects.map(i => i.info.scope.filter(e => e.names.includes("x") || e.names.includes("m")).map(e => [e.names.join(","), e.tainted])),
+    [[["n,m", true], ["x", false]], [["n,m", true], ["x", true]]]);
 });
