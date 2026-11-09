@@ -379,3 +379,39 @@ details.disclaimer { margin: 0 0 12px; font-size: 0.9em; color: var(--muted); }
 details.disclaimer > summary { cursor: pointer; }
 details.disclaimer > p { margin: 6px 0 0; }
 details.solution > .editor { margin-top: 8px; }
+
+.about { display: flex; flex-wrap: wrap; gap: 0 20px; margin: 0 0 12px; }
+.about > details.disclaimer { margin: 0; }
+.about > details[open] { flex-basis: 100%; }
+details.glossary { font-size: 0.9em; color: var(--muted); }
+details.glossary > summary { cursor: pointer; }
+details.glossary > dl { margin: 6px 0 0; gap: 6px 16px; max-width: 52em; color: var(--text); }
+details.glossary dt { font-weight: 600; color: var(--text); }
+dfn { font-style: italic; font-weight: 600; }
+.task {
+  max-width: 42em;
+  padding: 10px 14px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  background: var(--sunken);
+}
+.task h3 {
+  margin: 0 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.task p + p { margin-top: 8px; }
+.work p.refs { font-size: 0.9em; }
+pre.foreign {
+  max-width: 42em;
+  margin: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  font: 400 13px/1.5 var(--mono);
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.toc h2 .note { margin-left: 6px; font-weight: 400; letter-spacing: 0; text-transform: none; }

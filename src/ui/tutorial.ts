@@ -1,4 +1,5 @@
 import { disclaimer, pages } from "../tutorial/pages.ts";
+import { glossary } from "../tutorial/glossary.ts";
 import { h } from "./dom.ts";
 import { linked, marked } from "./links.ts";
 import { Workspace } from "./workspace.ts";
@@ -8,7 +9,10 @@ const index = Math.max(0, pages.findIndex(p => p.slug === slug));
 const page = pages[index]!;
 const href = (i: number): string => `?page=${encodeURIComponent(pages[i]!.slug)}`;
 
-const prose = page.prose.split(/\n\s*\n/).map(paragraph => h("p", {}, marked(paragraph)));
+const paragraphs = (text: string) => text.split(/\n\s*\n/).map(paragraph => /^```\n[^]*\n```$/.test(paragraph)
+  ? h("pre", { class: "foreign" }, paragraph.slice(4, -4)) : h("p", {}, marked(paragraph)));
+
+const link = (i: number) => h("a", { href: href(i) }, pages[i]!.title);
 
 const fixed = [...page.boxes.keys()];
 const workspace = new Workspace(
@@ -18,18 +22,27 @@ const workspace = new Workspace(
   [{ label: "your box", boxes: [...fixed, fixed.length] }, { label: "the solution",
     boxes: [...fixed, fixed.length + 1] }]);
 
+const next = pages[index + 1];
 document.title = `${page.title} — Pledge tutorial`;
 workspace.mount(
   [h("h1", {}, h("a", { href: "index.html" }, "Pledge"), " tutorial"),
     h("span", { class: "muted" }, `Phase ${page.phase}`)],
   "Reset your box",
-  [h("details", { class: "disclaimer" }, h("summary", {}, "Disclaimer"), h("p", {}, linked(disclaimer))),
-    h("p", { class: "muted" }, page.section), h("h2", {}, page.title), prose],
+  [h("div", { class: "about" },
+    h("details", { class: "disclaimer" }, h("summary", {}, "Disclaimer"), h("p", {}, linked(disclaimer))),
+    h("details", { class: "glossary" }, h("summary", {}, "Glossary"), h("dl", {}, glossary.map(g => [
+      h("dt", {}, marked(g.term)),
+      h("dd", {}, marked(g.means), " ", link(pages.findIndex(p => p.slug === g.at)))])))),
+  h("p", { class: "muted" }, page.section), h("h2", {}, page.title), paragraphs(page.prose),
+  h("section", { class: "task" }, h("h3", {}, "Task"), paragraphs(page.task)),
+  h("p", { class: "muted refs" }, linked(`In DESIGN.md: ${page.refs}.`))],
   [h("details", { class: "solution" }, h("summary", {}, "Show a solution"), workspace.editors.at(-1)!.root),
   h("p", { class: "pager" },
     index > 0 && h("a", { href: href(index - 1) }, `← ${pages[index - 1]!.title}`),
-    index + 1 < pages.length && h("a", { href: href(index + 1), class: "next" }, `${pages[index + 1]!.title} →`))],
+    next && h("a", { href: href(index + 1), class: "next" },
+      `${next.appendix && !page.appendix ? "Appendix: " : ""}${next.title} →`))],
   h("nav", { class: "toc", "aria-label": "Pages" }, [...new Set(pages.map(p => p.section))].map(section =>
-    [h("h2", {}, section), h("ol", {}, pages.map((p, i) => p.section === section && h("li", {},
+    [h("h2", {}, section, pages.find(p => p.section === section)!.appendix && h("span", { class: "note" }, "optional")),
+      h("ol", {}, pages.map((p, i) => p.section === section && h("li", {},
       h("a", { href: href(i), "aria-current": i === index && "page" }, p.title,
         p.phase > 1 && h("span", { class: "tag" }, `phase ${p.phase}`)))))])));
