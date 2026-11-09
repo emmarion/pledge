@@ -1,0 +1,26 @@
+import { pages } from "../tutorial/pages.ts";
+import { h } from "./dom.ts";
+import { Workspace } from "./workspace.ts";
+
+const slug = new URLSearchParams(location.search).get("page");
+const index = Math.max(0, pages.findIndex(p => p.slug === slug));
+const page = pages[index]!;
+const href = (i: number): string => `?page=${encodeURIComponent(pages[i]!.slug)}`;
+
+const prose = page.prose.split(/\n\s*\n/).map(paragraph =>
+  h("p", {}, paragraph.split("`").map((part, i) => i % 2 ? h("code", {}, part) : part)));
+
+const workspace = new Workspace(
+  [...page.boxes.map(text => ({ text, key: null })), { text: page.initial, key: `page:${page.slug}`, holdsQed: page.requireQed }],
+  () => page.phase);
+
+document.title = `${page.title} — Pledge tutorial`;
+workspace.mount(
+  [h("h1", {}, h("a", { href: "index.html" }, "Pledge"), " tutorial"), h("span", { class: "muted" }, `Phase ${page.phase}`)],
+  "Reset your box",
+  [h("h2", {}, page.title), prose],
+  h("p", { class: "pager" },
+    index > 0 && h("a", { href: href(index - 1) }, `← ${pages[index - 1]!.title}`),
+    index + 1 < pages.length && h("a", { href: href(index + 1), class: "next" }, `${pages[index + 1]!.title} →`)),
+  h("nav", { class: "toc", "aria-label": "Pages" }, h("ol", {}, pages.map((p, i) =>
+    h("li", {}, h("a", { href: href(i), "aria-current": i === index && "page" }, p.title))))));

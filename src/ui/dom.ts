@@ -22,3 +22,11 @@ export const lineCol = (text: string, offset: number): { line: number; col: numb
   const before = text.slice(0, offset).split("\n");
   return { line: before.length, col: before[before.length - 1]!.length + 1 };
 };
+
+export const load = (key: string): string | null => {
+  try { return localStorage.getItem(`pledge:${key}`); } catch { return null; }
+};
+
+export const save = (key: string, value: string): void => {
+  try { localStorage.setItem(`pledge:${key}`, value); } catch { }
+};

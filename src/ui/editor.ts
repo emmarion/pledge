@@ -16,14 +16,14 @@ export class Editor {
   private readonly backdrop = h("pre", { class: "backdrop", "aria-hidden": "true" });
   private readonly outputs = h("div", { class: "outputs" });
 
-  constructor(text: string, editable: boolean, onEdit: () => void, onCaret: () => void) {
+  constructor(text: string, editable: boolean, onEdit: () => void, onCaret: (clicked: boolean) => void) {
     this.area = h("textarea", {
       class: "source", wrap: "off", spellcheck: "false", autocomplete: "off", autocapitalize: "off",
       readonly: !editable, "aria-label": editable ? "Your program" : "Read-only source",
     });
     this.area.value = text;
     this.area.addEventListener("input", () => { this.show(null, null); onEdit(); });
-    for (const event of ["keyup", "click", "focus", "select"]) this.area.addEventListener(event, onCaret);
+    for (const event of ["keyup", "click", "focus", "select"]) this.area.addEventListener(event, () => onCaret(event === "click"));
     this.area.addEventListener("scroll", () => { this.backdrop.scrollLeft = this.area.scrollLeft; });
     this.root = h("div", { class: editable ? "editor" : "editor readonly" },
       this.gutter, h("div", { class: "code" }, this.backdrop, this.area), this.outputs);

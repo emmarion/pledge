@@ -115,3 +115,24 @@ and never renumbered (rule 15); a removed item leaves a gap.
 21. **Forcing two applications with the same head but different
     argument counts**, impossible for well-formed terms, is treated as
     a refutation by different heads rather than an internal error.
+
+## Interface
+
+22. **A tutorial page** (§12) joins its read-only boxes and the
+    learner's box with one newline between them into one program,
+    and maps each span back to the box containing its start. A page
+    that requires the `qed` in the learner's box lexes that box for
+    the keyword; when it is missing, the status reports no `qed` in
+    the box and the goal as not proved, whatever the checker says of
+    the whole program.
+23. **Output beside a statement** (§12, §13) is a column to the right
+    of the editor aligned with the line where the statement starts; an
+    `inspect;` there is a closed disclosure that opens the §13 panels,
+    a liberal reading of "as text".
+24. **Clicking a term** in the source explains the term at that offset
+    (§13); a name in a panel moves the caret to the entry's origin and
+    explains the term there, since a panel has no source offset.
+25. **The learner's text** and the chosen phase are kept in
+    `localStorage`, with a button to restore the starting text;
+    checking runs shortly after the last edit, and the panels follow
+    the caret without rechecking.

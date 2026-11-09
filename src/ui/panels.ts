@@ -1,0 +1,128 @@
+import type { CheckResult, EntryId, EntryInfo, PositionInfo, Rendered, Rewrite } from "../api.ts";
+import { h, type Child } from "./dom.ts";
+
+export interface Ctx {
+  goto(offset: number): void;
+  explain(offset: number): void;
+  entry(id: EntryId): EntryInfo | undefined;
+  where(offset: number): string;
+  showErased: boolean;
+  globalsOpen: boolean;
+}
+
+const muted = (text: string): HTMLElement => h("span", { class: "muted" }, text);
+
+const link = (text: Child, title: string, onclick: () => void): HTMLElement =>
+  h("button", { class: "link", type: "button", title, onclick }, text);
+
+const goto = (ctx: Ctx, offset: number, text: Child = ctx.where(offset)): HTMLElement =>
+  link(text, `Go to ${ctx.where(offset)}`, () => ctx.goto(offset));
+
+export function rendered(r: Rendered, ctx: Ctx): HTMLElement {
+  const out = h("code", { class: "term" });
+  let at = 0;
+  for (const { span, entry } of [...r.refs].sort((a, b) => a.span.start - b.span.start)) {
+    if (span.start < at) continue;
+    const info = ctx.entry(entry);
+    const text = r.text.slice(span.start, span.end);
+    out.append(r.text.slice(at, span.start), info
+      ? link(text, `${info.origin.kind} at ${ctx.where(info.origin.span.start)}`, () => {
+        ctx.goto(info.origin.span.start);
+        ctx.explain(info.origin.span.start);
+      })
+      : text);
+    at = span.end;
+  }
+  out.append(r.text.slice(at));
+  return out;
+}
+
+const tag = (text: string, show: boolean): Child => show && h("span", { class: "tag" }, text);
+
+const binding = (ctx: Ctx, name: Child, type: Rendered | null, rule: Rendered | null, ...tags: Child[]): HTMLElement =>
+  h("li", { class: "binding" }, h("span", { class: "name" }, name),
+    type && [" : ", rendered(type, ctx)], rule && [" is ", rendered(rule, ctx)], tags);
+
+const section = (title: string, ...body: Child[]): HTMLElement =>
+  h("section", { class: "panel" }, h("h3", {}, title), body);
+
+const list = (items: Child[], empty: string): Child =>
+  items.length ? h("ul", { class: "entries" }, items) : muted(empty);
+
+const entryName = (e: EntryInfo, ctx: Ctx): Child =>
+  e.names.length ? e.names.join(", ") : h("span", { class: "anon" }, `‹${e.origin.kind} `, goto(ctx, e.origin.span.start), "›");
+
+export function infoView(info: PositionInfo, ctx: Ctx): HTMLElement[] {
+  const { expected, termination, refutations } = info;
+  return [
+    section("Expected", expected?.entries == null
+      ? muted("Nothing is given here.")
+      : list(expected.entries.map(e => binding(ctx, e.name ?? "_", e.type, e.rule, tag("not determined", e.undetermined))), "")),
+    section("Termination", termination === null
+      ? muted("Not inside a function.")
+      : h("dl", {},
+        h("dt", {}, "Function"), h("dd", {}, h("code", {}, termination.fn)),
+        h("dt", {}, "subterm parameters"), h("dd", {}, termination.subtermParams.length ? h("code", {}, termination.subtermParams.join(", ")) : muted("none")),
+        h("dt", {}, "Group"), h("dd", {}, h("code", {}, termination.group.join(", "))))),
+    section("Scope", list(info.scope.map(e =>
+      binding(ctx, entryName(e, ctx), e.type, e.rule, tag("erased", ctx.showErased && e.erased))), "No local entries.")),
+    ...refutations === null ? [] : [section("Refutations", list(refutations.map(r => {
+      const derivation = h("ol", { class: "derivation" });
+      return h("li", {}, h("details", {
+        ontoggle: () => { if (!derivation.hasChildNodes()) derivation.append(...r.derivation().map(step => h("li", {}, rendered(step, ctx)))); },
+      }, h("summary", {}, h("code", {}, r.ctor)), derivation));
+    }), "No value constructor is refuted here."))],
+    h("details", {
+      class: "panel globals", open: ctx.globalsOpen,
+      ontoggle: (e: Event) => { ctx.globalsOpen = (e.currentTarget as HTMLDetailsElement).open; },
+    }, h("summary", {}, `Globals (${info.globals.length})`),
+      list(info.globals.map(g => h("li", { class: "global" },
+        h("span", { class: "kind" }, g.kind), " ", h("code", {}, h("span", { class: "name" }, g.name), rendered(g.signature, ctx)),
+        g.ctors && h("ul", {}, g.ctors.map(c => h("li", {}, h("code", {}, h("span", { class: "name" }, c.name), rendered(c.signature, ctx))))))),
+        "No top-level names in scope.")),
+  ];
+}
+
+export const inspectView = (info: PositionInfo, ctx: Ctx): HTMLElement => {
+  const body = h("div", { class: "inspect-body" });
+  return h("details", { class: "inspect", ontoggle: () => { if (!body.hasChildNodes()) body.append(...infoView(info, ctx)); } },
+    h("summary", {}, "inspect"), body);
+};
+
+const rewriteView = (r: Rewrite, ctx: Ctx): HTMLElement => {
+  const by = ctx.entry(r.by);
+  return h("li", {}, rendered(r.from, ctx), " → ", rendered(r.to, ctx), " ",
+    muted("by "), goto(ctx, r.at.start, by?.names.join(", ") || `the fact at ${ctx.where(r.at.start)}`));
+};
+
+export const explainView = (result: ReturnType<CheckResult["explainAt"]>, ctx: Ctx): Child =>
+  result === null
+    ? muted("No skeleton term here.")
+    : [h("p", {}, "Canonical form: ", rendered(result.canonical, ctx)),
+      result.rewrites.length ? h("ol", { class: "rewrites" }, result.rewrites.map(r => rewriteView(r, ctx))) : muted("Already canonical.")];
+
+export const evalView = (result: ReturnType<CheckResult["evalAt"]>, ctx: Ctx): Child =>
+  "error" in result
+    ? h("p", { class: "bad" }, `Column ${result.error.span.start + 1}: ${result.error.message()}`)
+    : h("dl", {},
+      h("dt", {}, "Type"), h("dd", {}, rendered(result.type, ctx)),
+      h("dt", {}, "canonical"), h("dd", {}, rendered(result.canonicalType, ctx)),
+      h("dt", {}, "is"), h("dd", {}, result.rule ? rendered(result.rule, ctx) : muted("no rule")),
+      h("dt", {}, "canonical"), h("dd", {}, result.canonicalRule ? rendered(result.canonicalRule, ctx) : muted("no rule")));
+
+export const verdict = (good: boolean | null, text: string): HTMLElement =>
+  h("span", { class: good === null ? "verdict" : good ? "verdict good" : "verdict bad" }, text);
+
+export const statusView = (r: CheckResult, error: string | null, qedMissing: boolean, ctx: Ctx): Child[] => {
+  const proved = r.goalProved === null ? null : r.goalProved && !qedMissing;
+  return [
+    r.error
+      ? h("span", { class: "verdict bad" }, "Error at ", goto(ctx, r.error.span.start), ": ", error)
+      : verdict(true, "No errors"),
+    verdict(r.containsSorry ? false : null, r.containsSorry ? "Contains sorry" : "No sorry"),
+    qedMissing
+      ? verdict(null, "No qed in your box")
+      : verdict(r.qedChecks, r.qedChecks === null ? "No qed" : r.qedChecks ? "qed checks" : "qed does not check"),
+    verdict(proved, proved === null ? "No goal" : proved ? "Goal proved" : "Goal not proved"),
+  ];
+};
