@@ -277,13 +277,14 @@ const castUse = `print cast(_, _, Refl(_, Succ(Zero())), VCons(_, _, Zero(), VNi
 qed cast;
 `;
 
+export const disclaimer = "This tutorial was written by a Claude session, not by Pledge's owner. DESIGN.md is the specification; where the two disagree, DESIGN.md is right and this tutorial is wrong. Section numbers (§) point to the DESIGN.md text a claim is based on.";
+
 export const pages: Page[] = [
   {
     slug: "nat",
     title: "Data and Nat()",
     phase: 1,
     prose: paragraphs(
-      "This tutorial was written by a Claude session, not by Pledge's owner. DESIGN.md is the specification; where the two disagree, DESIGN.md is right and this tutorial is wrong. Section numbers (§) point to the DESIGN.md text a claim is based on.",
       "Each page shows read-only boxes of source above your box, and checks them all as one program (§12). The panels beside the editor (below it on a narrow screen) describe the position of the caret: what is expected there, what is in scope, and more, as later pages show (§13). The status line under your box says whether the program checks, whether it contains `sorry`, and whether its goal is proved. An error is marked where it occurs.",
       "The box above declares the data type constructor `Nat`, with two value constructors, `Zero` and `Succ` (§5). Every application is written with its parentheses, even with no arguments, so the type is `Nat()` and zero is `Zero()` (§1).",
       "`let x = e;` binds the name `x` to `e`'s result (§8). `print e;` evaluates `e` and shows its value beside the statement (§12).",

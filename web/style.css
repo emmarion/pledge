@@ -355,6 +355,9 @@ ol.derivation, ol.rewrites { margin: 4px 0; padding-left: 22px; }
 details > summary code { cursor: pointer; }
 
 details.solution > summary { color: var(--accent); cursor: pointer; }
+details.disclaimer { margin: 0 0 12px; font-size: 0.9em; color: var(--muted); }
+details.disclaimer > summary { cursor: pointer; }
+details.disclaimer > p { margin: 6px 0 0; }
 details.solution pre {
   margin: 8px 0 0;
   padding: 8px 10px;

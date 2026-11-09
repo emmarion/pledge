@@ -1,4 +1,4 @@
-import { pages } from "../tutorial/pages.ts";
+import { disclaimer, pages } from "../tutorial/pages.ts";
 import { lex } from "../lexer.ts";
 import { fill, h } from "./dom.ts";
 import { highlight } from "./editor.ts";
@@ -20,7 +20,7 @@ document.title = `${page.title} — Pledge tutorial`;
 workspace.mount(
   [h("h1", {}, h("a", { href: "index.html" }, "Pledge"), " tutorial"), h("span", { class: "muted" }, `Phase ${page.phase}`)],
   "Reset your box",
-  [h("h2", {}, page.title), prose],
+  [h("details", { class: "disclaimer" }, h("summary", {}, "Disclaimer"), h("p", {}, disclaimer)), h("h2", {}, page.title), prose],
   [h("details", {
     class: "solution",
     ontoggle: (e: Event) => fill((e.currentTarget as HTMLElement).querySelector("pre")!, highlight(page.solution, lex(page.solution, page.phase), workspace.kinds)),
