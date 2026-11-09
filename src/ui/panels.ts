@@ -150,6 +150,9 @@ export const evalView = (result: ReturnType<CheckResult["evalAt"]>, ctx: Host): 
 export const verdict = (good: boolean | null, ...text: Child[]): HTMLElement =>
   h("span", { class: good === null ? "verdict" : good ? "verdict good" : "verdict bad" }, text);
 
+const qedText: Record<CheckResult["qed"], string> = { none: "No qed", unreached: "qed not reached",
+  fails: "qed does not check", checks: "qed checks" };
+
 export const statusView = (r: CheckResult, error: string | null, qedMissing: boolean, ctx: Host): Child[] => {
   const proved = r.goalProved === null ? null : r.goalProved && !qedMissing;
   return [
@@ -160,7 +163,7 @@ export const statusView = (r: CheckResult, error: string | null, qedMissing: boo
       verdict(!r.containsSorry, r.containsSorry ? "Contains sorry" : "No sorry"),
       qedMissing
         ? verdict(null, "No qed in your box")
-        : verdict(r.qedChecks, r.qedChecks === null ? "No qed" : r.qedChecks ? "qed checks" : "qed does not check"),
+        : verdict(r.qed === "checks" || (r.qed === "fails" ? false : null), qedText[r.qed]),
       verdict(proved, proved === null ? "No goal" : proved ? "Goal proved" : "Goal not proved")),
   ];
 };

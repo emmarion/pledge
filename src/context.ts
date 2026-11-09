@@ -56,9 +56,13 @@ export interface Snapshot {
   refutations: RefutationInfo[] | null;
   limit: number;
   inspect: boolean;
+  decl: EntryId | null;
 }
 
 interface ExplainPoint { span: Span; scope: Scope; term: Term }
+
+export type Declared = Exclude<Global, { kind: "binding" }>;
+export interface Occurrence { span: Span; local: Local; of: EntryId | Declared }
 
 export interface State {
   phase: Phase;
@@ -66,6 +70,7 @@ export interface State {
   index: Map<string, number>;
   snapshots: Snapshot[];
   explains: ExplainPoint[];
+  occurrences: Occurrence[];
   record: boolean;
 }
 
@@ -77,6 +82,7 @@ export interface Ctx {
   limit: number | null;
   erased: boolean;
   holes: Hole[];
+  decl: EntryId | null;
 }
 
 export const APP = "app";
@@ -108,13 +114,18 @@ export const describe = (g: Global): string =>
     : "a value";
 
 export function record(ctx: Ctx, local: Local, span: Span, given: Given | null, inspect = false): Snapshot {
-  const snap: Snapshot = { span, local, given, fn: ctx.fn, refutations: null, limit: visible(ctx), inspect };
+  const snap: Snapshot = { span, local, given, fn: ctx.fn, refutations: null, limit: visible(ctx), inspect,
+    decl: ctx.decl };
   if (ctx.st.record) ctx.st.snapshots.push(snap);
   return snap;
 }
 
 export function point(ctx: Ctx, scope: Scope, span: Span, term: Term): void {
   if (ctx.st.record) ctx.st.explains.push({ span, scope, term });
+}
+
+export function occur(ctx: Ctx, span: Span, local: Local, of: EntryId | Declared): void {
+  if (ctx.st.record) ctx.st.occurrences.push({ span, local, of });
 }
 
 export const written = (scope: Scope, t: Term): Term => mapLeaves(t, u => {

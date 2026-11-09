@@ -7,9 +7,9 @@ import { force, open, unify } from "./telescope.ts";
 import type { Forced } from "./telescope.ts";
 import { label, render } from "./render.ts";
 import type { RefutationInfo } from "./api.ts";
-import { APP, HOLE, code, describe, fail, labelled, newName, global, plural, point, record,
+import { APP, HOLE, code, describe, fail, labelled, newName, global, occur, plural, point, record,
   written } from "./context.ts";
-import type { Ctx, FnCtx, FnSig, Given, Hole, Local, Result, Snapshot, Want } from "./context.ts";
+import type { Ctx, FnCtx, FnSig, Given, Global, Hole, Local, Result, Snapshot, Want } from "./context.ts";
 
 type App = Expr & { kind: "app" };
 type Match = Expr & { kind: "match" };
@@ -125,12 +125,14 @@ function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snaps
         "`_` stands only for a whole argument, for an erased parameter or field (§16)");
       const found = lookup(local.scope, name);
       if (!found) return notValue(ctx, { name, span: e.name.span });
+      occur(ctx, e.name.span, local, found.id);
       point(ctx, local.scope, e.span, ref(found.id));
       return produced(ctx, local, given, [{ id: found.id, tainted: local.tainted.has(name),
         erased: found.erased || local.erased.has(name) }], e.span, e);
     }
     case "app": {
       const name = e.head.name, g = global(ctx, name);
+      if (g && g.kind !== "binding") occur(ctx, e.head.span, local, g);
       if (g?.kind === "fn") return call(ctx, local, e, name, g.sig, given);
       if (g?.kind === "type" || g?.kind === "ctor") return construct(ctx, local, e, g.sig, given);
       return fail(e.head.span, () => lookup(local.scope, name)
@@ -328,8 +330,9 @@ function match(ctx: Ctx, local: Local, e: Match, given: Given | null, snap: Snap
     : (i: number) => labelled("annotation entry", ann.tele[i]?.name ?? null, i);
   const bodies = e.branches.map(br => {
     const won = survivor(branchOf(br.pat), br.pat.span, "");
-    return expr({ ...ctx, holes: [] }, bind({ ...inner, scope: won.scope, taintedBy: reach(inner, s, e.scrut.span) },
-      br.pat.fields, won.fields).local, br.body, { wants, env: ann.env, whole: true, ...(label ? { label } : {}) });
+    const bound = bind(ctx, { ...inner, scope: won.scope, taintedBy: reach(inner, s, e.scrut.span) }, br.pat.fields,
+      won.fields).local;
+    return expr({ ...ctx, holes: [] }, bound, br.body, { wants, env: ann.env, whole: true, ...(label ? { label } : {}) });
   });
   snap.refutations = [...refuted, ...e.branches.filter(br => !live.includes(br)).map(br =>
     ({ ctor: br.pat.ctor.name, kind: "absurd" as const, derivation: () => [] }))];
@@ -349,7 +352,7 @@ function annotation(ctx: Ctx, local: Local, tele: Tele, given: Given | null,
     : fail(span, () => "internal: an undetermined entry in a whole telescope")), env: given.env };
 }
 
-function dataCtors(ctx: Ctx, scope: Scope, id: EntryId, span: Span): { name: string; sig: Signature }[] {
+function dataCtors(ctx: Ctx, scope: Scope, id: EntryId, span: Span): (Global & { kind: "ctor" })[] {
   const type = canon(scope, entry(scope, id).type);
   const g = type.tag === "app" ? global(ctx, type.head.name) : undefined;
   const ctors = g?.kind === "type" && g.done ? g.ctors : null;
@@ -359,7 +362,7 @@ function dataCtors(ctx: Ctx, scope: Scope, id: EntryId, span: Span): { name: str
     : `the scrutinee's type ${show(scope, type)} is not a data type (§10)`);
   return ctors.map(name => {
     const c = global(ctx, name);
-    return c?.kind === "ctor" ? { name, sig: c.sig } : fail(span, () => `${code(name)} is not declared at this point`);
+    return c?.kind === "ctor" ? c : fail(span, () => `${code(name)} is not declared at this point`);
   });
 }
 
@@ -375,6 +378,7 @@ function forcings(ctx: Ctx, local: Local, id: EntryId, scrutSpan: Span, pats: re
     seen.add(name);
     if (p.fields.length !== c.sig.params.length) fail(p.span, () =>
       `${code(name)} has ${plural(c.sig.params.length, "field")}, and this pattern names ${p.fields.length}`);
+    occur(ctx, p.ctor.span, local, c);
   }
   return ctors.map(({ name, sig }) => {
     const pat = pats.find(p => p.ctor.name === name);
@@ -404,8 +408,8 @@ function names(ctx: Ctx, local: Local, ids: readonly Id[]): void {
 
 const never = (): boolean => false;
 
-function bind(local: Local, ids: readonly Id[], entries: readonly EntryId[], tainted: (i: number) => boolean = never,
-    erased: (i: number) => boolean = never): { local: Local; bound: Named[] } {
+function bind(ctx: Ctx | null, local: Local, ids: readonly Id[], entries: readonly EntryId[],
+    tainted: (i: number) => boolean = never, erased: (i: number) => boolean = never): { local: Local; bound: Named[] } {
   let scope = local.scope;
   const sets = { tainted: new Set(local.tainted), erased: new Set(local.erased) }, bound: Named[] = [];
   ids.forEach(({ name }, i) => {
@@ -416,7 +420,12 @@ function bind(local: Local, ids: readonly Id[], entries: readonly EntryId[], tai
     if (tainted(i)) sets.tainted.add(name);
     if (erased(i)) sets.erased.add(name);
   });
-  return { local: { ...local, scope, ...sets }, bound };
+  const out = { ...local, scope, ...sets };
+  if (ctx) ids.forEach(({ name, span }, i) => {
+    const id = entries[i];
+    if (name !== null && id !== undefined) occur(ctx, span, out, id);
+  });
+  return { local: out, bound };
 }
 
 function letWants(ctx: Ctx, site: Local, binders: readonly LetBinder[]): Want[] {
@@ -428,7 +437,7 @@ function letWants(ctx: Ctx, site: Local, binders: readonly LetBinder[]): Want[] 
     record(ctx, local, b.span, null);
     const u = b.ann && unknown(b.ann.term);
     if (u) fail(u.span, () => `${code(u.head.name)} has no type here: give it one before referring to it`);
-    const o = b.ann && opening(ctx, local, { ...b, ann: b.ann }, "binder");
+    const o = b.ann && opening(ctx, local, { ...b, ann: b.ann }, "binder", false);
     if (!o && b.name.name !== null) untyped.add(b.name.name);
     local = o?.local ?? local;
     ids.push(o?.id ?? -1);
@@ -450,8 +459,8 @@ export function stmt(ctx: Ctx, local: Local, s: Stmt, comptime?: Comptime): Stmt
       names(ctx, local, s.binders.map(b => b.name));
       const out = expr(ctx, local, s.rhs, { wants: letWants(ctx, local, s.binders), env: [],
         whole: s.binders.every(b => b.ann), label: i => labelled("binder", s.binders[i]?.name.name ?? null, i) });
-      const b = bind(out.local, s.binders.map(x => x.name), out.results.map(r => r.id), i => out.results[i]!.tainted,
-        i => s.binders[i]!.mult === "erased");
+      const b = bind(ctx, out.local, s.binders.map(x => x.name), out.results.map(r => r.id),
+        i => out.results[i]!.tainted, i => s.binders[i]!.mult === "erased");
       return { local: b.local, tree: { ...s, rhs: out.tree }, bound: b.bound };
     }
     case "patlet": {
@@ -469,8 +478,8 @@ export function stmt(ctx: Ctx, local: Local, s: Stmt, comptime?: Comptime): Stmt
       if (other) fail(s.pat.span, () =>
         `${code(other.name)} is not refuted here, ` +
         "and exactly one value constructor must survive forcing at a pattern `let` (§10)");
-      const b = bind({ ...out.local, scope: won.scope, taintedBy: reach(out.local, r, s.rhs.span) }, s.pat.fields,
-        won.fields);
+      const b = bind(ctx, { ...out.local, scope: won.scope, taintedBy: reach(out.local, r, s.rhs.span) },
+        s.pat.fields, won.fields);
       return { local: b.local, tree: { ...s, rhs: out.tree }, bound: b.bound };
     }
   }
@@ -504,11 +513,12 @@ export function annotate(ctx: Ctx, local: Local,
 
 interface Checked { local: Local; ids: EntryId[]; tele: Telescope; tainted: boolean }
 
-function opening(ctx: Ctx, local: Local, b: WrittenBinder,
-    kind: string): { local: Local; id: EntryId; tainted: boolean } {
+function opening(ctx: Ctx, local: Local, b: WrittenBinder, kind: string,
+    occurs = true): { local: Local; id: EntryId; tainted: boolean } {
   const a = annotate(ctx, local, b.ann);
   const made = create(a.local.scope, a.type, a.is, { origin: { kind, span: b.span }, erased: b.mult === "erased" });
-  return { local: bind({ ...a.local, scope: made.scope }, [b.name], [made.id]).local, id: made.id, tainted: a.tainted };
+  const bound = bind(occurs ? ctx : null, { ...a.local, scope: made.scope }, [b.name], [made.id]);
+  return { local: bound.local, id: made.id, tainted: a.tainted };
 }
 
 function abstracted(scope: Scope, b: { name: Id; mult: Mult | null; span: Span }, id: EntryId,

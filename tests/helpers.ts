@@ -15,7 +15,8 @@ export const vecBy = (mult: string): string => `${examples.vecBy(mult)}\n`;
 export const vheadBy = (mult: string): string => `${examples.vheadBy(mult)}\n`;
 export const isZero = "data IsZero(n : Nat()) : Type() {\n  IsZeroHere() : IsZero(Zero());\n}\n";
 
-export const verdicts = (r: CheckResult) => [r.containsSorry, r.qedChecks, r.goalProved];
+export const qedChecks = (r: CheckResult): boolean | null => r.qed === "none" ? null : r.qed === "checks";
+export const verdicts = (r: CheckResult) => [r.containsSorry, qedChecks(r), r.goalProved];
 const entryText = (e: EntryInfo): string =>
   `${e.names.join(",") || `?${e.origin.kind}`} : ${e.type.text}${e.rule ? ` is ${e.rule.text}` : ""}`;
 export const scopeOf = (info: PositionInfo): string[] => info.scope.map(entryText);

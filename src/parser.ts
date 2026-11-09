@@ -9,11 +9,12 @@ type Block = Expr & { kind: "block" };
 const tokenText = (token: Token): string =>
   token.kind === "eof" ? "end of input" : token.kind === "keyword" ? `keyword \`${token.text}\`` : `\`${token.text}\``;
 
-interface Grammar { program(): Program; expression(): Expr }
+interface Parsed { program: Program; error: Diagnostic | null }
+interface Grammar { program(): Parsed; expression(): Expr }
 
-export function parse(source: string, phase: Phase): { program: Program } | { error: Diagnostic } {
+export function parse(source: string, phase: Phase): Parsed {
   const r = parseWith(source, phase, g => g.program());
-  return "error" in r ? r : { program: r.value };
+  return "error" in r ? { program: { tops: [], span: { start: 0, end: source.length } }, error: r.error } : r.value;
 }
 
 export function parseExpr(source: string, phase: Phase): { expr: Expr } | { error: Diagnostic } {
@@ -26,11 +27,7 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
   let pos = 0;
   let prevEnd = 0;
 
-  const peek = (k = 0): Token => {
-    const token = tokens[Math.min(pos + k, tokens.length - 1)]!;
-    if (token.kind === "error") fail(token.diag.span, token.diag.message);
-    return token;
-  };
+  const peek = (k = 0): Token => tokens[Math.min(pos + k, tokens.length - 1)]!;
   const next = (): Token => {
     const token = peek();
     pos++;
@@ -39,7 +36,8 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
   };
   const syntaxError = (expected: string): never => {
     const token = peek();
-    return fail(token.span, () => `expected ${expected}, found ${tokenText(token)}`);
+    return token.kind === "error" ? fail(token.diag.span, token.diag.message)
+      : fail(token.span, () => `expected ${expected}, found ${tokenText(token)}`);
   };
   const isText = (token: Token, text: string): boolean => token.kind !== "name" && token.text === text;
   const at = (text: string): boolean => isText(peek(), text);
@@ -268,10 +266,10 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
     return syntaxError("a declaration or a top-level statement");
   };
 
-  const program = (): Program => {
+  const program = (): Parsed => {
     const tops: Top[] = [];
-    while (peek().kind !== "eof") tops.push(top());
-    return { tops, span: { start: 0, end: source.length } };
+    const stopped = attempt(() => { while (peek().kind !== "eof") tops.push(top()); });
+    return { program: { tops, span: { start: 0, end: source.length } }, error: stopped?.error ?? null };
   };
   const expression = (): Expr => {
     const e = expr();

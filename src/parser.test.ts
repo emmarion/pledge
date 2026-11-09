@@ -11,13 +11,13 @@ const nat = "data Nat() : Type() { Zero() : Nat(); Succ(pred : Nat()) : Nat(); }
 
 const ok = (source: string, phase: Phase = 1): Program => {
   const result = parse(source, phase);
-  if ("error" in result) assert.fail(`${result.error.message()} at ${JSON.stringify(result.error.span)}`);
+  if (result.error) assert.fail(`${result.error.message()} at ${JSON.stringify(result.error.span)}`);
   return result.program;
 };
 const err = (source: string, phase: Phase = 1): { start: number; message: string } => {
-  const result = parse(source, phase);
-  if ("program" in result) return assert.fail("expected a parse error");
-  return { start: result.error.span.start, message: result.error.message() };
+  const { error } = parse(source, phase);
+  if (!error) return assert.fail("expected a parse error");
+  return { start: error.span.start, message: error.message() };
 };
 
 const strip = (value: unknown): unknown =>
@@ -33,15 +33,15 @@ const app = (head: string, ...args: unknown[]) => ({ kind: "app", head: id(head)
 test("every tests/*.pledge parses in its phase and every later one", () => {
   assert.ok(pledgeFiles.length >= 10);
   for (const f of pledgeFiles) for (const phase of f.startsWith("phase2_") ? [2] as const : [1, 2] as const) {
-    const result = parse(file(f), phase);
-    assert.ok("program" in result, `${f} (phase ${phase}): ${"error" in result ? result.error.message() : ""}`);
+    const { error } = parse(file(f), phase);
+    assert.ok(!error, `${f} (phase ${phase}): ${error?.message() ?? ""}`);
   }
 });
 
 test("DESIGN.md's code appears verbatim in tests/*.pledge", () => {
   const design = readFileSync(new URL("../DESIGN.md", import.meta.url), "utf8");
   const examples = pledgeFiles.map(file);
-  const blocks = [...design.matchAll(/```\n([\s\S]*?)```/g)].map(m => m[1]!).filter(block => "program" in parse(block, 1));
+  const blocks = [...design.matchAll(/```\n([\s\S]*?)```/g)].map(m => m[1]!).filter(block => !parse(block, 1).error);
   assert.equal(blocks.length, 7);
   const inline = [
     "let y is Succ(n) = e;",

@@ -57,17 +57,22 @@ export interface PositionInfo {
   globals: GlobalInfo[];
 }
 
+export type NameInfo =
+  | { kind: "entry"; entry: EntryInfo }
+  | { kind: "fn" | "type" | "ctor"; name: string; signature: Rendered };
+
 export interface Rewrite { from: Rendered; to: Rendered; by: EntryId; at: Span }
 
 export interface CheckResult {
   phase: Phase;
   error: Diagnostic | null;
   containsSorry: boolean;
-  qedChecks: boolean | null;
+  qed: "none" | "unreached" | "fails" | "checks";
   goalProved: boolean | null;
   prints: { span: Span; value: string }[];
   inspects: { span: Span; info: PositionInfo }[];
   infoAt(offset: number): PositionInfo;
+  nameAt(offset: number): NameInfo | null;
 
   explainAt(offset: number): { canonical: Rendered; rewrites: Rewrite[] } | null;
 

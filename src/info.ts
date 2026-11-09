@@ -1,14 +1,17 @@
-import type { CheckResult, ExpectedInfo, GlobalInfo, PositionInfo, Rendered } from "./api.ts";
-import { bound, entries, entry, lookup, mapLeaves } from "./terms.ts";
-import type { OpenTerm, Scope, Signature, Term } from "./terms.ts";
+import type { CheckResult, EntryInfo, ExpectedInfo, GlobalInfo, PositionInfo, Rendered } from "./api.ts";
+import { bound, canon, entries, entry, lookup, mapLeaves, mentions } from "./terms.ts";
+import type { Entry, EntryId, OpenTerm, Scope, Signature, Term } from "./terms.ts";
 import { cat, entryInfo, explain, render, renderTelescope } from "./render.ts";
 import { parseExpr } from "./parser.ts";
-import { APP, HOLE, attempt, globalAt, innermost, written } from "./context.ts";
-import type { Given, Global, Snapshot, State } from "./context.ts";
+import { attempt, globalAt, innermost, written } from "./context.ts";
+import type { Declared, Given, Global, Local, Snapshot, State } from "./context.ts";
 import { expr, single } from "./expr.ts";
 
 const shift = (t: OpenTerm, env: readonly Term[]): OpenTerm =>
   mapLeaves(t, u => u.tag === "bound" ? env[u.index] ?? bound(u.index - env.length) : u);
+
+const givenTerms = (given: Given | null): OpenTerm[] =>
+  given?.wants.flatMap(w => [w.type, w.is].flatMap(t => t ? [shift(t, given.env)] : [])) ?? [];
 
 function expected(scope: Scope, given: Given | null): ExpectedInfo {
   if (!given) return { entries: null };
@@ -19,24 +22,24 @@ function expected(scope: Scope, given: Given | null): ExpectedInfo {
     entries: entries.slice(given.params) };
 }
 
+const signatureOf = (scope: Scope, sig: Signature): Rendered => cat(renderTelescope(scope, sig.params, [], false),
+  " : ", render(scope, sig.ret, { canonical: false, bound: sig.params.map(b => b.name) }));
+
+const declared = (scope: Scope, g: Declared): Rendered => g.kind !== "fn" ? signatureOf(scope, g.sig)
+  : g.sig ? cat(renderTelescope(scope, g.sig.params, [], false), " -> ",
+    renderTelescope(scope, g.sig.returns, g.sig.params.map(b => b.name), false))
+  : cat("(...)");
+
 function globalInfo(scope: Scope, g: Global, st: State, limit: number): GlobalInfo[] {
-  const signatureOf = (sig: Signature): Rendered => cat(renderTelescope(scope, sig.params, [], false), " : ",
-    render(scope, sig.ret, { canonical: false, bound: sig.params.map(b => b.name) }));
   switch (g.kind) {
     case "ctor": return [];
-    case "fn": {
-      const sig = g.sig;
-      return [{ kind: "fn", name: g.name, signature: sig
-        ? cat(renderTelescope(scope, sig.params, [], false), " -> ",
-          renderTelescope(scope, sig.returns, sig.params.map(b => b.name), false))
-        : cat("(...)") }];
-    }
+    case "fn": return [{ kind: "fn", name: g.name, signature: declared(scope, g) }];
     case "type": {
       const ctors = (g.ctors ?? []).flatMap(name => {
         const c = globalAt(st, limit, name);
-        return c?.kind === "ctor" ? [{ name, signature: signatureOf(c.sig) }] : [];
+        return c?.kind === "ctor" ? [{ name, signature: signatureOf(scope, c.sig) }] : [];
       });
-      return [{ kind: "type", name: g.name, signature: signatureOf(g.sig), ...(g.ctors ? { ctors } : {}) }];
+      return [{ kind: "type", name: g.name, signature: declared(scope, g), ...(g.ctors ? { ctors } : {}) }];
     }
     case "binding": {
       const e = lookup(scope, g.name);
@@ -48,14 +51,30 @@ function globalInfo(scope: Scope, g: Global, st: State, limit: number): GlobalIn
   }
 }
 
+function scoped({ scope, tainted, erased }: Local, e: Entry): EntryInfo {
+  return { ...entryInfo(scope, e.id), tainted: e.names.filter(n => tainted.has(n)),
+    erased: e.erased || (e.names.length > 0 && e.names.every(n => erased.has(n))) };
+}
+
+function listed(scope: Scope, decl: EntryId | null, given: Given | null): Entry[] {
+  const keep = new Set<EntryId>(), all = entries(scope);
+  const add = (e: Entry): void => { keep.add(e.id); [e.type, e.rule?.term].forEach(t => t && visit(t)); };
+  const visit = (t: OpenTerm): boolean => mentions(canon(scope, t), id => {
+    const e = entry(scope, id);
+    if (!e.names.length && !keep.has(id)) add(e);
+    return false;
+  });
+  all.filter(e => e.names.length && (decl === null || e.id >= decl)).forEach(add);
+  givenTerms(given).forEach(visit);
+  return all.filter(e => keep.has(e.id));
+}
+
 export function info(st: State, snap: Snapshot): PositionInfo {
-  const { scope, tainted, erased } = snap.local;
+  const { scope } = snap.local;
   return {
     expected: expected(scope, snap.given),
     termination: snap.fn?.info ?? null,
-    scope: entries(scope).filter(e => e.names.length || (e.origin.kind !== APP && e.origin.kind !== HOLE))
-      .map(e => ({ ...entryInfo(scope, e.id), tainted: e.names.filter(n => tainted.has(n)), erased: e.erased
-        || (e.names.length > 0 && e.names.every(n => erased.has(n))) })),
+    scope: listed(scope, snap.decl, snap.given).map(e => scoped(snap.local, e)),
     taintedBy: snap.local.taintedBy,
     refutations: snap.refutations,
     globals: st.globals.slice(0, snap.limit).flatMap(g => globalInfo(scope, g, st, snap.limit)),
@@ -63,10 +82,17 @@ export function info(st: State, snap: Snapshot): PositionInfo {
 }
 
 export function queries(st: State, fallback: (offset: number) => Snapshot):
-    Pick<CheckResult, "infoAt" | "explainAt" | "evalAt"> {
+    Pick<CheckResult, "infoAt" | "nameAt" | "explainAt" | "evalAt"> {
   const at = (offset: number): Snapshot => innermost(st.snapshots, offset) ?? fallback(offset);
   return {
     infoAt: offset => info(st, at(offset)),
+    nameAt: offset => {
+      const o = innermost(st.occurrences, offset);
+      if (!o) return null;
+      const { local, of } = o;
+      return typeof of === "number" ? { kind: "entry", entry: scoped(local, entry(local.scope, of)) }
+        : { kind: of.kind, name: of.name, signature: declared(local.scope, of) };
+    },
     explainAt: offset => {
       const p = innermost(st.explains, offset);
       return p ? explain(p.scope, written(p.scope, p.term)) : null;
@@ -77,7 +103,7 @@ export function queries(st: State, fallback: (offset: number) => Snapshot):
       const snap = at(offset);
       return attempt(() => {
         const out = expr({ st: { ...st, record: false }, fn: snap.fn, skeleton: false, limit: snap.limit, erased: true,
-          holes: [] }, snap.local, parsed.expr, null);
+          holes: [], decl: snap.decl }, snap.local, parsed.expr, null);
         const scope = out.local.scope, e = entry(scope, single(out, parsed.expr.span).id);
         const both = (t: Term): [Rendered, Rendered] => [render(scope, written(scope, t), { canonical: false }),
           render(scope, t)];

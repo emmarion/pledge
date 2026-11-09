@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { CheckResult, EntryInfo, PositionInfo } from "./api.ts";
-import { file, files, harness, isZero, nat, vecBy, vheadBy } from "../tests/helpers.ts";
+import { file, files, harness, isZero, nat, qedChecks, vecBy, vheadBy, verdicts } from "../tests/helpers.ts";
 
 const { ok, err } = harness(2);
 const vec = vecBy("erased "), vhead = vheadBy("erased ");
@@ -19,13 +19,13 @@ test("the phase 2 example programs check and print erased fields as _", () => {
     "Succ(Succ(Zero()))", "VCons(_, _, Zero(), VCons(_, _, Succ(Zero()), VNil(_)))", "Succ(Zero())",
   ]);
   const proof = ok(file("phase2_eq.pledge"));
-  assert.deepEqual([proof.containsSorry, proof.qedChecks, proof.goalProved], [false, true, true]);
+  assert.deepEqual(verdicts(proof), [false, true, true]);
 });
 
 test("every tests/design_*.pledge checks under phase 2 as under phase 1", () => {
     assert.ok(files("design_").length >= 10);
   for (const f of files("design_")) {
-    const outcome = (r: CheckResult) => [prints(r), r.qedChecks, r.goalProved, r.containsSorry];
+    const outcome = (r: CheckResult) => [prints(r), qedChecks(r), r.goalProved, r.containsSorry];
     assert.deepEqual(outcome(ok(file(f), 2)), outcome(ok(file(f), 1)), f);
   }
 });
@@ -85,7 +85,7 @@ test("match erased: at most one branch with a many annotation entry", () => {
   const one = `${nat}${vec}fn f(erased n : Nat(), v : Vec(Nat(), Succ(n)), w : Nat()) -> (r : Nat()) {\n  match erased v : (r : Nat()) { VCons(_, k, h, _) => w; }\n}\nprint f(_, VCons(_, _, Zero(), VNil(_)), Succ(Zero()));\n`;
   assert.deepEqual(prints(ok(one)), ["Succ(Zero())"]);
   const info = ok(one).infoAt(one.indexOf("w; }"));
-  assert.deepEqual(flagged(info), ["n", "?VCons.A", "k", "h", "?VCons.rest"]);
+  assert.deepEqual(flagged(info), ["n", "k", "h", "?VCons.rest"]);
   err(one.replace("=> w;", "=> h;"), "h", leak, "=> h");
 });
 
@@ -126,7 +126,7 @@ test("let erased: tuple binders and pattern lets bind erased; comptime cannot be
   const source = `${nat}${vec}let v = VCons(_, _, Zero(), VNil(_));\nlet (erased a, b) = (Succ(Zero()), Zero());\nlet erased c = b;\nlet erased VCons(x, y, z, w) = v;\nlet VCons(_, _, h, t) = v;\nprint VCons(x, y, h, t);\n`;
   const r = ok(source);
   assert.deepEqual(prints(r), ["VCons(_, _, Zero(), VNil(_))"]);
-  assert.deepEqual(flagged(r.infoAt(source.length)), ["a", "x", "y", "z", "w", "?VCons.A", "?VCons.n"]);
+  assert.deepEqual(flagged(r.infoAt(source.length)), ["a", "x", "y", "z", "w"]);
   err(source.replace("print VCons(x, y, h, t)", "print VCons(x, y, z, t)"), "z", leak, "print");
   err(`${nat}comptime let erased Succ(p) = Succ(Zero());\n`, "comptime let erased Succ(p) = Succ(Zero());", /cannot be erased/);
 });
@@ -175,7 +175,7 @@ test("interface data shows multiplicities where written", () => {
     "VNil(erased A : Type()) : Vec(A, Zero())", "VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n)) : Vec(A, Succ(n))",
   ]);
   const inBody = ok(source).infoAt(source.indexOf("hd\n}"));
-  assert.deepEqual(flagged(inBody), ["A", "n", "?VCons.A", "?VCons.n"]);
+  assert.deepEqual(flagged(inBody), ["A", "n"]);
   assert.deepEqual(inBody.expected.entries?.map(e => [e.name, e.erased]), [["x", false]]);
 });
 
@@ -202,7 +202,7 @@ test("soundness: a _ is not solved by what is produced after it", () => {
 test("taint: a _ whose solution mentions a tainted entry taints the application, as the written argument would", () => {
   const proof = (arg: string) => `${nat}${eq}${bad}${cast}let s = sorry(s : ${absurd});\n` +
     `fn cast2(erased q is s, x : Bad(Zero())) -> (y : Bad(Succ(Zero()))) { cast(Zero(), Succ(Zero()), q, x) }\ngoal Bad(Succ(Zero()));\nqed cast2(${arg}, BadZero());\n`;
-  for (const arg of ["s", "_"]) assert.deepEqual([ok(proof(arg)).qedChecks, ok(proof(arg)).goalProved], [true, false], arg);
+  for (const arg of ["s", "_"]) assert.deepEqual([qedChecks(ok(proof(arg))), ok(proof(arg)).goalProved], [true, false], arg);
   const g = "fn g(erased A : Type(), v : Vec(A, Zero())) -> (w : Vec(A, Zero())) { v }\n";
   const at = (type: string, arg: string) => `${nat}${vec}${g}let T = sorry(T : Type());\nfn f(v : ${type}) -> (r : Nat()) { Zero() }\ngoal Nat();\nqed f(${arg});\nprint f(${arg});\n`;
   for (const arg of ["VNil(_)", "g(_, VNil(_))"]) {
@@ -219,7 +219,9 @@ test("taint: a function written after a tainted pattern let in a top-level block
     "fn k(a : Nat(), erased b is a) -> (r : Nat()) { a }\nfn h1() -> (r : Nat()) {\n  let x = k(n, _);\n  inspect;\n  x\n}\nfn h2() -> (r : Nat()) {\n  let x = k(m, m);\n  inspect;\n  x\n}\n";
   const r = ok(source);
   assert.deepEqual(r.inspects.map(i => i.info.scope.filter(e => e.names.includes("x") || e.names.includes("m")).map(e => [e.names.join(","), e.tainted])),
-    [[["n,m", ["m"]], ["x", ["x"]]], [["n,m", ["m"]], ["x", ["x"]]]]);
+    [[["x", ["x"]]], [["x", ["x"]]]]);
+  assert.deepEqual(r.infoAt(source.length).scope.filter(e => e.names.includes("m")).map(e => [e.names.join(","), e.tainted]),
+    [["n,m", ["m"]]]);
   const scrutinee = source.indexOf("s; n }");
   assert.deepEqual(r.inspects.map(i => i.info.taintedBy), [1, 2].map(() => ({ start: scrutinee, end: scrutinee + 1 })));
 });

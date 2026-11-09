@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { check } from "./check.ts";
-import { file, files, harness, isZero, nat, scopeOf, vecBy, verdicts } from "../tests/helpers.ts";
+import { file, files, harness, isZero, nat, qedChecks, scopeOf, vecBy, verdicts } from "../tests/helpers.ts";
 
 const { ok, err } = harness(1);
 const vec = vecBy("");
@@ -48,7 +48,7 @@ test("print shows the value of ack(2, 1)", () => {
   const r = ok(`${file("design_ack.pledge")}\nprint ack(Succ(Succ(Zero())), Succ(Zero()));\n`);
   assert.deepEqual(r.prints.map(p => p.value), [nats(5)]);
   assert.equal(r.containsSorry, false);
-  assert.equal(r.qedChecks, null);
+  assert.equal(qedChecks(r), null);
   assert.equal(r.goalProved, null);
 });
 
@@ -58,14 +58,14 @@ test("proof by reflection with a mutual decideEven, proving a goal", () => {
   assert.deepEqual(r.prints.map(p => p.value), [`EvenSucc(${nats(1)}, OddSucc(Zero(), EvenZero()))`]);
   const p = r.infoAt(offset(source, "print p", 6)).scope.find(e => e.names.includes("p"));
   assert.equal(p?.type.text, `Even(${nats(2)})`);
-  assert.deepEqual([r.containsSorry, r.qedChecks, r.goalProved], [false, true, true]);
+  assert.deepEqual(verdicts(r), [false, true, true]);
   err(`${decide}let Some(_, p) = decideEven(${nats(2)});\n`, "Some(_, p)", /`None` is not refuted/);
   err(`${decide}comptime let Some(_, p) = decideEven(${nats(1)});\n`, `decideEven(${nats(1)})`, /evaluates to `None\(Even\(Succ\(Zero\(\)\)\)\)`, which is not headed by `Some`/);
 });
 
 test("a goal proved without sorry", () => {
   const r = ok(`${nat}goal Nat();\nqed Succ(Zero());\n`);
-  assert.deepEqual([r.containsSorry, r.qedChecks, r.goalProved], [false, true, true]);
+  assert.deepEqual(verdicts(r), [false, true, true]);
 });
 
 test("names: no shadowing, no keyword, one namespace", () => {
@@ -112,14 +112,14 @@ test("goal and qed: at most once each, qed after goal", () => {
   const r = check(`${nat}qed Zero();\ngoal Nat();\n`, 1);
   assert.equal(r.error?.span.start, nat.length);
   assert.match(r.error?.message() ?? "", /`qed` comes after `goal`/);
-  assert.deepEqual([r.qedChecks, r.goalProved], [false, false]);
+  assert.deepEqual([qedChecks(r), r.goalProved], [false, false]);
   err(`${nat}goal Nat();\ngoal Nat();\n`, "goal Nat();", /at most one `goal`/, "Nat();\ngoal");
   err(`${nat}goal Nat();\nqed Nat();\n`, "Nat()", /the value expected here must have type `Nat\(\)`/, "qed");
 });
 
 test("sorry: qed sorry(_) checks but proves nothing", () => {
   const r = ok("data False() : Type() {}\ngoal False();\nqed sorry(_);\n");
-  assert.deepEqual([r.containsSorry, r.qedChecks, r.goalProved], [true, true, false]);
+  assert.deepEqual(verdicts(r), [true, true, false]);
   err(`${nat}fn f(n : Nat()) -> (r : Nat()) { Succ(sorry(_)) }\n`, "sorry(_)", /`_` stands for the whole telescope/);
 });
 
@@ -127,9 +127,9 @@ test("taint survives laundering through a function (§12)", () => {
   const base = `${nat}data False() : Type() {}\ngoal False();\nlet b = sorry(x : False());\n`;
   const renamed = ok(`${base}fn id(p : False()) -> (r : False()) { let q = p; q }\nfn g(n : Nat()) -> (r : Nat()) { let y = b; n }\nprint g(Zero());\nqed id(b);\n`);
   assert.deepEqual(renamed.prints.map(p => p.value), ["Zero()"]);
-  assert.deepEqual([renamed.containsSorry, renamed.qedChecks, renamed.goalProved], [true, true, false]);
+  assert.deepEqual(verdicts(renamed), [true, true, false]);
   const used = ok(`${base}fn f() -> (r : False()) { b }\nqed f();\n`);
-  assert.deepEqual([used.qedChecks, used.goalProved], [true, false]);
+  assert.deepEqual([qedChecks(used), used.goalProved], [true, false]);
   const goalTainted = ok(`${nat}let T = sorry(x : Type());\ngoal T;\nqed sorry(_);\n`);
   assert.equal(goalTainted.goalProved, false);
 });
@@ -143,7 +143,7 @@ test("after a tainted top-level pattern let, nothing evaluates and no goal is pr
   const source = `${nat}data IsZero(n : Nat()) : Type() {\n  IsZeroHere() : IsZero(Zero());\n}\ngoal Nat();\nlet s = sorry(p : IsZero(Zero()));\nprint Zero();\nlet IsZeroHere() = s;\nprint Zero();\nqed Zero();\n`;
   const r = ok(source);
   assert.deepEqual(r.prints.map(p => p.value), ["Zero()", "sorry"]);
-  assert.deepEqual([r.containsSorry, r.qedChecks, r.goalProved], [true, true, false]);
+  assert.deepEqual(verdicts(r), [true, true, false]);
 });
 
 test("a tainted comptime pattern let evaluates nothing", () => {
@@ -162,8 +162,8 @@ test("infoAt inside vhead's body: scope, expected and termination", () => {
   const source = file("design_vhead.pledge");
   const info = ok(source).infoAt(offset(source, "hd\n}", 1));
   assert.deepEqual(scopeOf(info), [
-    "A : Type()", "n : Nat()", "v : Vec(A, Succ(n)) is VCons(A, n, hd, ?VCons.rest@12:23)",
-    "?VCons.A : Type() is A", "?VCons.n : Nat() is n", "hd : A", "?VCons.rest : Vec(A, n)",
+    "A : Type()", "n : Nat()", "v : Vec(A, Succ(n)) is VCons(A, n, hd, ?VCons.rest@12:23)", "hd : A",
+    "?VCons.rest : Vec(A, n)",
   ]);
   assert.deepEqual(info.expected.entries?.map(e => [e.name, e.type?.text, e.undetermined]), [["x", "A", false]]);
   assert.deepEqual(info.termination, { fn: "vhead", subtermParams: [], group: ["vhead"] });
@@ -359,8 +359,8 @@ test("tuple let binders are a telescope, checked against the results they name (
 test("a pattern let's facts and fields survive its block; only its names end there (§7, §10)", () => {
   const source = `${nat}${vec}fn h(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (r : Vec(A, n)) {\n  let (t : Vec(A, n)) = { let VCons(_, _, _, r) = v; r };\n  inspect;\n  t\n}\n`;
   assert.deepEqual(scopeOf(ok(source).inspects[0]!.info), [
-    "A : Type()", "n : Nat()", "v : Vec(A, Succ(n)) is VCons(A, n, ?VCons.head@11:43, t)",
-    "?VCons.A : Type() is A", "?VCons.n : Nat() is n", "?VCons.head : A", "t : Vec(A, n)",
+    "A : Type()", "n : Nat()", "v : Vec(A, Succ(n)) is VCons(A, n, ?VCons.head@11:43, t)", "?VCons.head : A",
+    "t : Vec(A, n)",
   ]);
   err(source.replace("  t\n}", "  r\n}"), "r", /`r` is not in scope/, "  r\n}");
   const isSucc = "data IsSucc(n : Nat()) : Type() {\n  IsSuccHere(m : Nat()) : IsSucc(Succ(m));\n}\n";

@@ -2,7 +2,7 @@ import type { Expr, Span } from "./syntax.ts";
 import type { Telescope, Term } from "./terms.ts";
 import { difference } from "./telescope.ts";
 import { renderBinder } from "./render.ts";
-import { code, fail, global, plural, record } from "./context.ts";
+import { code, fail, global, occur, plural, record } from "./context.ts";
 import type { Ctx, FnSig, Given, Global, Local } from "./context.ts";
 
 type Telescopes = Pick<FnSig, "params" | "returns">;
@@ -24,6 +24,7 @@ export function qedFn(ctx: Ctx, top: Local, goal: Telescopes, e: Expr, given: Gi
   const f = named(ctx, e);
   if (f?.kind !== "fn" || !f.sig) return fail(e.span, () =>
     "the goal is a function goal, so `qed` names a function declared before it, as in `qed f;`");
+  occur(ctx, e.span, top, f);
   const sig = f.sig, mine = [...sig.params, ...sig.returns], theirs = [...goal.params, ...goal.returns];
   if (sig.params.length !== goal.params.length || sig.returns.length !== goal.returns.length)
     fail(e.span, () => `${code(f.name)} has ${counts(sig)}, and the goal has ${counts(goal)}`);
