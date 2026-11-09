@@ -42,14 +42,21 @@ let v = VCons(Nat(), Zero(), Succ(Zero()), VNil(Nat()));
 print vhead(Nat(), Zero(), v);
 `;
 
-const vuncons = (body: string, use: string): string => `fn vuncons(A : Type(), n : Nat(), v : Vec(A, Succ(n)))
+const vuncons = (body: string, use: string, ann = "(hd : A, tl : Vec(A, n))"): string =>
+  `fn vuncons(A : Type(), n : Nat(), v : Vec(A, Succ(n)))
     -> (hd : A, tl : Vec(A, n)) {
-  match v : (hd : A, tl : Vec(A, n)) {
+  match v : ${ann} {
     VCons(_, _, h, t) => ${body};
   }
 }
 ${use}
 `;
+
+const tailHead = (type: string): string => `let (h, t) = vuncons(Nat(), one, xs);
+let y${type} = match t : _ {
+  VCons(_, _, z, _) => z;
+};
+print y;`;
 
 const cons = (m: string): string => `fn cons(A : Type(), n : Nat(), x : A, v : Vec(A, n))
     -> (${m}, w : Vec(A, m)) {
@@ -191,6 +198,23 @@ print h;`)}`,
     solution: vuncons("(h, t)", `let (h, t) = vuncons(Nat(), one, xs);
 print h;
 print t;`),
+  },
+  {
+    slug: "annotation-underscore",
+    title: "_ for match annotations",
+    phase: 1,
+    prose: paragraphs(
+      "A match's annotation often repeats what the code around it already says. In `vuncons`, the match is the whole body, so it produces the function's returns, and its annotation writes `(hd : A, tl : Vec(A, n))` out a second time.",
+      "You can write `_` in its place: `match v : _`. The `_` stands for the whole telescope given at its position, here the function's returns. Hover over the `_`, or put the caret on it: the tip, and the Term panel under \"Stands for\", show `hd : A` and `tl : Vec(A, n)`.",
+      "A `_` like this needs a whole telescope to be given at its position. A function body is given one, and so is a branch body, the right-hand side of a tuple `let` whose binders all carry a type or an `is` clause, and the final expression of a block at one of these. A `_` never stands for a single entry, so an argument or an element of a tuple is not such a place.",
+      "Nor is the `let` at the end of your box. Its binder `y` has neither a type nor an `is` clause, so it takes whatever the match produces, and nothing is given for the `_` to stand for. The program is rejected at that `_`, and the error says that none is given here. Write `let y : Nat()` instead, and the `_` stands for `y : Nat()`."),
+    task: "Replace the annotation of the match in `vuncons` with `_`, and hover over it. Then give `y` a type, so that the program checks and the last line prints `Succ(Zero())`.",
+    refs: "§8, §10, §13",
+    boxes: [box(nat, vec), twoVec],
+    initial: `-- Replace the match's annotation with _, then give y a type.
+${vuncons("(h, t)", tailHead(""))}`,
+    requireQed: false,
+    solution: vuncons("(h, t)", tailHead(" : Nat()"), "_"),
   },
   {
     slug: "is-binders",

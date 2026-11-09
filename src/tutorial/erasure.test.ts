@@ -50,6 +50,7 @@ test("holes: Expected and the term at a `_` show its parameter and solution", ()
   const at = source.indexOf("vhead(_, _, v)") + 6;
   assert.deepEqual(r.infoAt(at).expected.entries?.map(e => [e.name, e.erased]), [["A", true]]);
   assert.deepEqual([explainTerm(r, at)?.canonical.text, explainTerm(r, at + 3)?.canonical.text], ["Nat()", "Succ(Zero())"]);
+  assert.deepEqual(r.explainAt(at)?.span, { start: at, end: at + 1 });
 });
 
 test("holes: each limit is reported at the `_`", () => {

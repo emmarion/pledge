@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { check } from "../check.ts";
-import { explainTerm, scopeOf, verdicts } from "../../tests/helpers.ts";
+import { explainTerm, scopeOf, standsFor, verdicts } from "../../tests/helpers.ts";
 import { page, program, run } from "../../tests/tutorial.ts";
 
 const infoAt = (slug: string, learner: string, marker: string, nth = 0) => {
@@ -79,6 +79,9 @@ test("sorry: sorry(_) takes the let's type, taints p, and an explicit telescope 
   assert.deepEqual(verdicts(r), [true, true, false]);
   assert.deepEqual(r.prints.map(p => p.value), ["sorry"]);
   assert.equal(expectedAt("sorry", initial, "sorry(_)"), "p : Even(Succ(Succ(Succ(Succ(Zero())))))");
+  const { source } = run("sorry", initial);
+  const hole = source.lastIndexOf("sorry(_)") + 6;
+  assert.deepEqual([standsFor(r, hole), r.explainAt(hole)?.span], [["p : Even(Succ(Succ(Succ(Succ(Zero())))))"], { start: hole, end: hole + 1 }]);
   assert.deepEqual(infoAt("sorry", initial, "print").info.scope.find(e => e.names.includes("p"))?.tainted, ["p"]);
   const step = initial.replace("sorry(_);", "EvenSucc(three, sorry(q : Odd(three)));");
   assert.equal(run("sorry", step).r.error, null);
@@ -115,7 +118,9 @@ test("comptime: n is known only by its type, so only the run proves Even(n)", ()
   assert.deepEqual(verdicts(fallback), [true, true, false]);
 });
 
-test("iszero: the Succ branch cannot be filled with Refl", () => {
+test("iszero: the Succ branch cannot be filled with Refl, and the match on p takes its annotation from the branch", () => {
+  const { source, r } = run("iszero", page("iszero").solution);
+  assert.deepEqual(standsFor(r, source.indexOf("p : _") + 4), ["e : Eq(Nat(), Succ(m), Zero())"]);
   const junk = page("iszero").solution.replace("match p : _ {}", "Refl(Nat(), n)");
   assert.match(run("iszero", junk).r.error?.message() ?? "", /Eq\(Nat\(\), Succ\(m\), Zero\(\)\)/);
 });

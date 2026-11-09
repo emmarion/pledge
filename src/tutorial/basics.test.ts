@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { explainTerm, scopeOf } from "../../tests/helpers.ts";
+import { explainTerm, scopeOf, standsFor } from "../../tests/helpers.ts";
 import { page, run } from "../../tests/tutorial.ts";
 import type { PositionInfo } from "../api.ts";
 
@@ -59,6 +59,33 @@ test("vuncons: Expected on the branch body lists both returns, then one per tupl
   const half = errorAt("vuncons", page("vuncons").initial.replace("=> h;", "=> (h, t);"));
   assert.equal(half.at, "vuncons(Nat(), one, xs)");
   assert.match(half.message, /1 value is expected here, and this produces 2/);
+});
+
+test("annotation-underscore: _ in vuncons stands for its returns, and the untyped let is rejected at its _ until y has a type", () => {
+  const { initial, solution } = page("annotation-underscore");
+  const before = errorAt("annotation-underscore", initial);
+  const { source, r } = run("annotation-underscore", initial);
+  assert.equal(r.error?.span.start, source.indexOf("t : _") + 4);
+  assert.deepEqual(before, { at: "_", message: "`_` stands for the whole telescope given at its position, and none is given here (§10)" });
+  assert.deepEqual(expected(r.infoAt(source.indexOf("=> (h, t)") + 3)), ["hd : A", "tl : Vec(A, n)"]);
+  const half = run("annotation-underscore", initial.replace("v : (hd : A, tl : Vec(A, n))", "v : _"));
+  assert.equal(half.r.error?.span.start, half.source.indexOf("t : _") + 4);
+  assert.deepEqual(standsFor(half.r, half.source.indexOf("v : _") + 4), ["hd : A", "tl : Vec(A, n)"]);
+  const fixed = run("annotation-underscore", solution);
+  const [ann, let_] = ["v : _", "t : _"].map(m => fixed.source.indexOf(m) + 4);
+  assert.deepEqual([standsFor(fixed.r, ann!), standsFor(fixed.r, let_!)], [["hd : A", "tl : Vec(A, n)"], ["y : Nat()"]]);
+  assert.deepEqual(fixed.r.explainAt(ann!)?.span, { start: ann, end: ann! + 1 });
+  assert.deepEqual(printsOf("annotation-underscore"), ["Succ(Zero())"]);
+  assert.equal(run("annotation-underscore", initial.replace("let y =", "let y : Nat() =")).r.error, null);
+  const block = solution.replace("= match t : _ {", "= { match t : _ {").replace("};\nprint y", "} };\nprint y");
+  assert.notEqual(block, solution);
+  assert.equal(run("annotation-underscore", block).r.error, null);
+  for (const [elsewhere, at] of [["print Succ(match t : _ {\n  VCons(_, _, z, _) => z;\n});\n", "Succ(match t : "],
+    ["let (u : Nat(), w : Nat()) = (Zero(), sorry(_));\n", "(Zero(), sorry("]]) {
+    const wrong = run("annotation-underscore", `${solution}${elsewhere}`);
+    assert.equal(wrong.r.error?.span.start, wrong.source.indexOf(at!) + at!.length);
+    assert.equal(wrong.r.error?.message(), before.message);
+  }
 });
 
 test("is-binders: without the promise m is only a number; with it, m is Succ(Zero()) and a false promise is rejected", () => {
