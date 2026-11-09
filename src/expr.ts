@@ -36,15 +36,19 @@ const reach = (local: Local, scrutinee: Result, span: Span): Span | null =>
 const erasedAt = (given: Given | null, i: number): boolean => given?.wants[i]?.mult === "erased";
 const erase = (given: Given): Given => ({ ...given, wants: given.wants.map(w => ({ ...w, mult: "erased" as const })) });
 
-export function expr(ctx: Ctx, local: Local, e: Expr, given: Given | null): Out {
+const PRINT = "the expression of a `print`";
+const ELSEWHERE = "this position";
+
+export function expr(ctx: Ctx, local: Local, e: Expr, given: Given | null, where = PRINT): Out {
   const whole = ctx.erased || (given !== null && given.wants.every(w => w.mult === "erased"));
   const g = ctx.erased && given ? erase(given) : given, c = whole === ctx.erased ? ctx : { ...ctx, erased: whole };
-  const built = build(c, local, e, g, record(c, local, e.span, g));
+  const built = build(c, local, e, g, record(c, local, e.span, g), where);
   const out = built.local.taintedBy ? { ...built, results: built.results.map(r => ({ ...r, tainted: true })) } : built;
   const leak = whole ? -1 : out.results.findIndex((r, i) => r.erased && !erasedAt(g, i));
   if (leak >= 0) fail(e.span, () =>
     (e.kind === "var" ? code(e.name.name) : out.results.length === 1 ? "this value" : `value ${leak + 1} of this`) +
-    " is erased, and an erased value is allowed only in an erased position: a type, " +
+    ` is erased, and ${g?.label?.(leak) ?? (g ? ELSEWHERE : where)} is not; ` +
+    "an erased value is allowed only in an erased position: a type, " +
     "an argument for an erased parameter or field, or the result for an erased return or binder (§16)");
   return whole || out.results.every(r => r.tainted) ? { ...out, tree: { kind: "removed", span: e.span } } : out;
 }
@@ -117,7 +121,7 @@ function settle(ctx: Ctx, scope: Scope, given: Given | null, ids: readonly Entry
   return values.some(v => mentions(v, x => entry(scope, x).tainted));
 }
 
-function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snapshot): Out {
+function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snapshot, where: string): Out {
   switch (e.kind) {
     case "var": {
       const name = e.name.name;
@@ -148,7 +152,7 @@ function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snaps
         const label = given?.label;
         const out = expr(ctx, local, el, given && w ? { wants: [w],
           env: [...given.env, ...results.map(r => ref(r.id))], whole: false,
-          ...(label ? { label: () => label(i) } : {}) } : null);
+          ...(label ? { label: () => label(i) } : {}) } : null, where);
         local = out.local;
         results.push(single(out, el.span));
         elems.push(out.tree);
@@ -164,7 +168,7 @@ function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snaps
         named.push(...o.bound);
         stmts.push(o.tree);
       }
-      const fin = expr(ctx, inner, e.final, given);
+      const fin = expr(ctx, inner, e.final, given, where);
       return {
         local: { ...local, scope: forget(fin.local.scope, local.scope, named), taintedBy: fin.local.taintedBy },
         results: fin.results,
@@ -185,7 +189,8 @@ function notValue(ctx: Ctx, { name, span }: Name): never {
   const g = global(ctx, name);
   return fail(span, () => !g ? `${code(name)} is not in scope`
     : `${code(name)} is ${describe(g)}, which is not a value: ` +
-      (g.kind === "fn" ? "functions are not first class (§4)" : `it is applied, as in ${code(`${name}(...)`)}`));
+      (g.kind === "fn" ? "functions are not first class (§4)"
+        : `it is applied, as in ${code(`${name}(${"sig" in g && !g.sig.params.length ? "" : "..."})`)}`));
 }
 
 function unmarked(e: App, why: string): void {
@@ -271,11 +276,10 @@ interface Plan { subs: number[]; k: number }
 function marks(e: App, name: string, sig: FnSig, fn: FnCtx): Plan {
   const subs = sig.subterm.flatMap((s, i) => (s ? [i] : []));
   const at = e.args.findIndex(a => a.mark === "subterm"), k = subs.indexOf(at);
-  const within = `this call is within ${code(name)}'s group, so it marks the argument for one of ${code(name)}'s ` +
-    "`subterm` parameters `subterm`";
+  const within = `this call is within ${code(name)}'s group, so it must mark one argument \`subterm\``;
   if (k < 0) fail(e.args[at]?.span ?? e.span, () => !subs.length
-    ? `${within}, and ${code(name)} has no \`subterm\` parameter (§9)`
-    : at < 0 ? `${within} (§9)`
+    ? `${within}, and ${code(name)} has no \`subterm\` parameter to mark an argument for (§9)`
+    : at < 0 ? `${within}: the argument for one of ${code(name)}'s \`subterm\` parameters (§9)`
     : `${labelled("parameter", sig.params[at]?.name ?? null, at, name)} is not a \`subterm\` parameter, ` +
       "so its argument is not marked `subterm` (§9)");
   e.args.forEach((a, i) => {
@@ -305,7 +309,7 @@ function decrease(scope: Scope, e: App, results: readonly Result[], fn: FnCtx, {
 
 function match(ctx: Ctx, local: Local, e: Match, given: Given | null, snap: Snapshot): Out {
   const erased = e.mult === "erased";
-  const scrut = expr(erased ? { ...ctx, erased } : ctx, local, e.scrut, null);
+  const scrut = expr(erased ? { ...ctx, erased } : ctx, local, e.scrut, null, "the scrutinee of a `many` match");
   const s = single(scrut, e.scrut.span), inner = scrut.local;
   const ann = annotation(ctx, inner, e.ann, given, e.span);
   const fs = forcings(ctx, inner, s.id, e.scrut.span, e.branches.map(b => b.pat), e.span, erased);
@@ -468,7 +472,8 @@ export function stmt(ctx: Ctx, local: Local, s: Stmt, comptime?: Comptime): Stmt
       if (s.comptime && erased) fail(s.span, () =>
         "a `comptime` pattern `let` evaluates its right-hand side (§11), so it cannot be erased (§16)");
       names(ctx, local, s.pat.fields);
-      const out = expr(erased ? { ...ctx, erased } : ctx, local, s.rhs, null), r = single(out, s.rhs.span);
+      const out = expr(erased ? { ...ctx, erased } : ctx, local, s.rhs, null,
+    "the right-hand side of a `many` pattern `let`"), r = single(out, s.rhs.span);
       const fs = forcings(ctx, out.local, r.id, s.rhs.span, [s.pat], s.span, erased);
       snap.refutations = refutations(fs);
       if (s.comptime) comptime?.(out.tree, r.tainted);
@@ -492,7 +497,7 @@ const skeleton = (t: WrittenTerm): Expr => t.args === null
 
 export function term(ctx: Ctx, local: Local, t: WrittenTerm): Result & { local: Local } {
   const out = expr({ ...ctx, skeleton: true, erased: ctx.erased || ctx.st.phase >= 2, holes: [] }, local, skeleton(t),
-    null);
+    null, ELSEWHERE);
   return { local: out.local, ...single(out, t.span) };
 }
 

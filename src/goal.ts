@@ -11,7 +11,8 @@ export interface Goal { type: Term | Telescopes; tainted: boolean; span: Span }
 
 export const goalGiven = (g: Goal): Given => "params" in g.type
   ? { wants: [...g.type.params, ...g.type.returns], env: [], whole: true, params: g.type.params.length }
-  : { wants: [{ name: null, type: g.type, is: null, mult: "many", span: g.span }], env: [], whole: true };
+  : { wants: [{ name: null, type: g.type, is: null, mult: "many", span: g.span }], env: [], whole: true,
+    label: () => "the goal's proof" };
 
 const counts = (t: Telescopes): string =>
   `${plural(t.params.length, "parameter")} and ${plural(t.returns.length, "return")}`;

@@ -11,10 +11,10 @@ export type Token =
 
 const phase1Keywords = ["comptime", "data", "fn", "goal", "inspect", "is", "let", "match", "mutual", "print", "qed",
   "same", "sorry", "subterm"];
-const phase2Keywords = ["erased", "many"];
+export const phase2Mults: readonly string[] = ["erased", "many"];
 
 const keywords = (phase: Phase): Set<string> =>
-  new Set(phase >= 2 ? [...phase1Keywords, ...phase2Keywords] : phase1Keywords);
+  new Set(phase >= 2 ? [...phase1Keywords, ...phase2Mults] : phase1Keywords);
 
 const puncts = ["=>", "->", "(", ")", "{", "}", ",", ";", ":", "="];
 const isWordChar = (c: string): boolean => /[A-Za-z0-9_]/.test(c);
@@ -49,8 +49,9 @@ export function lex(source: string, phase: Phase): Token[] {
       const text = source.slice(start, i);
       const span = { start, end: i };
       if (text === "_") tokens.push({ kind: "underscore", text, span });
-      else if (!/^[A-Za-z]/.test(text)) return error(start, i, () =>
-        `${JSON.stringify(text)} is not a name: a name starts with a letter`);
+      else if (!/^[A-Za-z]/.test(text)) return error(start, i, () => /^[0-9]+$/.test(text)
+        ? `\`${text}\` is not a name, and Pledge has no literals (§15)`
+        : `\`${text}\` is not a name: a name starts with a letter (§1)`);
       else tokens.push({ kind: reserved.has(text) ? "keyword" : "name", text, span });
       continue;
     }

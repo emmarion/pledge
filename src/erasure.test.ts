@@ -9,7 +9,7 @@ const eq = "data Eq(A : Type(), a : A, b : A) : Type() {\n  Refl(erased A : Type
 
 const prints = (r: CheckResult): string[] => r.prints.map(p => p.value);
 const flagged = (info: PositionInfo): string[] => info.scope.filter(e => e.erased).map((e: EntryInfo) => e.names.join(",") || `?${e.origin.kind}`);
-const leak = /is erased, and an erased value is allowed only in an erased position/;
+const leak = /is erased, and .* is not; an erased value is allowed only in an erased position/;
 
 test("the phase 2 example programs check and print erased fields as _", () => {
   assert.deepEqual(prints(ok(file("phase2_vec.pledge"))), [

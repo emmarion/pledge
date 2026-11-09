@@ -4,6 +4,7 @@ import { addRule, app, canon, create, entry, identical, occurs, ref, rewrites, s
   typeOf } from "./terms.ts";
 import type { App, Binder, EntryId, Fresh, Head, OpenTerm, Ref, Scope, Signature, Telescope, Term } from "./terms.ts";
 import { cat, entryRef, join, render } from "./render.ts";
+import { unfolds } from "./context.ts";
 
 interface Opened { scope: Scope; entries: EntryId[]; env: Term[] }
 
@@ -31,8 +32,9 @@ export function difference(scope: Scope, a: Telescope, b: Telescope): number {
 
 type Why = "scrutinee" | "scrutinee type" | "types" | { head: Head; index: number };
 interface Eq { lhs: Term; rhs: Term; why: Why; parent: Seen | null }
-interface Seen extends Eq { scope: Scope; l: Term; r: Term }
+interface Seen extends Eq { scope: Scope; l: Term; r: Term; gave: { x: EntryId; e: Term } | null }
 type Clash = { heads: readonly [Head, Head] } | { x: EntryId; e: Term } | { rigid: readonly [Term, Term] };
+interface Failed { eq: Seen; failure: Clash; log: readonly Seen[] }
 
 export type Forced = { ok: true; scope: Scope; fields: EntryId[] } | { ok: false; derivation: () => Rendered[] };
 
@@ -45,11 +47,13 @@ function orient(l: Term, r: Term, may: (id: EntryId) => boolean): { x: Ref; e: T
 }
 
 function solve(scope: Scope, eqs: Eq[], at: Span,
-    may: (id: EntryId) => boolean): { scope: Scope; failed: { eq: Seen; failure: Clash } | null } {
+    may: (id: EntryId) => boolean): { scope: Scope; failed: Failed | null } {
   let now = scope;
+  const log: Seen[] = [];
   for (const eq of eqs) {
-    const e: Seen = { ...eq, scope: now, l: canon(now, eq.lhs), r: canon(now, eq.rhs) };
-    const failed = (failure: Clash) => ({ scope: now, failed: { eq: e, failure } });
+    const e: Seen = { ...eq, scope: now, l: canon(now, eq.lhs), r: canon(now, eq.rhs), gave: null };
+    log.push(e);
+    const failed = (failure: Clash) => ({ scope: now, failed: { eq: e, failure, log } });
     if (same(e.l, e.r)) continue;
     const o = orient(e.l, e.r, may);
     if (!o) return failed({ rigid: [e.l, e.r] });
@@ -61,6 +65,7 @@ function solve(scope: Scope, eqs: Eq[], at: Span,
       continue;
     }
     if (occurs(o.x.id, o.e)) return failed({ x: o.x.id, e: o.e });
+    e.gave = { x: o.x.id, e: o.e };
     now = addRule(now, o.x.id, o.e, at);
     eqs.push({ lhs: entry(now, o.x.id).type, rhs: typeOf(now, o.e), why: "types", parent: e });
   }
@@ -80,22 +85,35 @@ export function force(scope: Scope, scrutinee: EntryId, ctor: Signature, at: Spa
     { lhs: ref(scrutinee), rhs: app(ctor.head, ...opened.env), why: "scrutinee", parent: null },
     { lhs: entry(opened.scope, scrutinee).type, rhs: subst(ctor.ret, opened.env), why: "scrutinee type", parent: null },
   ], at, () => true);
-  return failed ? { ok: false, derivation: () => derivation(ctor, failed.eq, failed.failure) }
+  return failed ? { ok: false, derivation: () => derivation(ctor, failed) }
     : { ok: true, scope: now, fields: opened.entries };
 }
 
-function derivation(ctor: Signature, failing: Seen, failure: Clash): Rendered[] {
-  const chain: Seen[] = [];
-  for (let e: Seen | null = failing; e; e = e.parent) chain.unshift(e);
-  const lines = chain.map(({ scope, lhs, rhs, l, r, why }, n) => {
+function derivation(ctor: Signature, { eq: failing, failure, log }: Failed): Rendered[] {
+  const adder = (id: EntryId): Seen | undefined => log.find(s => s.gave?.x === id);
+  const used = ({ scope, lhs, rhs }: Seen): EntryId[] =>
+    [...new Set([...rewrites(scope, lhs), ...rewrites(scope, rhs)].map(s => s.by))]
+      .filter(id => adder(id) || !unfolds(scope, id));
+  const shown = new Set<Seen>();
+  const show = (s: Seen | null | undefined): void => {
+    if (!s || shown.has(s)) return;
+    shown.add(s);
+    show(s.parent);
+    used(s).forEach(id => show(adder(id)));
+  };
+  show(failing);
+  const listed = log.filter(s => shown.has(s)), num = (s: Seen | null | undefined) => listed.indexOf(s!) + 1;
+  const lines = listed.map(s => {
+    const { scope, l, r, why, parent, gave } = s, term = (t: Term) => render(scope, t, { canonical: false });
     const reason = why === "scrutinee" ? `forcing ${ctor.head.name} on the scrutinee`
       : why === "scrutinee type" ? `the scrutinee's type and ${ctor.head.name}'s`
-      : why === "types" ? `the types of the two sides of ${n}`
-      : `argument ${why.index + 1} of ${why.head.name} in ${n}`;
-    const used = [...new Set([...rewrites(scope, lhs), ...rewrites(scope, rhs)].map(s => s.by))];
-    return cat(`${n + 1}. `, render(scope, l, { canonical: false }), " = ", render(scope, r, { canonical: false }),
-      `   (${reason}`,
-      ...(used.length ? ["; rewritten by ", ...join(used.map(id => entryRef(scope, id)), ", ")] : []), ")");
+      : why === "types" ? `the types of the two sides of ${num(parent)}`
+      : `argument ${why.index + 1} of ${why.head.name} in ${num(parent)}`;
+    const rules = used(s).map(id => { const from = adder(id);
+      return from ? cat(entryRef(scope, id), `, from ${num(from)}`) : entryRef(scope, id); });
+    return cat(`${num(s)}. `, term(l), " = ", term(r), `   (${reason}`,
+      ...(rules.length ? ["; rewritten by ", ...join(rules, ", ")] : []), ")",
+      ...(gave ? [", so ", entryRef(scope, gave.x), " is ", term(gave.e)] : []));
   });
   const { scope } = failing;
   return [...lines, "heads" in failure

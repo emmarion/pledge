@@ -1,7 +1,7 @@
 import type { Ann, Arg, WrittenBinder, Branch, Ctor, Data, Expr, Fn, Header, Id, LetBinder, Mult, Name, Param,
   Pattern, Phase, Program, Span, Stmt, Tele, WrittenTerm, Top } from "./syntax.ts";
 import type { Diagnostic } from "./api.ts";
-import { lex, type Token } from "./lexer.ts";
+import { lex, phase2Mults, type Token } from "./lexer.ts";
 import { attempt, fail } from "./context.ts";
 
 type Block = Expr & { kind: "block" };
@@ -34,11 +34,15 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
     prevEnd = token.span.end;
     return token;
   };
-  const syntaxError = (expected: string): never => {
-    const token = peek();
+  const report = (message: () => string, token = peek()): never => {
+    const before = tokens[tokens.indexOf(token) - 1];
     return token.kind === "error" ? fail(token.diag.span, token.diag.message)
-      : fail(token.span, () => `expected ${expected}, found ${tokenText(token)}`);
+      : phase < 2 && before?.kind === "name" && phase2Mults.includes(before.text) ? fail(before.span, () =>
+        `\`${before.text}\` is a multiplicity, which phase 2 adds (§16), and this program is checked under phase 1`)
+      : fail(token.span, message);
   };
+  const syntaxError = (expected: string, rule = "", token = peek()): never =>
+    report(() => `expected ${expected}, found ${tokenText(token)}${rule && `: ${rule}`}`, token);
   const isText = (token: Token, text: string): boolean => token.kind !== "name" && token.text === text;
   const at = (text: string): boolean => isText(peek(), text);
   const eat = (text: string): boolean => at(text) && (next(), true);
@@ -79,8 +83,7 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
   };
   const id = (): Id => (peek().kind === "underscore" ? { name: null, span: next().span } : peek().kind === "name"
     ? name() : syntaxError("a name or `_`"));
-  const isMult = (token: Token): boolean => token.kind === "keyword"
-    && (token.text === "erased" || token.text === "many");
+  const isMult = (token: Token): boolean => token.kind === "keyword" && phase2Mults.includes(token.text);
   const mult = (): Mult | null => (isMult(peek()) ? (next().text as Mult) : null);
 
   const term = (): WrittenTerm => {
@@ -101,7 +104,8 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
   const letBinder = letBinderWith(true);
   const binderWith = (multAllowed: boolean) => (): WrittenBinder => {
     const b = letBinderWith(multAllowed)();
-    return b.ann ? { ...b, ann: b.ann } : syntaxError("`:` or `is`");
+    return b.ann ? { ...b, ann: b.ann }
+      : syntaxError("`:` or `is`", "a binder is written `name : T` or `name is e` (§1)");
   };
   const binder = binderWith(true);
   const tele = (): WrittenBinder[] => parens(binder, true);
@@ -113,18 +117,33 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
     const subterm = eat("subterm");
     return { ...binder(), subterm, span: spanFrom(begin) };
   };
+  const field = (): Id => {
+    const f = id();
+    return at("(") ? report(() =>
+      "a pattern does not nest: it names each field of one value constructor, with a name or `_` (§10)") : f;
+  };
   const pattern = (): Pattern => {
     const begin = start();
+    if (peek().kind === "underscore") report(() =>
+      "a branch is for one value constructor, written as a pattern such as `C(x, _)`; " +
+      "there is no catch-all branch (§10)");
     const ctor = name();
-    return { ctor, fields: parens(id, false), span: spanFrom(begin) };
+    if (!at("(")) report(() => `a pattern is written with its parentheses, even with no fields, as in ` +
+      `\`${ctor.name}()\` (§1, §10)`, tokens[pos - 1]);
+    return { ctor, fields: parens(field, false), span: spanFrom(begin) };
+  };
+  const atPatLet = (): boolean => {
+    const k = isMult(peek()) ? 1 : 0;
+    return peek(k).kind === "name" && isText(peek(k + 1), "(");
   };
 
   const arg = (): Arg => {
     const begin = start();
     const mark = at("subterm") || at("same") ? (next().text as "subterm" | "same") : null;
-    const value: Expr = phase >= 2 && peek().kind === "underscore"
+    const value: Expr = peek().kind !== "underscore" ? expr() : phase >= 2
       ? { kind: "var", name: { name: null, span: peek().span }, span: next().span }
-      : expr();
+      : report(() => "`_` stands for an erased argument only from phase 2 on (§16), " +
+        "and this program is checked under phase 1");
     return { mark, expr: value, span: spanFrom(begin) };
   };
 
@@ -166,8 +185,10 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
     expect("{");
     const stmts: Stmt[] = [];
     while (at("let") || at("inspect")) stmts.push(stmt());
+    if (at("}")) report(() => "a block ends with a final expression, after its statements (§8)");
     const final = expr();
     if (isText(tokens[pos - 1]!, "}")) skipExtraSemis();
+    if (at(";")) report(() => "a block ends with its final expression, which takes no `;` (§8)");
     expect("}");
     return { kind: "block", stmts, final, span: spanFrom(begin) };
   };
@@ -184,9 +205,8 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
     const begin = start();
     if (eat("inspect")) return { kind: "inspect", span: endStatement(begin) };
     expect("let");
-    const k = isMult(peek()) ? 1 : 0;
-    if (peek(k).kind === "name" && isText(peek(k + 1), "(")) return patLet(begin, false);
-    const binders = k === 0 && at("(") ? parens(letBinder, true) : [letBinder()];
+    if (atPatLet()) return patLet(begin, false);
+    const binders = !isMult(peek()) && at("(") ? parens(letBinder, true) : [letBinder()];
     expect("=");
     const rhs = expr();
     return { kind: "let", binders, rhs, span: endStatement(begin) };
@@ -221,6 +241,7 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
   const header = (): Header => {
     const params = parens(param, false);
     expect("->");
+    if (!at("(")) report(() => "a function's returns are a telescope, as in `-> (r : Nat())` (§8)");
     return { params, returns: tele() };
   };
 
@@ -256,8 +277,11 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
     if (at("fn")) return fn();
     if (at("mutual")) return mutual();
     if (at("let") || at("inspect")) return stmt();
-    if (eat("comptime")) {
+    if (at("comptime")) {
+      const comptime = next();
       expect("let");
+      if (!atPatLet()) report(() =>
+        "`comptime` is written only on a pattern `let`, as in `comptime let C(x) = e;` (§11)", comptime);
       return patLet(begin, true);
     }
     if (eat("print")) return { kind: "print", expr: expr(), span: endStatement(begin) };

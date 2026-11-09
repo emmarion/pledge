@@ -128,11 +128,13 @@ export function occur(ctx: Ctx, span: Span, local: Local, of: EntryId | Declared
   if (ctx.st.record) ctx.st.occurrences.push({ span, local, of });
 }
 
-export const written = (scope: Scope, t: Term): Term => mapLeaves(t, u => {
-  const e = entry(scope, u.id);
-  return e.rule && (e.origin.kind === APP || e.origin.kind === HOLE) && !e.names.length ? written(scope, e.rule.term)
-    : u;
-});
+export const unfolds = (scope: Scope, id: EntryId): boolean => {
+  const e = entry(scope, id);
+  return e.rule !== null && (e.origin.kind === APP || e.origin.kind === HOLE) && !e.names.length;
+};
+
+export const written = (scope: Scope, t: Term): Term => mapLeaves(t, u =>
+  unfolds(scope, u.id) ? written(scope, entry(scope, u.id).rule!.term) : u);
 
 export function newName(ctx: Ctx, local: Local, id: Id, seen: Set<string>): void {
   const name = id.name;

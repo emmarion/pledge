@@ -96,7 +96,7 @@ test("matching: refuted branches, missing branches, survivors and scrutinees", (
 
 test("termination marks follow §9 exactly", () => {
   const ack = file("design_ack.pledge");
-  err(ack.replace("ack(subterm m1, Succ(Zero()))", "ack(m1, Succ(Zero()))"), "ack(m1, Succ(Zero()))", /marks the argument for one of `ack`'s `subterm` parameters `subterm` \(/);
+  err(ack.replace("ack(subterm m1, Succ(Zero()))", "ack(m1, Succ(Zero()))"), "ack(m1, Succ(Zero()))", /must mark one argument `subterm`: the argument for one of `ack`'s `subterm` parameters \(§9\)/);
   err(ack.replace("ack(same m, subterm n1)", "ack(same m1, subterm n1)"), "same m1", /`m1` is not canonically identical to `m`/);
   err(ack.replace("ack(subterm m1, Succ(Zero()))", "ack(subterm m, Succ(Zero()))"), "subterm m", /is not a strict subterm of `m`/, "Zero() => ack(");
   const two = `${nat}mutual {\n  fn g(subterm n : Nat()) -> (r : Nat()) { match n : (r : Nat()) { Zero() => Zero(); Succ(m) => h(same n, subterm m); } }\n  fn h(subterm a : Nat(), subterm b : Nat()) -> (r : Nat()) { Zero() }\n}\n`;
@@ -114,7 +114,7 @@ test("goal and qed: at most once each, qed after goal", () => {
   assert.match(r.error?.message() ?? "", /`qed` comes after `goal`/);
   assert.deepEqual([qedChecks(r), r.goalProved], [false, false]);
   err(`${nat}goal Nat();\ngoal Nat();\n`, "goal Nat();", /at most one `goal`/, "Nat();\ngoal");
-  err(`${nat}goal Nat();\nqed Nat();\n`, "Nat()", /the value expected here must have type `Nat\(\)`/, "qed");
+  err(`${nat}goal Nat();\nqed Nat();\n`, "Nat()", /the goal's proof must have type `Nat\(\)`, and this has type `Type\(\)`/, "qed");
 });
 
 test("sorry: qed sorry(_) checks but proves nothing", () => {

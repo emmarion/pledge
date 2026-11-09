@@ -139,7 +139,7 @@ test("extra semicolons", () => {
   ok(`${nat};;fn f(n : Nat()) -> (r : Nat()) { let x = n;; { x }; };; let y = Zero();;;`);
   ok("mutual { data A() : Type() {}; data B() : Type() { C() : B();; }; };");
   assert.equal(err(";").start, 0);
-  assert.match(err("let x = { y; };").message, /expected `}`/);
+  assert.match(err("let x = { y; };").message, /a block ends with its final expression, which takes no `;`/);
 });
 
 test("errors", () => {
@@ -157,12 +157,12 @@ test("errors", () => {
     ["data D() : Nat() {}", 11, /`Type`/],
     ["fn f() -> () { x }", 11, /a name or `_`/],
     ["fn f() { x }", 7, /`->`/],
-    ["let x = 1;", 8, /starts with a letter/],
-    ["let x = _a;", 8, /starts with a letter/],
+    ["let x = 1;", 8, /`1` is not a name, and Pledge has no literals/],
+    ["let x = _a;", 8, /`_a` is not a name: a name starts with a letter/],
     ["let x = a - b;", 10, /unexpected character/],
     ["let x = { comptime let C() = y; z };", 10, /an expression/],
-    ["let x = f(_);", 10, /an expression/],
-    ["let x = { y; }", 11, /expected `}`/],
+    ["let x = f(_);", 10, /only from phase 2 on/],
+    ["let x = { y; }", 11, /takes no `;`/],
     ["x;", 0, /a declaration or a top-level statement/],
   ];
   for (const [source, start, message] of cases) {
@@ -182,7 +182,7 @@ test("erased and many are names in phase 1 and keywords in phase 2", () => {
   assert.match(err("let x = many;", 2).message, /expected an expression, found keyword `many`/);
   assert.match(err("let erased = x;", 2).message, /expected a name or `_`, found `=`/);
   ok("fn erased(many : Nat()) -> (r : Nat()) { many }");
-  assert.match(err("fn f(erased n : Nat()) -> (r : Nat()) { n }").message, /expected `:` or `is`/);
+  assert.deepEqual(err("fn f(erased n : Nat()) -> (r : Nat()) { n }"), { start: 5, message: "`erased` is a multiplicity, which phase 2 adds (§16), and this program is checked under phase 1" });
 });
 
 test("phase 2 multiplicities", () => {
