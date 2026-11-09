@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { lex } from "./lexer.ts";
 import { parse } from "./parser.ts";
 import { readFileSync } from "node:fs";
 import type { Phase, Program } from "./syntax.ts";
@@ -123,8 +124,9 @@ test("mutual data, empty match, comptime, sorry and statements", () => {
 });
 
 test("a non-ASCII character's error spans that character alone", () => {
-  assert.deepEqual(err("let x = Zer\u00f6();").span, { start: 11, end: 12 });
-  assert.deepEqual(err("let x = \u{1d4b3};").span, { start: 8, end: 10 });
+  const span = (source: string) => lex(source, 1).at(-1)!.span;
+  assert.deepEqual(span("let x = Zer\u00f6();"), { start: 11, end: 12 });
+  assert.deepEqual(span("let x = \u{1d4b3};"), { start: 8, end: 10 });
 });
 
 test("spans are offsets into the source string", () => {
