@@ -1,32 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
-import { check } from "./check.ts";
 import type { CheckResult, EntryInfo, PositionInfo } from "./api.ts";
-import type { Phase } from "./syntax.ts";
+import { file, files, harness, nat, vecBy, vheadBy } from "../tests/helpers.ts";
 
-const testsDir = new URL("../tests/", import.meta.url);
-const file = (name: string): string => readFileSync(new URL(name, testsDir), "utf8");
-const nat = "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n";
-const vec = "data Vec(A : Type(), n : Nat()) : Type() {\n  VNil(erased A : Type()) : Vec(A, Zero());\n  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n)) : Vec(A, Succ(n));\n}\n";
-const vhead = "fn vhead(erased A : Type(), erased n : Nat(), v : Vec(A, Succ(n))) -> (x : A) {\n  let VCons(_, _, hd, _) = v;\n  hd\n}\n";
+const { ok, err } = harness(2);
+const vec = vecBy("erased "), vhead = vheadBy("erased ");
 const eq = "data Eq(A : Type(), a : A, b : A) : Type() {\n  Refl(erased A : Type(), erased a : A) : Eq(A, a, a);\n}\n";
-
-const ok = (source: string, phase: Phase = 2): CheckResult => {
-  const r = check(source, phase);
-  if (r.error) assert.fail(`unexpected error at ${JSON.stringify(source.slice(r.error.span.start, r.error.span.end))}: ${r.error.message()}`);
-  return r;
-};
-
-const err = (source: string, at: string, pattern: RegExp, after = ""): void => {
-  const r = check(source, 2);
-  if (!r.error) return assert.fail("expected an error");
-  const message = r.error.message();
-  assert.equal(source.slice(r.error.span.start, r.error.span.end), at, message);
-  assert.equal(r.error.span.start, source.indexOf(at, after ? source.indexOf(after) : 0), message);
-  assert.match(message, pattern);
-  assert.doesNotMatch(message, /internal|undefined|\[object/);
-};
 
 const prints = (r: CheckResult): string[] => r.prints.map(p => p.value);
 const flagged = (info: PositionInfo): string[] => info.scope.filter(e => e.erased).map((e: EntryInfo) => e.names.join(",") || `?${e.origin.kind}`);
@@ -44,9 +23,8 @@ test("the phase 2 example programs check and print erased fields as _", () => {
 });
 
 test("every tests/design_*.pledge checks under phase 2 as under phase 1", () => {
-  const files = readdirSync(testsDir).filter(f => f.startsWith("design_") && f.endsWith(".pledge"));
-  assert.ok(files.length >= 10);
-  for (const f of files) {
+    assert.ok(files("design_").length >= 10);
+  for (const f of files("design_")) {
     const outcome = (r: CheckResult) => [prints(r), r.qedChecks, r.goalProved, r.containsSorry];
     assert.deepEqual(outcome(ok(file(f), 2)), outcome(ok(file(f), 1)), f);
   }
@@ -135,7 +113,7 @@ test("soundness: an absurd branch that relies on sorry taints the match, and an 
     ["", "match sorry(q : IsZero(Succ(m))) : _ {}"],
     ["  let (erased q : IsZero(Succ(Zero()))) = sorry(_);\n", "match erased q : _ {}"],
     ["", "{ let Refl(_, _) = sorry(e : Eq(Nat(), k, Succ(Zero()))); { match p : _ {} } }"],
-  ]) {
+  ] as const) {
     const r = ok(g(pre, absurd));
     assert.deepEqual([prints(r), r.goalProved], [["sorry"], false], absurd);
   }

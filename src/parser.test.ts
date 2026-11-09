@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
 import { parse } from "./parser.ts";
+import { readFileSync } from "node:fs";
 import type { Phase, Program } from "./syntax.ts";
+import { file, files } from "../tests/helpers.ts";
 
-const testsDir = new URL("../tests/", import.meta.url);
-const pledgeFiles = readdirSync(testsDir).filter(f => f.endsWith(".pledge"));
+const pledgeFiles = files();
 const nat = "data Nat() : Type() { Zero() : Nat(); Succ(pred : Nat()) : Nat(); }\n";
 
 const ok = (source: string, phase: Phase = 1): Program => {
@@ -31,15 +31,15 @@ const app = (head: string, ...args: unknown[]) => ({ kind: "app", head: id(head)
 
 test("every tests/*.pledge parses in its phase and every later one", () => {
   assert.ok(pledgeFiles.length >= 10);
-  for (const file of pledgeFiles) for (const phase of file.startsWith("phase2_") ? [2] as const : [1, 2] as const) {
-    const result = parse(readFileSync(new URL(file, testsDir), "utf8"), phase);
-    assert.ok("program" in result, `${file} (phase ${phase}): ${"error" in result ? result.error.message() : ""}`);
+  for (const f of pledgeFiles) for (const phase of f.startsWith("phase2_") ? [2] as const : [1, 2] as const) {
+    const result = parse(file(f), phase);
+    assert.ok("program" in result, `${f} (phase ${phase}): ${"error" in result ? result.error.message() : ""}`);
   }
 });
 
 test("DESIGN.md's code appears verbatim in tests/*.pledge", () => {
   const design = readFileSync(new URL("../DESIGN.md", import.meta.url), "utf8");
-  const examples = pledgeFiles.map(file => readFileSync(new URL(file, testsDir), "utf8"));
+  const examples = pledgeFiles.map(file);
   const blocks = [...design.matchAll(/```\n([\s\S]*?)```/g)].map(m => m[1]!).filter(block => "program" in parse(block, 1));
   assert.equal(blocks.length, 7);
   const inline = [
@@ -54,7 +54,7 @@ test("DESIGN.md's code appears verbatim in tests/*.pledge", () => {
 });
 
 test("vhead's shape", () => {
-  const program = ok(readFileSync(new URL("design_vhead.pledge", testsDir), "utf8"));
+  const program = ok(file("design_vhead.pledge"));
   assert.deepEqual(program.tops.map(t => t.kind), ["data", "data", "fn"]);
   assert.deepEqual(strip(program.tops[2]), {
     kind: "fn",
@@ -74,7 +74,7 @@ test("vhead's shape", () => {
 });
 
 test("ack's marks and nested match", () => {
-  const program = ok(readFileSync(new URL("design_ack.pledge", testsDir), "utf8"));
+  const program = ok(file("design_ack.pledge"));
   const fn = program.tops[1];
   assert.ok(fn?.kind === "fn");
   assert.deepEqual(fn.params.map(p => p.subterm), [true, true]);
@@ -94,13 +94,13 @@ test("ack's marks and nested match", () => {
 });
 
 test("mutual data, empty match, comptime, sorry and statements", () => {
-  const evenOdd = ok(readFileSync(new URL("design_even_odd.pledge", testsDir), "utf8")).tops[1];
+  const evenOdd = ok(file("design_even_odd.pledge")).tops[1];
   assert.ok(evenOdd?.kind === "mutual");
   assert.deepEqual(evenOdd.decls.map(d => d.name.name), ["Even", "Odd"]);
-  const iszero = ok(readFileSync(new URL("design_iszero.pledge", testsDir), "utf8")).tops[2];
+  const iszero = ok(file("design_iszero.pledge")).tops[2];
   assert.ok(iszero?.kind === "fn" && iszero.body.final.kind === "match");
   assert.deepEqual(strip(iszero.body.final.branches[1]?.body), { kind: "match", mult: null, scrut: variable("p"), ann: [{ name: id("r"), ann: { kind: "type", term: term("Nat") }, mult: null }], branches: [] });
-  const reflection = ok(readFileSync(new URL("design_reflection.pledge", testsDir), "utf8")).tops.at(-1);
+  const reflection = ok(file("design_reflection.pledge")).tops.at(-1);
   assert.deepEqual(strip(reflection), {
     kind: "patlet", comptime: true, mult: null,
     pat: { ctor: id("Some"), fields: [id(null), id("p")] },

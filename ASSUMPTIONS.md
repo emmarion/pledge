@@ -18,13 +18,20 @@ and never renumbered (rule 15); a removed item leaves a gap.
    `web/js/` is not committed. Tests are `node --test` over
    `src/**/*.test.ts`, run on the TypeScript directly by Node's type
    stripping, with imports written with the `.ts` extension and
-   rewritten by `tsc` on output. The GitHub Actions workflow in
-   `.github/` builds and deploys `web/` to GitHub Pages.
+   rewritten by `tsc` on output. Since type stripping checks no types,
+   `npm run typecheck` checks the tests too, under `tsconfig.test.json`.
+   The GitHub Actions workflow in `.github/` type-checks, tests, builds
+   and deploys `web/` to GitHub Pages.
 3. **Positions** in the interface (§13) are byte offsets into the
    source; the editor is a plain `textarea`, and the selected position
    is the caret. No editor library is used.
-4. **Dependencies.** The only dependency is TypeScript itself, as a
-   development dependency.
+4. **Dependencies.** The only dependencies are TypeScript itself and
+   Node's type declarations, which the tests are type-checked against,
+   both development dependencies.
+14. **`tests/design_reflection.pledge`** supplies a `decideEven`
+    whose header is §11's, delegating to a recursive helper, since
+    DESIGN.md gives only the signature.
+
 
 ## Evaluation
 
@@ -71,10 +78,6 @@ and never renumbered (rule 15); a removed item leaves a gap.
     includes its `subterm` mark and multiplicity. A `_` standing for a
     whole telescope has no span of its own, so an error about it
     points at the enclosing `match` or `sorry`.
-14. **`tests/design_reflection.pledge`** supplies a `decideEven`
-    whose header is §11's, delegating to a recursive helper, since
-    DESIGN.md gives only the signature.
-
 ## Terms, scope and forcing
 
 15. **Bound variables** in a telescope are indexed by position in the
@@ -128,6 +131,22 @@ and never renumbered (rule 15); a removed item leaves a gap.
     `localStorage`, with a button to restore the starting text;
     checking runs shortly after the last edit, and the panels follow
     the caret without rechecking.
+43. **Syntax highlighting** lexes each box under the page's phase, so
+    `erased` is coloured as a name in phase 1 and a keyword in phase 2.
+    Names are coloured by what the last check's Globals say they are
+    (type constructor, value constructor, function); locals and
+    top-level bindings keep the text colour. When a program does not
+    parse, the previous colouring is kept rather than flickering off.
+44. **Beside the editor**, an output wraps onto free lines below its
+    own and otherwise ends in an ellipsis, opening in full on hover or
+    focus. Hovering a name shows its entry's type and `is` rule, or a
+    global's signature.
+62. **An error from a refuted value constructor** carries the
+    derivation of the refutation (§13) apart from its message; the
+    status line lists it under the message, and beside the statement
+    only the message is shown. In a message, as in the tutorial's
+    prose, text between backticks is shown as code and a citation is a
+    link (item 61).
 
 ## Tutorial
 
@@ -153,6 +172,21 @@ and never renumbered (rule 15); a removed item leaves a gap.
     the empty type on a later page is also `False`; they never share a
     program. The closing page's solution uses `sorry` deliberately, so
     its goal stays unproved.
+59. **The arithmetic pages** state everything relationally: `Plus(m,
+    n, r)` as on the proof-by-recursion page, and `Times(m, n, r)`
+    with recursion on the first argument, `TimesSucc` needing
+    `Times(m, n, r)` and `Plus(r, n, s)` for `Times(Succ(m), n, s)`.
+    Existential witnesses are extra returns. Distributivity is proved
+    through an `exchange` lemma, (w + y) + (x + z) = (w + x) + (y + z),
+    whose `let`s give each proof's type, mentioning the witnesses bound
+    before it in the same `let`. The shown proofs sit in the learner's box with
+    one branch missing, since a function cannot be split between a
+    read-only box and the learner's box.
+60. **The phase 2 pages** erase, in the example types, `VNil`'s and
+    `VCons`'s `A`, `VCons`'s `n` and both fields of `Refl`, as the
+    phase 2 example programs under `tests/` do; §16 does not say which
+    fields should be erased. Where their prose describes behaviour
+    DESIGN.md is silent on, it says "in this implementation".
 61. **Citations in the tutorial's prose**, of a section (§) or of
     DESIGN.md or SOUNDNESS.md, link to the file on the `main` branch
     of the repository on GitHub, a section by its heading's anchor.
@@ -203,17 +237,6 @@ and never renumbered (rule 15); a removed item leaves a gap.
 42. **Within a group**, bodies are re-checked until no further function
     becomes tainted, and the §13 information is kept from the final
     pass only.
-43. **Syntax highlighting** lexes each box under the page's phase, so
-    `erased` is coloured as a name in phase 1 and a keyword in phase 2.
-    Names are coloured by what the last check's Globals say they are
-    (type constructor, value constructor, function); locals and
-    top-level bindings keep the text colour. When a program does not
-    parse, the previous colouring is kept rather than flickering off.
-44. **Beside the editor**, an output wraps onto free lines below its
-    own and otherwise ends in an ellipsis, opening in full on hover or
-    focus. Hovering a name shows its entry's type and `is` rule, or a
-    global's signature.
-
 ## Erasure (phase 2)
 
 45. **Erased results, not only names.** §16's "erased name" is read as
@@ -284,18 +307,3 @@ and never renumbered (rule 15); a removed item leaves a gap.
 58. **Panels.** At the `qed`'s name, Expected shows the goal's
     parameters, then its returns; inside the goal's telescopes the
     panels work as inside a function's, with no enclosing function.
-59. **The arithmetic pages** state everything relationally: `Plus(m,
-    n, r)` as on the proof-by-recursion page, and `Times(m, n, r)`
-    with recursion on the first argument, `TimesSucc` needing
-    `Times(m, n, r)` and `Plus(r, n, s)` for `Times(Succ(m), n, s)`.
-    Existential witnesses are extra returns. Distributivity is proved
-    through an `exchange` lemma, (w + y) + (x + z) = (w + x) + (y + z),
-    whose `let`s give each proof's type, mentioning the witnesses bound
-    before it in the same `let`. The shown proofs sit in the learner's box with
-    one branch missing, since a function cannot be split between a
-    read-only box and the learner's box.
-60. **The phase 2 pages** erase, in the example types, `VNil`'s and
-    `VCons`'s `A`, `VCons`'s `n` and both fields of `Refl`, as the
-    phase 2 example programs under `tests/` do; §16 does not say which
-    fields should be erased. Where their prose describes behaviour
-    DESIGN.md is silent on, it says "in this implementation".

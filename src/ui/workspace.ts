@@ -5,7 +5,7 @@ import type { Phase, Span } from "../syntax.ts";
 import { lineCol } from "../position.ts";
 import { fill, h, load, save, type Child } from "./dom.ts";
 import { Editor, highlight, type NameKind } from "./editor.ts";
-import { entryTip, evalView, explainView, globalTip, infoView, inspectView, statusView, verdict,
+import { entryTip, evalView, explainView, globalTip, infoView, inspectView, marked, statusView, verdict,
   type Host } from "./panels.ts";
 
 interface Box { text: string; key: string | null; holdsQed?: boolean }
@@ -115,7 +115,8 @@ class Program implements Host {
     if (this.globals.length) this.kinds = nameKinds(this.globals);
     this.remember(r.inspects.map(i => i.info));
     const outputs = [
-      ...r.error ? [{ span: r.error.span, node: h("span", { class: "message bad", tabindex: "0" }, error) }] : [],
+      ...r.error ? [{ span: r.error.span,
+        node: h("span", { class: "message bad", tabindex: "0" }, error && marked(error)) }] : [],
       ...r.prints.map(p => ({ span: p.span, node: h("code", { class: "message print", tabindex: "0" },
         highlight(p.value, lex(p.value, phase), this.kinds).map(c => [c,
           /[(,]$/.test(typeof c === "string" ? c : c.textContent!) && h("wbr")])) })),

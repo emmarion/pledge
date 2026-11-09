@@ -1,4 +1,5 @@
 import type { CheckResult, EntryId, EntryInfo, ExpectedEntry, PositionInfo, Rendered, Rewrite } from "../api.ts";
+import { cited, citationUrl } from "../tutorial/links.ts";
 import { h, type Child } from "./dom.ts";
 
 export interface Host {
@@ -9,6 +10,16 @@ export interface Host {
   showErased: boolean;
   globalsOpen: boolean;
 }
+
+export const linked = (text: string): Child => text.split(cited).map((part, i) => {
+  const href = i % 2 ? citationUrl(part) : null;
+  return href ? h("a", { href, target: "_blank", rel: "noopener" }, part) : part;
+});
+
+export const marked = (text: string): Child => {
+  const parts = text.split("`");
+  return parts.length % 2 ? parts.map((part, i) => i % 2 ? h("code", {}, part) : linked(part)) : linked(text);
+};
 
 const muted = (text: string): HTMLElement => h("span", { class: "muted" }, text);
 
@@ -67,6 +78,9 @@ const expectedList = (entries: readonly ExpectedEntry[], ctx: Host): Child =>
   list(entries.map(e => binding(ctx, e.name ?? "_", e.type, e.rule, tag("erased", ctx.showErased && e.erased),
     tag("not determined", e.undetermined))), "none");
 
+const derivation = (lines: () => Rendered[], ctx: Host): HTMLElement =>
+  h("ol", { class: "derivation" }, lines().map(step => h("li", {}, rendered(step, ctx))));
+
 export function infoView(info: PositionInfo, ctx: Host): HTMLElement[] {
   const { expected, termination, refutations } = info;
   return [
@@ -84,15 +98,15 @@ export function infoView(info: PositionInfo, ctx: Host): HTMLElement[] {
           ? h("code", {}, termination.subtermParams.join(", ")) : muted("none")),
         row("Group", h("code", {}, termination.group.join(", "))))),
     section("Scope", list(info.scope.map(e =>
-      binding(ctx, entryName(e, ctx), e.type, e.rule, tag("erased", ctx.showErased && e.erased))),
+      binding(ctx, entryName(e, ctx), e.type, e.rule, tag("erased", ctx.showErased && e.erased),
+        tag("tainted", e.tainted))),
         "No local entries.")),
     ...refutations === null ? [] : [section("Refutations", list(refutations.map(r => {
       if (r.kind === "absurd") return h("li", {}, h("code", {}, r.ctor), " ", tag("absurd", true));
-      const derivation = h("ol", { class: "derivation" });
+      const steps = h("div", {});
       return h("li", {}, h("details", {
-        ontoggle: () => { if (!derivation.hasChildNodes())
-          derivation.append(...r.derivation().map(step => h("li", {}, rendered(step, ctx)))); },
-      }, h("summary", {}, h("code", {}, r.ctor)), derivation));
+        ontoggle: () => { if (!steps.hasChildNodes()) steps.append(derivation(r.derivation, ctx)); },
+      }, h("summary", {}, h("code", {}, r.ctor)), steps));
     }), "No value constructor is refuted here."))],
     h("details", {
       class: "panel globals", open: ctx.globalsOpen,
@@ -132,7 +146,7 @@ export const explainView = (result: ReturnType<CheckResult["explainAt"]>, ctx: H
 
 export const evalView = (result: ReturnType<CheckResult["evalAt"]>, ctx: Host): Child => {
   if ("error" in result) return h("p", { class: "bad" },
-    `Column ${result.error.span.start + 1}: ${result.error.message()}`);
+    `Column ${result.error.span.start + 1}: `, marked(result.error.message()));
   const rule = (r: Rendered | null): Child => r ? rendered(r, ctx) : muted("no rule");
   return h("dl", {}, row("Type", rendered(result.type, ctx)), row("canonical", rendered(result.canonicalType, ctx)),
     row("is", rule(result.rule)), row("canonical", rule(result.canonicalRule)));
@@ -144,7 +158,9 @@ export const verdict = (good: boolean | null, ...text: Child[]): HTMLElement =>
 export const statusView = (r: CheckResult, error: string | null, qedMissing: boolean, ctx: Host): Child[] => {
   const proved = r.goalProved === null ? null : r.goalProved && !qedMissing;
   return [
-    r.error ? verdict(false, "Error at ", goto(ctx, r.error.span.start), ": ", error) : verdict(true, "No errors"),
+    r.error ? verdict(false, "Error at ", goto(ctx, r.error.span.start), ": ", error && marked(error))
+      : verdict(true, "No errors"),
+    r.error?.derivation && derivation(r.error.derivation, ctx),
     h("span", { class: "verdicts" },
       verdict(!r.containsSorry, r.containsSorry ? "Contains sorry" : "No sorry"),
       qedMissing

@@ -1,4 +1,5 @@
 import type { Phase } from "../syntax.ts";
+import { nat, vec, vecBy, vheadBy } from "../examples.ts";
 
 export interface Page {
   slug: string;
@@ -14,23 +15,10 @@ export interface Page {
 const paragraphs = (...ps: string[]): string => ps.join("\n\n");
 const box = (...parts: string[]): string => parts.join("\n\n");
 
-const nat = `data Nat() : Type() {
-  Zero() : Nat();
-  Succ(pred : Nat()) : Nat();
-}`;
-
 const bool = `data Bool() : Type() {
   True() : Bool();
   False() : Bool();
 }`;
-
-const vecBy = (mult: string): string => `data Vec(A : Type(), n : Nat()) : Type() {
-  VNil(${mult}A : Type()) : Vec(A, Zero());
-  VCons(${mult}A : Type(), ${mult}n : Nat(), head : A, rest : Vec(A, n))
-    : Vec(A, Succ(n));
-}`;
-
-const vec = vecBy("");
 
 const twoVec = `let one = Succ(Zero());
 let xs = VCons(Nat(), one, Zero(),
@@ -255,12 +243,6 @@ const fourIsEven = `EvenSucc(Succ(Succ(Succ(Zero()))),
 
 const vecErased = vecBy("erased ");
 
-const vheadBy = (mult: string): string => `fn vhead(${mult}A : Type(), ${mult}n : Nat(), v : Vec(A, Succ(n)))
-    -> (x : A) {
-  let VCons(_, _, hd, _) = v;
-  hd
-}`;
-
 const vheadErased = vheadBy("erased ");
 
 const eqErased = `data Eq(A : Type(), x : A, y : A) : Type() {
@@ -367,7 +349,7 @@ export const pages: Page[] = [
     phase: 1,
     prose: paragraphs(
       "Each page shows read-only boxes of source above your box, and checks them all as one program (§12). The panels beside the editor (below it on a narrow screen) describe the position of the caret: what is expected there, what is in scope, and more, as later pages show (§13). The status line under your box says whether the program checks, whether it contains `sorry`, and whether its goal is proved. An error is marked where it occurs.",
-      "The box above declares the data type constructor `Nat`, with two value constructors, `Zero` and `Succ` (§5). Every application is written with its parentheses, even with no arguments, so the type is `Nat()` and zero is `Zero()` (§1).",
+      "The read-only box below declares the data type constructor `Nat`, with two value constructors, `Zero` and `Succ` (§5). Every application is written with its parentheses, even with no arguments, so the type is `Nat()` and zero is `Zero()` (§1).",
       "`let x = e;` binds the name `x` to `e`'s result (§8). `print e;` evaluates `e` and shows its value beside the statement (§12).",
       "Task: bind `three` to the number three and `print` it."),
     boxes: [nat],
@@ -550,7 +532,7 @@ print vsecond(Nat(), Zero(), xs);
     phase: 1,
     prose: paragraphs(
       "A body is allowed to call any function declared before it, with no annotation, and top-level code any function (§9). A call of a function to itself must decrease. In the simplest case a parameter is marked `subterm`, and the call marks its argument `subterm e`, where `e` must be a strict subterm of the caller's own `subterm` parameter. In `plus`'s `Succ(k)` branch, `m` canonicalizes to `Succ(k)`, so `k` is a strict subterm of `m`. The marks are always written; none is inferred.",
-      "`ack` above has two `subterm` parameters. A call that decreases the second marks the argument for the first `same`, and that argument must be canonically identical to the caller's first. The Termination panel lists the enclosing function's `subterm` parameters (§13).",
+      "`ack` below has two `subterm` parameters. A call that decreases the second marks the argument for the first `same`, and that argument must be canonically identical to the caller's first. The Termination panel lists the enclosing function's `subterm` parameters (§13).",
       "Task: `plus` is rejected as written. Mark it so that it is accepted."),
     boxes: [box(nat, ack)],
     initial: `-- Mark the recursion so that plus is accepted.
@@ -569,7 +551,7 @@ print plus(two, ack(Succ(Zero()), two));
     title: "Mutual groups: Even and Odd",
     phase: 1,
     prose: paragraphs(
-      "Declarations that refer to each other are written together in a `mutual` block, their group (§5, §8). The data type constructors `Even` and `Odd` above form one; a value of `Even(n)` can be read as evidence that `n` is even.",
+      "Declarations that refer to each other are written together in a `mutual` block, their group (§5, §8). The data type constructors `Even` and `Odd` below form one; a value of `Even(n)` can be read as evidence that `n` is even.",
       "A function outside any `mutual` block is a group of its own. Functions of one group are allowed to call each other, under the same `subterm` rule as a function calling itself, and the Termination panel lists the enclosing function's group (§9, §13).",
       "Task: give `isOdd` its `Succ` branch, calling `isEven`, then replace `EvenZero()` with a proof of `Even(Succ(Succ(Zero())))`."),
     boxes: [box(nat, bool, evenOdd)],
@@ -616,7 +598,7 @@ let p : Even(Succ(Succ(Zero())))
     title: "Propositions as types: equality",
     phase: 1,
     prose: paragraphs(
-      "A type can be read as a proposition and a value of it as a proof. The data type constructor `Eq` above has one value constructor, `Refl(A, x) : Eq(A, x, x)`, so, `sorry` (a later page) aside, a value of `Eq(A, x, y)` is built only by `Refl`, whose type has the same `x` on both sides.",
+      "A type can be read as a proposition and a value of it as a proof. The data type constructor `Eq` below has one value constructor, `Refl(A, x) : Eq(A, x, x)`, so, `sorry` (a later page) aside, a value of `Eq(A, x, y)` is built only by `Refl`, whose type has the same `x` on both sides.",
       "`goal T;` sets the program's goal and `qed e;` checks `e` against it (§12). The status line reports whether the `qed` checks and whether the goal is proved. On this page the `qed` must be in your box.",
       "Task: prove the goal. Since `two` canonicalizes to `Succ(Succ(Zero()))`, one `Refl` should do."),
     boxes: [box(nat, eq), `let one = Succ(Zero());
@@ -667,7 +649,7 @@ qed plusZero;
     prose: paragraphs(
       "The next pages prove facts about addition, stated with the data type constructor `Plus` from the previous page: `Plus(m, n, r)` is read as \"`m` plus `n` is `r`\". Its value constructors follow addition by recursion on the first argument: `PlusZero(n)` proves that zero plus `n` is `n`, and `PlusSucc(m, n, r, p)` turns a proof `p` that `m` plus `n` is `r` into one that `Succ(m)` plus `n` is `Succ(r)`. Each fact is a function goal, as on the previous page (§12): the parameters are the hypotheses, and the returns the conclusions.",
       "The goal here reads: if `m` plus `n` is `r`, then `m` plus `Succ(n)` is `Succ(r)`. A natural proof is an induction on `m`, written as a recursion on the proof `p`, marked `subterm`: in the `PlusSucc` branch, `p` canonicalizes to `PlusSucc` applied to the branch's fields, so the inner proof is a strict subterm of it (§9).",
-      "The box above also shows `plusZeroRight`, which builds a proof that `n` plus zero is `n` by recursion on `n`. It is the previous page's fact in another form, producing the `Plus` proof rather than taking one apart. This page does not use it; the next one does.",
+      "The read-only box below also shows `plusZeroRight`, which builds a proof that `n` plus zero is `n` by recursion on `n`. It is the previous page's fact in another form, producing the `Plus` proof rather than taking one apart. This page does not use it; the next one does.",
       "Task: write the two branches, then prove the goal with `qed plusSucc;`. Put the caret on each branch body: Scope shows what forcing the value constructor added, such as `m` being `Zero()` in the `PlusZero` branch, and Expected shows the type the branch is to produce. In the `PlusSucc(m1, _, r1, p1)` branch, a recursive call `plusSucc(m1, n, r1, subterm p1)` gives `Plus(m1, Succ(n), Succ(r1))`."),
     boxes: [box(nat, plusRel, plusZeroRight), plusSuccGoal],
     initial: `-- Write both branches, then prove the goal with qed plusSucc;
@@ -685,7 +667,7 @@ qed plusSucc;
     title: "Commutativity of addition",
     phase: 1,
     prose: paragraphs(
-      "The goal is commutativity: if `m` plus `n` is `r`, then `n` plus `m` is `r`. The proof is again an induction on `m`, as a recursion on `p`, and each branch needs one of the two lemmas above.",
+      "The goal is commutativity: if `m` plus `n` is `r`, then `n` plus `m` is `r`. The proof is again an induction on `m`, as a recursion on `p`, and each branch needs one of the two lemmas below.",
       "In the `PlusZero` branch, `m` is `Zero()` and `r` is `n`, so the branch is to produce `Plus(n, Zero(), n)`. `Plus`'s value constructors follow its first argument, not its second, so none of them builds this directly for an unknown `n`; `plusZeroRight(n)` does, by its own induction on `n`.",
       "In the `PlusSucc(m1, _, r1, p1)` branch, `m` is `Succ(m1)`, `r` is `Succ(r1)` and `p1 : Plus(m1, n, r1)`. The recursive call `plusComm(m1, n, r1, subterm p1)` gives `Plus(n, m1, r1)`, and the branch is to produce `Plus(n, Succ(m1), Succ(r1))`: that is what `plusSucc` from the previous page gives, applied to `n`, `m1` and `r1`.",
       "Task: write both branches, checking each against the Expected and Scope panels, and prove the goal with `qed plusComm;`."),
@@ -725,7 +707,7 @@ qed plusAssoc;
     prose: paragraphs(
       "`Times(m, n, r)` is read as \"`m` times `n` is `r`\"; like `Plus`'s, its value constructors follow its first argument: zero times `n` is zero, and if `m` times `n` is `r` and `r` plus `n` is `s`, then `Succ(m)` times `n` is `s`. The goal is left distributivity, a × (b + c) = a × b + a × c: from `Plus(b, c, bc)` and `Times(a, bc, r)`, a proof produces `ab` and `ac` with `Times(a, b, ab)`, `Times(a, c, ac)` and `Plus(ab, ac, r)`.",
       "The proof in your box is an induction on `a`, as a recursion on `t`. In the `TimesSucc` branch, Scope shows `t3 : Times(a1, bc, r1)` and `p1 : Plus(r1, bc, r)`, and the recursive call gives `ab1` and `ac1` with a1 × b = ab1, a1 × c = ac1 and ab1 + ac1 = r1. What is left is arithmetic on `Plus` alone: from (ab1 + ac1) + (b + c) = r, `exchange` produces `ab` and `ac` with ab1 + b = ab, ac1 + c = ac and ab + ac = r. The first two are the last fields `TimesSucc` needs to build `Times(Succ(a1), b, ab)` and `Times(Succ(a1), c, ac)`.",
-      "`exchange` above, (w + y) + (x + z) = (w + x) + (y + z), has no recursion of its own: it chains associativity, read in both directions (`plusAssoc`, and `plusAssocRev`, proved by recursion on its second proof), and commutativity. Each `let` in it gives the type of every value it binds, and such a type can mention the binders before it in the same `let`, such as `yxz`; the checker checks each against the result the binder names. A binder referred to this way needs a type of its own, which is why `yxz` carries `: Nat()`: without one, the reference is an error. Put the caret on each line and compare Scope with these types.",
+      "`exchange` below, (w + y) + (x + z) = (w + x) + (y + z), has no recursion of its own: it chains associativity, read in both directions (`plusAssoc`, and `plusAssocRev`, proved by recursion on its second proof), and commutativity. Each `let` in it gives the type of every value it binds, and such a type can mention the binders before it in the same `let`, such as `yxz`; the checker checks each against the result the binder names. A binder referred to this way needs a type of its own, which is why `yxz` carries `: Nat()`: without one, the reference is an error. Put the caret on each line and compare Scope with these types.",
       "Task: write the `TimesZero` branch where the comment is. There `a` and `r` are `Zero()`; Expected shows what is to be produced."),
     boxes: [box(nat, plusRel, times), box(plusZeroRight, plusSucc, plusComm), box(plusAssoc("PlusZero(_) => (r, q, PlusZero(r));"), plusAssocRev), exchange, timesDistribGoal],
     initial: `${timesDistrib("-- Write the TimesZero branch here.")}
@@ -804,7 +786,7 @@ qed p;
     phase: 1,
     prose: paragraphs(
       "Here `n` is `times(ten, ten)`, the result of a call, so the checker knows it only by its type, `Nat()` (§7), while the run knows its value: `print n;` shows one hundred `Succ`s around `Zero()`. So it seems no proof of `Even(n)` can be written out: the checker cannot tell whether `n` is `Zero()` or a `Succ`, and neither `EvenZero()` nor an `EvenSucc` checks against the goal. Even where the checker does know the number, as for one written with twenty `Succ`s, a proof written out is twenty nested value constructors, while the reflection below stays one line.",
-      "`decideEven(n)`, above, returns `Some` of a proof of `Even(n)` when `n` is even, and `None` otherwise. A plain pattern `let` on its result is rejected: the result too is known only by its type, so forcing does not refute `None` (§10). `comptime let Some(_, p) = e;` evaluates `e` during checking and requires its value to be headed by `Some`; the run, not forcing, rules out `None`, and `p` has type `Even(n)` (§11). It is written only at the top level.",
+      "`decideEven(n)`, below, returns `Some` of a proof of `Even(n)` when `n` is even, and `None` otherwise. A plain pattern `let` on its result is rejected: the result too is known only by its type, so forcing does not refute `None` (§10). `comptime let Some(_, p) = e;` evaluates `e` during checking and requires its value to be headed by `Some`; the run, not forcing, rules out `None`, and `p` has type `Even(n)` (§11). It is written only at the top level.",
       "Task: make the `let` a `comptime` pattern `let`, so that `qed p;` proves the goal. Then try `decideEven(Succ(Zero()))` in its place and read the error, which shows the value (§11)."),
     boxes: [box(nat, evenOdd, option, decideEven), hundred],
     initial: `-- Write comptime before this let, so that qed p; proves the goal.
@@ -969,9 +951,9 @@ qed Refl(Vec(Nat(), Succ(n)), v);
     phase: 1,
     prose: paragraphs(
       "Your box has the previous page's shape, but `v` comes from `sorry`. Forcing `VCons` on it adds facts that nothing backs, and they last as long as any pattern `let`'s facts: to the end of the enclosing match branch or function body, or of the program (§7). So the taint reaches as far: a pattern `let` whose scrutinee is tainted taints every result of the match branch or function body it is in, or, at the top level, every result of the top-level statements after it (§12). After it, at the top level, nothing evaluates, every `print` shows `sorry` and no `qed` proves the goal, though checking goes on.",
-      "The reason is soundness: a fact forced from a `sorry` can make later code check that otherwise would not, such as an `is` clause or a `qed`, so everything those facts reach is treated as relying on the `sorry`. Every statement in your box checks, yet the status line reports that the goal is not proved, and `print n;` shows `sorry`, although `n` has nothing to do with `v` and the box above printed it.",
-      "The box above has the same pattern `let` inside a match branch. There its facts end with the branch, and it taints only the match's results: `print c;` shows `sorry`, while `print n;` after it shows `Zero()` (§12).",
-      "Task: replace the `sorry` with a real vector of type `Vec(Nat(), Succ(Zero()))`, so that the goal is proved. The status line still reports `sorry` in the program, from the box above."),
+      "The reason is soundness: a fact forced from a `sorry` can make later code check that otherwise would not, such as an `is` clause or a `qed`, so everything those facts reach is treated as relying on the `sorry`. Every statement in your box checks, yet the status line reports that the goal is not proved, and `print n;` shows `sorry`, although `n` has nothing to do with `v` and the box above yours printed it.",
+      "The box above yours has the same pattern `let` inside a match branch. There its facts end with the branch, and it taints only the match's results: `print c;` shows `sorry`, while `print n;` after it shows `Zero()` (§12).",
+      "Task: replace the `sorry` with a real vector of type `Vec(Nat(), Succ(Zero()))`, so that the goal is proved. The status line still reports `sorry` in the program, from the box above yours."),
     boxes: [box(nat, vec, eq, pair), inBranch],
     initial: `-- Replace the sorry with a real vector, so that the goal is proved.
 -- Keep the pattern let on v.

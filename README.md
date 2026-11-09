@@ -78,8 +78,9 @@ the implementation makes where DESIGN.md is silent.
 ## Running it locally
 
 The implementation is TypeScript, with no dependencies beyond the
-compiler. `./run.sh` pulls, builds, serves on port 8765 (or the port
-given as its argument) and, on a Mac, opens the page. By hand:
+compiler and Node's type declarations. `./run.sh` pulls, builds, serves
+on port 8765 (or the port given as its argument) and, on a Mac, opens
+the page. By hand:
 
 ```sh
 npm install
@@ -89,7 +90,7 @@ npm test
 ```
 
 [INTERNALS.md](INTERNALS.md) describes how the code is laid out. A push
-to `main` runs the tests and deploys `web/` to GitHub Pages.
+to `main` type-checks, runs the tests and deploys `web/` to GitHub Pages.
 
 ## License
 

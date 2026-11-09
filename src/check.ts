@@ -52,8 +52,7 @@ export const check: Check = (source, phase, where = position(source)) => {
       here(d.span);
       newName(ctx, top, d.name, new Set());
       const name = d.name.name ?? "_";
-      const params = telescope(ctx, top, d.params.map(p => ({ name: p.name,
-        ann: { kind: "type" as const, term: p.type }, mult: null, span: p.span })), "binder").tele;
+      const params = telescope(ctx, top, d.params, "binder").tele;
       const g: Global & { kind: "type" } = { kind: "type", name,
         sig: { head: { kind: "type", name }, params, ret: TYPE }, ctors: [], done: false };
       top = { ...top, scope: declare(top.scope, g.sig) };

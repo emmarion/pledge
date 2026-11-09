@@ -1,6 +1,6 @@
 import { disclaimer, pages } from "../tutorial/pages.ts";
-import { cited, citationUrl } from "../tutorial/links.ts";
-import { h, type Child } from "./dom.ts";
+import { h } from "./dom.ts";
+import { linked, marked } from "./panels.ts";
 import { Workspace } from "./workspace.ts";
 
 const slug = new URLSearchParams(location.search).get("page");
@@ -8,13 +8,7 @@ const index = Math.max(0, pages.findIndex(p => p.slug === slug));
 const page = pages[index]!;
 const href = (i: number): string => `?page=${encodeURIComponent(pages[i]!.slug)}`;
 
-const linked = (text: string): Child => text.split(cited).map((part, i) => {
-  const href = i % 2 ? citationUrl(part) : null;
-  return href ? h("a", { href, target: "_blank", rel: "noopener" }, part) : part;
-});
-
-const prose = page.prose.split(/\n\s*\n/).map(paragraph =>
-  h("p", {}, paragraph.split("`").map((part, i) => i % 2 ? h("code", {}, part) : linked(part))));
+const prose = page.prose.split(/\n\s*\n/).map(paragraph => h("p", {}, marked(paragraph)));
 
 const fixed = [...page.boxes.keys()];
 const workspace = new Workspace(

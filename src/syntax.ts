@@ -42,11 +42,9 @@ export type Stmt =
   | { kind: "patlet"; comptime: boolean; mult: Mult | null; pat: Pattern; rhs: Expr; span: Span }
   | { kind: "inspect"; span: Span };
 
-export interface TypedParam { name: Id; type: WrittenTerm; span: Span }
-
 export interface Ctor { name: Id; fields: WrittenBinder[]; ret: WrittenTerm; span: Span }
 
-export interface Data { kind: "data"; name: Id; params: TypedParam[]; ctors: Ctor[]; span: Span }
+export interface Data { kind: "data"; name: Id; params: WrittenBinder[]; ctors: Ctor[]; span: Span }
 
 export interface Header { params: Param[]; returns: WrittenBinder[] }
 

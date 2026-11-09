@@ -1,4 +1,4 @@
-import type { Diagnostic, RefutationInfo, TerminationInfo } from "./api.ts";
+import type { Diagnostic, RefutationInfo, Rendered, TerminationInfo } from "./api.ts";
 import type { Id, Mult, Phase, Span } from "./syntax.ts";
 import { entry, lookup, mapLeaves } from "./terms.ts";
 import type { Entry, EntryId, OpenTerm, Ref, Scope, Signature, Telescope, Term } from "./terms.ts";
@@ -8,8 +8,8 @@ export class Failure {
   constructor(diag: Diagnostic) { this.diag = diag; }
 }
 
-export function fail(span: Span, message: () => string): never {
-  throw new Failure({ span, message });
+export function fail(span: Span, message: () => string, derivation?: () => Rendered[]): never {
+  throw new Failure({ span, message, ...(derivation ? { derivation } : {}) });
 }
 
 export function attempt<T>(f: () => T): T | { error: Diagnostic } {

@@ -1,4 +1,5 @@
-import type { Ann, Arg, Expr, Header, Id, LetBinder, Mult, Pattern, Span, Stmt, Tele, WrittenTerm } from "./syntax.ts";
+import type { Ann, Arg, Expr, Header, Id, LetBinder, Mult, Pattern, Span, Stmt, Tele, WrittenBinder,
+  WrittenTerm } from "./syntax.ts";
 import { TYPE, abstract, addRule, app, canon, create, entry, forget, identical, isStrictSubterm, lookup, mark,
   mentions, occurs, ref, subst, typeOf, withName } from "./terms.ts";
 import type { Binder, EntryId, Ref, Scope, Signature, Telescope, Term } from "./terms.ts";
@@ -16,17 +17,17 @@ interface Named { name: string; id: EntryId }
 interface StmtOut { local: Local; tree: Stmt; bound: Named[] }
 type Comptime = (tree: Expr, tainted: boolean) => void;
 interface Forcing { name: string; forced: Forced; pat: Pattern | undefined }
-interface Binderish { name: Id; ann: Ann; mult: Mult | null; span: Span }
 
 const show = (scope: Scope, t: Term): string => render(scope, t).text;
 const trees = (scope: Scope, results: readonly Result[]): Term[] => results.map(r => written(scope, ref(r.id)));
 export const plural = (n: number, what: string): string => `${n} ${what}${n === 1 ? "" : "s"}`;
+const are = (n: number, what: string): string => `${plural(n, what)} ${n === 1 ? "is" : "are"}`;
+const miscount = (span: Span, want: number, got: string): never =>
+  fail(span, () => `${are(want, "value")} expected here, and this ${got} (§8)`);
 
 export function single(out: Out, span: Span): Result {
   const [r] = out.results;
-  if (!r || out.results.length > 1) fail(span, () =>
-    `this produces ${plural(out.results.length, "value")}, and one is expected here (§8)`);
-  return r;
+  return r && out.results.length === 1 ? r : miscount(span, 1, `produces ${out.results.length}`);
 }
 
 const erasedAt = (given: Given | null, i: number): boolean => given?.wants[i]?.mult === "erased";
@@ -67,8 +68,7 @@ function solveHoles(ctx: Ctx, scope: Scope, lhs: Term, rhs: Term, at: Span): Sco
 
 function against(ctx: Ctx, before: Scope, given: Given, ids: readonly EntryId[], span: Span): Scope {
   const n = given.wants.length;
-  if (ids.length !== n) fail(span, () =>
-    `${plural(n, "value")} ${n === 1 ? "is" : "are"} expected here, and this produces ${ids.length}`);
+  if (ids.length !== n) miscount(span, n, `produces ${ids.length}`);
   return given.wants.reduce((acc, w, i) => {
     const id = ids[i]!, { type, is } = wanted(given, ids, i);
     const what = () => w.name !== null ? `\`${w.name}\`` : n === 1 ? "the value expected here" : `value ${i + 1}`;
@@ -135,8 +135,7 @@ function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snaps
     }
     case "tuple": {
       if (given && given.wants.length !== e.elems.length)
-        fail(e.span, () => `${plural(given.wants.length, "value")} expected here, ` +
-          `and this tuple has ${plural(e.elems.length, "element")}`);
+        miscount(e.span, given.wants.length, `tuple has ${plural(e.elems.length, "element")}`);
       const results: Result[] = [], elems: Expr[] = [];
       e.elems.forEach((el, i) => {
         const w = given?.wants[i];
@@ -197,8 +196,8 @@ function opened(local: Local, tele: Telescope, env: readonly Term[], kind: strin
 function args(ctx: Ctx, local: Local, name: string, params: Telescope, e: App,
     erasedArgs: boolean): { local: Local; results: Result[]; trees: Arg[]; mark: number } {
   if (e.args.length !== params.length)
-    fail(e.span, () => `${name} takes ${plural(params.length, "argument")}, ` +
-      `and ${e.args.length} ${e.args.length === 1 ? "is" : "are"} given`);
+    fail(e.span, () =>
+      `${name} takes ${plural(params.length, "argument")}, and ${are(e.args.length, "argument")} given`);
   const results: Result[] = [], trees: Arg[] = [], mark = ctx.holes.length;
   params.forEach((p, i) => {
     const a = e.args[i]!, env = results.map(r => ref(r.id));
@@ -377,8 +376,7 @@ const absurd = (e: Expr): boolean => e.kind === "match" ? !e.branches.length : e
 
 function survivor(f: Forcing, span: Span, consequence: string): { scope: Scope; fields: EntryId[] } {
   const forced = f.forced;
-  if (!forced.ok) return fail(span, () =>
-    `${f.name} is refuted here, so ${consequence} (§10): ${forced.derivation().map(l => l.text).join("; ")}`);
+  if (!forced.ok) return fail(span, () => `${f.name} is refuted here, so ${consequence} (§10)`, forced.derivation);
   return forced;
 }
 
@@ -489,7 +487,8 @@ export function annotate(ctx: Ctx, local: Local,
 
 interface Checked { local: Local; ids: EntryId[]; tele: Telescope; tainted: boolean }
 
-function opening(ctx: Ctx, local: Local, b: Binderish, kind: string): { local: Local; id: EntryId; tainted: boolean } {
+function opening(ctx: Ctx, local: Local, b: WrittenBinder,
+    kind: string): { local: Local; id: EntryId; tainted: boolean } {
   const a = annotate(ctx, local, b.ann);
   const made = create(a.local.scope, a.type, a.is, { origin: { kind, span: b.span }, erased: b.mult === "erased" });
   return { local: bind({ ...a.local, scope: made.scope }, [b.name], [made.id]).local, id: made.id, tainted: a.tainted };
@@ -502,7 +501,7 @@ function abstracted(scope: Scope, b: { name: Id; mult: Mult | null; span: Span }
     mult: b.mult ?? "many", span: b.span };
 }
 
-export function telescope(ctx: Ctx, local: Local, binders: readonly Binderish[], kind: string,
+export function telescope(ctx: Ctx, local: Local, binders: readonly WrittenBinder[], kind: string,
     outer: readonly EntryId[] = []): Checked {
   const seen = new Set<string>(), ids: EntryId[] = [];
   let tainted = false;

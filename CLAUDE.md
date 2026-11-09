@@ -68,18 +68,18 @@ by the owner and apply to every session.
 12. **Every change to DESIGN.md needs the owner's confirmation of its
     exact wording first.** The wording is discussed after the change
     is implemented, so that it describes what was built. Before
-    editing one of them, show the owner the proposed edit one section
-    at a time, each with enough unchanged text around it to read it in
+    editing it, show the owner the proposed edit one section at a
+    time, each with enough unchanged text around it to read it in
     place, new text in bold and removed text in strikethrough, and
     change the file only after the owner confirms that wording. All
     DESIGN.md edits from one discussion land as a single commit; if
     the wording is revised after that commit, squash the revisions
     into it. Keep the wording succinct: DESIGN.md states what the language is,
     and describes the implementation only in its own section (§14). A decision the owner made in chat is not yet permission to
-    write it into one of these files: the words are the owner's to
+    write it into DESIGN.md: the words are the owner's to
     confirm, and a session's paraphrase of a decision can smuggle in a
     claim the owner never made. (Rule 11 governs whether a decision is
-    approved; this rule governs how it reaches these files.
+    approved; this rule governs how it reaches DESIGN.md.
     ASSUMPTIONS.md and the other notes stay under rules 1 and 11.)
 
 13. **`origin/main` is the only main.** A local `main` may be the

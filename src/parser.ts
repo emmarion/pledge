@@ -1,5 +1,5 @@
 import type { Ann, Arg, WrittenBinder, Branch, Ctor, Data, Expr, Fn, Header, Id, LetBinder, Mult, Param, Pattern,
-  Phase, Program, Span, Stmt, Tele, WrittenTerm, Top, TypedParam } from "./syntax.ts";
+  Phase, Program, Span, Stmt, Tele, WrittenTerm, Top } from "./syntax.ts";
 import type { Diagnostic } from "./api.ts";
 import { lex, type Token } from "./lexer.ts";
 import { attempt, fail } from "./context.ts";
@@ -198,11 +198,11 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
     const begin = start();
     expect("data");
     const dataName = name();
-    const params = parens((): TypedParam => {
+    const params = parens((): WrittenBinder => {
       const paramBegin = start();
       const paramName = id();
       expect(":");
-      return { name: paramName, type: term(), span: spanFrom(paramBegin) };
+      return { name: paramName, ann: { kind: "type", term: term() }, mult: null, span: spanFrom(paramBegin) };
     }, false);
     expect(":");
     if (peek().kind === "name" && peek().text === "Type") next();

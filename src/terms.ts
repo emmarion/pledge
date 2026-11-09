@@ -14,7 +14,7 @@ export interface Binder { name: string | null; type: OpenTerm; is: OpenTerm | nu
 export type Telescope = readonly Binder[];
 export interface Signature { head: Head; params: Telescope; ret: OpenTerm }
 
-export interface Origin { kind: string; span: Span }
+interface Origin { kind: string; span: Span }
 interface Rule { term: Term; at: Span }
 export interface Entry {
   readonly id: EntryId;

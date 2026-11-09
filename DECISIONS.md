@@ -23,13 +23,11 @@ D35. For D16's "may": DESIGN.md says "is allowed to" for permission and
 
 ## Approved rules awaiting wording
 
-None at present.
+P3. The Scope panel shows whether each entry is tainted.
 
 ## Proposals, not approved
 
-DESIGN.md does not apply P3.
-
-P3. The Scope panel shows whether each entry is tainted.
+None at present.
 
 ## Open questions
 
@@ -37,10 +35,9 @@ None at present.
 
 ## Pending edits
 
-To SOUNDNESS.md: what §8, §11 and §12 require there: `comptime`,
-top-level evaluation of every `let`, part 7 (checking terminates, now
-that checking runs code), what taint removes, the taint rules, where
-results are checked, a match only some of whose results are tainted,
-and that a goal proved in a program containing `sorry` is proved. This
-includes checking that nothing left after taint's removal needs a
-removed value; nothing beyond one review has checked it.
+To SOUNDNESS.md: what §8 and §12 require there: what taint removes,
+the taint rules, where results are checked, a match only some of whose
+results are tainted, and that a goal proved in a program containing
+`sorry` is proved. This includes checking that nothing left after
+taint's removal needs a removed value; nothing beyond one review has
+checked it.

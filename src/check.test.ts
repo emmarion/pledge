@@ -1,33 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
 import { check } from "./check.ts";
 import type { CheckResult, EntryInfo, PositionInfo } from "./api.ts";
+import { file, files, harness, nat, vecBy } from "../tests/helpers.ts";
 
-const testsDir = new URL("../tests/", import.meta.url);
-const file = (name: string): string => readFileSync(new URL(name, testsDir), "utf8");
-const nat = "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n";
-const vec = "data Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n)) : Vec(A, Succ(n));\n}\n";
+const { ok, err } = harness(1);
+const vec = vecBy("");
 const nats = (n: number): string => n === 0 ? "Zero()" : `Succ(${nats(n - 1)})`;
-
-const ok = (source: string): CheckResult => {
-  const r = check(source, 1);
-  if (r.error) assert.fail(`unexpected error at ${r.error.span.start} (${JSON.stringify(source.slice(r.error.span.start, r.error.span.end))}): ${r.error.message()}`);
-  return r;
-};
-
-const err = (source: string, at: string, pattern: RegExp, after = ""): string => {
-  const r = check(source, 1);
-  if (!r.error) return assert.fail("expected an error");
-  const start = source.indexOf(at, after ? source.indexOf(after) : 0);
-  assert.ok(start >= 0, `${at} is not in the source`);
-  const message = r.error.message();
-  assert.equal(source.slice(r.error.span.start, r.error.span.end), at, message);
-  assert.equal(r.error.span.start, start, message);
-  assert.match(message, pattern);
-  assert.doesNotMatch(message, /internal|undefined|\[object/);
-  return message;
-};
 
 const offset = (source: string, needle: string, delta = 0): number => {
   const i = source.indexOf(needle);
@@ -64,9 +43,8 @@ mutual {
 `;
 
 test("every tests/design_*.pledge checks with no error", () => {
-  const files = readdirSync(testsDir).filter(f => f.startsWith("design_") && f.endsWith(".pledge"));
-  assert.ok(files.length >= 10);
-  for (const f of files) ok(file(f));
+    assert.ok(files("design_").length >= 10);
+  for (const f of files("design_")) ok(file(f));
 });
 
 test("print shows the value of ack(2, 1)", () => {
@@ -105,13 +83,13 @@ test("names: no shadowing, no keyword, one namespace", () => {
 test("type errors at the argument and at a tuple let binder's is clause", () => {
   err(`${nat}${vec}let v = VCons(Nat(), Zero(), Nat(), VNil(Nat()));\n`, "Nat()", /`head` must have type Nat\(\), and this has type Type\(\)/, "Zero(), Nat()");
   err(`${nat}let n = Zero();\nlet y is Succ(n) = n;\n`, "n", /`y` must be Succ\(Zero\(\)\), and this is Zero\(\)/, "= n;");
-  err(`${nat}fn f(n : Nat()) -> (r : Nat()) { n }\nprint f((Zero(), Zero()));\n`, "(Zero(), Zero())", /1 value expected here/);
+  err(`${nat}fn f(n : Nat()) -> (r : Nat()) { n }\nprint f((Zero(), Zero()));\n`, "(Zero(), Zero())", /1 value is expected here, and this tuple has 2 elements/);
 });
 
 test("matching: refuted branches, missing branches, survivors and scrutinees", () => {
   const vfn = (body: string) => `${nat}${vec}fn f(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (r : Nat()) {\n  ${body}\n}\n`;
   const refuted = err(vfn("match v : (r : Nat()) { VNil(_) => Zero(); VCons(_, _, _, _) => Zero(); }"), "VNil(_)", /VNil is refuted here/);
-  assert.match(refuted, /Succ and Zero are different heads/);
+  assert.match(refuted.derivation?.().at(-1)?.text ?? "", /Succ and Zero are different heads/);
   err(vfn("match n : (r : Nat()) { Zero() => Zero(); }"), "match n : (r : Nat()) { Zero() => Zero(); }", /no branch for Succ/);
   err(vfn("let Succ(m) = n;\n  m"), "Succ(m)", /Zero is not refuted/);
   err(vfn("match A : (r : Nat()) {}"), "A", /Type\(\) cannot be the scrutinee/, "match A");
@@ -386,7 +364,7 @@ const isZero = "data IsZero(n : Nat()) : Type() {\n  IsZeroHere() : IsZero(Zero(
 test("a pattern let's facts and fields survive its block; only its names end there (§7, §10)", () => {
   const source = `${nat}${vec}fn h(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (r : Vec(A, n)) {\n  let (t : Vec(A, n)) = { let VCons(_, _, _, r) = v; r };\n  inspect;\n  t\n}\n`;
   assert.deepEqual(scopeOf(ok(source).inspects[0]!.info), [
-    "A : Type()", "n : Nat()", "v : Vec(A, Succ(n)) is VCons(A, n, ?VCons.head@10:43, t)",
+    "A : Type()", "n : Nat()", "v : Vec(A, Succ(n)) is VCons(A, n, ?VCons.head@11:43, t)",
     "?VCons.A : Type() is A", "?VCons.n : Nat() is n", "?VCons.head : A", "t : Vec(A, n)",
   ]);
   err(source.replace("  t\n}", "  r\n}"), "r", /r is not in scope/, "  r\n}");
