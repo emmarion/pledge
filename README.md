@@ -6,7 +6,8 @@ A language for teaching restricted dependent types, loosely based on
 [SOUNDNESS.md](SOUNDNESS.md) argues that it is sound.
 
 The implementation is TypeScript with no dependencies beyond the
-compiler. To run it locally:
+compiler. `./run.sh` pulls, builds, serves on port 8765 (or the port
+given as its argument) and, on a Mac, opens the page. By hand:
 
 ```sh
 npm install
