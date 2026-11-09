@@ -23,7 +23,24 @@ D35. For D16's "may": DESIGN.md says "is allowed to" for permission and
 
 ## Approved rules awaiting wording
 
-None at present.
+D53. A program that does not parse is checked up to the declaration or
+     statement that fails to parse. Its error is the first in text
+     order: an error in checking what parsed, and otherwise the syntax
+     error.
+D54. The interface's report on the `qed` tells a `qed` that checking
+     did not reach from one that does not check. Whether the text has
+     a `qed`, and whether it has a `goal`, is read off the text, as the
+     presence of `sorry` is, so the report stands when the text does
+     not parse.
+D55. At a position inside a declaration, Scope lists the entries
+     created in that declaration; top-level bindings are listed under
+     Globals. At a top-level position Scope lists the top-level
+     entries. An entry with no name is listed only when the type or
+     `is` rule of a listed entry, or an Expected entry, mentions it.
+D56. A refutation's derivation lists the failing equation, the
+     equations it descends from, and the equation that gave each rule
+     a listed equation was rewritten by, when the same forcing gave
+     that rule.
 
 ## Proposals, not approved
 

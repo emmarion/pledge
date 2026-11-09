@@ -66,7 +66,10 @@ and never renumbered (rule 15); a removed item leaves a gap.
 11. **`_` as an erased argument** (§16) is accepted only as a whole
     argument of a call or application in an expression, in phase 2;
     not inside a skeleton term such as `Vec(_, n)`, and not as a tuple
-    element.
+    element. Under phase 1, a `_` argument, and a syntax error on the
+    token after a name spelled `erased` or `many`, are reported as
+    phase 2 syntax; the second can mislead where the name is an
+    ordinary one.
 12. **Lexing.** A maximal run of letters, digits and `_` is one token;
     one not starting with a letter, other than `_` alone, is an error
     rather than being split. Any non-ASCII character is an error, in a
@@ -99,10 +102,12 @@ and never renumbered (rule 15); a removed item leaves a gap.
     its rule at once, so the shortest sequence rewrites each entry the
     term reaches once, outer entries first. If a step is meant to
     rewrite one occurrence, the count would differ.
-19. **Refutation derivations** (§13) are the chain of equations from
-    an initial equation of forcing to the first failing one, equations
-    being processed first in, first out, the scrutinee's before the
-    type's. That this has the fewest steps is presumed, not proved.
+19. **Refutation derivations** (§13). Forcing processes its equations
+    first in, first out, the scrutinee's before the type's, and a
+    derivation numbers its lines in that order. That a derivation has
+    the fewest steps is presumed, not proved. A line does not list a
+    rewrite by the anonymous entry of an application written in place,
+    or of a `_` already solved.
 20. **Anonymous entries** render as `?kind@line:col`, with the kind the
     checker gives the entry's origin, and as `?kind@boxN:line:col` on a
     tutorial page, where the interface supplies the position format;
@@ -125,24 +130,35 @@ and never renumbered (rule 15); a removed item leaves a gap.
     of the editor aligned with the line where the statement starts; an
     `inspect;` there is a closed disclosure that opens the §13 panels,
     a liberal reading of "as text".
-24. **Clicking a term** in the source explains the term at that offset
-    (§13); a name in a panel moves the caret to the entry's origin and
-    explains the term there, since a panel has no source offset.
+24. **The term at the caret** (§13) is explained in a panel of its
+    own, Term, which follows the caret as the other panels do; clicking
+    a term is one way of putting the caret on it. A name in a panel
+    moves the caret to the entry's origin, since a panel has no source
+    offset. The interactive mode's field is a panel too, At the caret;
+    its answer is recomputed when the caret moves, when the program is
+    rechecked and as the learner types in the field.
 25. **The learner's text** and the chosen phase are kept in
-    `localStorage`, with a button to restore the starting text;
-    checking runs shortly after the last edit, and the panels follow
-    the caret without rechecking.
+    `localStorage`, with a button to restore the starting text, which
+    asks before it replaces text that was changed; checking runs
+    shortly after the last edit, and the panels follow the caret
+    without rechecking.
 43. **Syntax highlighting** lexes each box under the page's phase, so
     `erased` is coloured as a name in phase 1 and a keyword in phase 2.
-    Names are coloured by what the last check's Globals say they are
-    (type constructor, value constructor, function); locals and
-    top-level bindings keep the text colour. When a program does not
-    parse, the previous colouring is kept rather than flickering off.
+    A name is coloured by what the checker says that occurrence refers
+    to (type constructor, value constructor, function); locals and
+    top-level bindings keep the text colour. Where the checker gives no
+    answer, in text after the first error or while an edit awaits its
+    check, a name keeps the colour it last resolved to rather than
+    flickering off; printed values are coloured from the same memory.
 44. **Beside the editor**, an output wraps onto free lines below its
     own and otherwise ends in an ellipsis, opening in full on hover or
-    focus. On a narrow screen the outputs are listed below the box
-    instead, each with its line number. Hovering a name shows its
-    entry's type and `is` rule, or a global's signature.
+    focus. In a window narrower than 1200 pixels the outputs are listed
+    below the box instead, each with its line number. Hovering a name
+    shows what the checker says that occurrence refers to: an entry's
+    type and `is` rule, where the name is used and where it is bound,
+    or the signature of a function, type constructor or value
+    constructor. A binding occurrence is described in the scope after
+    its whole `let`, pattern or telescope binder.
 62. **An error from a refuted value constructor** carries the
     derivation of the refutation (§13) apart from its message; the
     status line lists it under the message, and beside the statement
@@ -151,12 +167,28 @@ and never renumbered (rule 15); a removed item leaves a gap.
     link (item 61); a message writes every name and term of the program
     that way. A message about a result that does not fit what its
     position is given names the binder with its role and owner, as in
-    "parameter `v` of `vhead`".
+    "parameter `v` of `vhead`", and so does a message about an erased
+    value where none is allowed; a `qed`'s position is called "the
+    goal's proof".
 63. **A tainted scope** is reported in the Scope panel by one line
     above the entries, linking to the scrutinee whose taint reached
     the position first, the outermost when several did. A tainted name
     carries a `tainted` tag after it, in the panel and in the hover
     tip.
+65. **Layout.** The widths at which the layout changes are chosen so
+    that no box cuts a line of the tutorial's 72 columns. From 1440
+    pixels the list of pages is a column of its own, and below that a
+    closed disclosure above the page. Below 1200 the outputs go under
+    their box and the panels' column narrows, and it narrows again
+    below 1010. Below 955 the panels go under the boxes. On a page
+    with several boxes each box shows its number, since positions cite
+    boxes by number.
+68. **Without JavaScript**, each page shows a description of itself and
+    links, from a `<noscript>` block, and carries a description for
+    link previews. The front page's block repeats the starting example,
+    which a test compares with the example the page loads; with
+    JavaScript the front page opens with a sentence saying what it is
+    and pointing to the tutorial.
 
 ## Tutorial
 
@@ -180,8 +212,8 @@ and never renumbered (rule 15); a removed item leaves a gap.
     expressed; the owner may intend another idiom.
 29. **Names.** `Bool`'s value constructors are `True` and `False`, and
     the empty type on a later page is also `False`; they never share a
-    program. The closing page's solution uses `sorry` deliberately, so
-    its goal stays unproved.
+    program. The solution of the page "Why Pledge appears sound" uses
+    `sorry` deliberately, so its goal stays unproved.
 59. **The arithmetic pages** state everything relationally: `Plus(m,
     n, r)` as on the proof-by-recursion page, and `Times(m, n, r)`
     with recursion on the first argument, `TimesSucc` needing
@@ -189,22 +221,35 @@ and never renumbered (rule 15); a removed item leaves a gap.
     Existential witnesses are extra returns. Distributivity is proved
     through an `exchange` lemma, (w + y) + (x + z) = (w + x) + (y + z),
     whose `let`s give each proof's type, mentioning the witnesses bound
-    before it in the same `let`. The shown proofs sit in the learner's box with
-    one branch missing, since a function cannot be split between a
-    read-only box and the learner's box.
+    before it in the same `let`. The shown proofs sit in the learner's box,
+    with `sorry(_)` in the branches the learner is to write, since a
+    function cannot be split between a read-only box and the learner's
+    box.
 60. **The phase 2 pages** erase, in the example types, `VNil`'s and
     `VCons`'s `A`, `VCons`'s `n` and both fields of `Refl`, as the
     phase 2 example programs under `tests/` do; §16 does not say which
     fields should be erased. Where their prose describes behaviour
     DESIGN.md is silent on, it says "in this implementation".
 64. **Sections.** The tutorial's pages are grouped under headings in
-    the list of pages (Basics, Proofs, Erasure, Fine points), each page
-    shows its section above its title, and a page checked under a later
-    phase carries a tag saying so in the list; §12 says nothing about
-    how pages are arranged.
+    the list of pages, each page shows its section above its title, a
+    page checked under a later phase carries a tag saying so in the
+    list, and the appendix's heading is marked optional; §12 says
+    nothing about how pages are arranged.
+66. **A page's task and the glossary.** A tutorial page shows its task
+    in a block of its own, and offers a glossary of the terms the
+    tutorial defines, each with the page that defines it. The
+    glossary's definitions are a session's paraphrases of DESIGN.md.
+67. **The closing page**, "What Pledge leaves out", compares Pledge
+    with Agda. Its Agda code is an abridgement of `tests/Beyond.agda`,
+    which a session compiled with Agda 2.6.3; the tests check that the
+    page's lines occur in that file, not that the file compiles. What
+    the page says of Lean and Idris is a session's understanding.
 61. **Citations in the tutorial's prose**, of a section (§) or of
     DESIGN.md or SOUNDNESS.md, link to the file on the `main` branch
     of the repository on GitHub, a section by its heading's anchor.
+    Each page lists the sections its claims rest on in a line under its
+    task; the main path's prose cites none inline, and the appendix's
+    does.
 
 ## Checking
 
@@ -229,22 +274,25 @@ and never renumbered (rule 15); a removed item leaves a gap.
 38. **The first error** is the first the checker meets in its own order,
     not the first in text order: a group's telescopes before its
     bodies, and a match's patterns before its branch bodies.
-39. **`qedChecks`** is false, not null, when checking stops before the
-    `qed`. **`containsSorry`** is read off the tokens, even when the
-    program does not parse. A `qed`'s expression is evaluated as any
-    top-level statement, its value discarded; `qed sorry(_);` is
-    allowed (§14).
+39. **What the status reads off the text.** Whether the program
+    contains `sorry`, `qed` or `goal` is read off the tokens, so it
+    stands when the program does not parse; a keyword after a lexical
+    error is not seen, since the lexer stops there. A `qed`'s
+    expression is evaluated as any top-level statement, its value
+    discarded; `qed sorry(_);` is allowed (§14).
 40. **An exception from the evaluator**, such as running out of
     memory on a deep recursion, is reported as the program's error at
     the statement being evaluated.
 41. **§13 snapshots.** Information is recorded at every expression,
     statement, binder and declaration, and `infoAt` answers from the
-    smallest recorded span containing the position. The Scope panel
-    lists every entry in scope, top-level ones included, but not
-    anonymous application entries; refutations are shown at the
-    `match` or pattern `let` itself. Anonymous entries are labelled by
-    origin: `app`, `param`, `binder`, `f.r` for return `r` of a call to
-    `f`, `match.r`, `sorry.r` and `C.f` for a forced field.
+    smallest recorded span containing the position. Refutations are
+    shown at the `match` or pattern `let` itself. For what Scope lists,
+    a `mutual` block is one declaration and so is a function goal, and
+    a position in the text after a syntax error has the top-level
+    scope that follows the last item checked. Anonymous entries are
+    labelled by origin: `app`, `param`, `binder`, `f.r` for return `r`
+    of a call to `f`, `match.r`, `sorry.r` and `C.f` for a forced
+    field.
 42. **Within a group**, bodies are re-checked until no further function
     becomes tainted, and the §13 information is kept from the final
     pass only.
@@ -295,10 +343,9 @@ and never renumbered (rule 15); a removed item leaves a gap.
     application the block is an argument of, as a direct argument
     does; the block's statements and a match branch's body do not.
 53. **Scope and Expected panels** mark an entry erased when it was
-    opened erased or every one of its names was bound erased; `_`
-    entries are hidden like anonymous application entries. Interactive
-    mode checks typed text as in an erased position, since it never
-    evaluates.
+    opened erased or every one of its names was bound erased.
+    Interactive mode checks typed text as in an erased position, since
+    it never evaluates.
 
 ## Function goals (§12)
 
@@ -310,7 +357,7 @@ and never renumbered (rule 15); a removed item leaves a gap.
     evaluated at such a `qed`.
 56. **Comparing telescopes at `qed f;`** (§12) happens in
     the scope at the `qed`, so facts in force there count. A mismatch is
-    an error at the name, so `qedChecks` stays false, and the message
+    an error at the name, so the `qed` does not check, and the message
     names the first position that differs.
 57. **Taint.** The goal is tainted as a telescope is; the function's
     taint is its body's (§12), so a function whose own telescopes
