@@ -1,4 +1,5 @@
-import type { Ann, Arg, WrittenBinder, Branch, Ctor, Data, Expr, Fn, Header, Id, LetBinder, Mult, Param, Pattern, Phase, Program, Span, Stmt, Tele, WrittenTerm, Top, TypedParam } from "./syntax.ts";
+import type { Ann, Arg, WrittenBinder, Branch, Ctor, Data, Expr, Fn, Header, Id, LetBinder, Mult, Param, Pattern,
+  Phase, Program, Span, Stmt, Tele, WrittenTerm, Top, TypedParam } from "./syntax.ts";
 import type { Diagnostic } from "./api.ts";
 import { lex, type Token } from "./lexer.ts";
 import { attempt, fail } from "./context.ts";
@@ -78,8 +79,10 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
     const token = peek();
     return token.kind === "name" ? (next(), { name: token.text, span: token.span }) : syntaxError("a name");
   };
-  const id = (): Id => (peek().kind === "underscore" ? { name: null, span: next().span } : peek().kind === "name" ? name() : syntaxError("a name or `_`"));
-  const isMult = (token: Token): boolean => token.kind === "keyword" && (token.text === "erased" || token.text === "many");
+  const id = (): Id => (peek().kind === "underscore" ? { name: null, span: next().span } : peek().kind === "name"
+    ? name() : syntaxError("a name or `_`"));
+  const isMult = (token: Token): boolean => token.kind === "keyword"
+    && (token.text === "erased" || token.text === "many");
   const mult = (): Mult | null => (isMult(peek()) ? (next().text as Mult) : null);
 
   const term = (): WrittenTerm => {
@@ -104,7 +107,8 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
   };
   const binder = binderWith(true);
   const tele = (): WrittenBinder[] => parens(binder, true);
-  const isUnderscoreTele = (): boolean => peek().kind === "underscore" && !isText(peek(1), ":") && !isText(peek(1), "is");
+  const isUnderscoreTele = (): boolean => peek().kind === "underscore" && !isText(peek(1), ":")
+    && !isText(peek(1), "is");
 
   const param = (): Param => {
     const begin = start();
@@ -131,7 +135,8 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
     const token = peek();
     if (token.kind === "name") {
       const head = name();
-      return at("(") ? { kind: "app", head, args: parens(arg, false), span: spanFrom(begin) } : { kind: "var", name: head, span: head.span };
+      return at("(") ? { kind: "app", head, args: parens(arg, false), span: spanFrom(begin) }
+        : { kind: "var", name: head, span: head.span };
     }
     if (at("(")) return { kind: "tuple", elems: parens(expr, true), span: spanFrom(begin) };
     if (at("{")) return block();
@@ -238,10 +243,12 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
     braces((): void => {
       if (at("data") && fns.length === 0) datas.push(data());
       else if (at("fn") && datas.length === 0) fns.push(fn());
-      else if (at("data") || at("fn")) fail(peek().span, () => "a `mutual` block holds either `data` declarations or functions, not both");
+      else if (at("data") || at("fn")) fail(peek().span, () =>
+        "a `mutual` block holds either `data` declarations or functions, not both");
       else syntaxError("`data` or `fn`");
     });
-    if (datas.length === 0 && fns.length === 0) fail(tokens[pos - 1]!.span, () => "a `mutual` block declares at least one `data` declaration or function");
+    if (datas.length === 0 && fns.length === 0) fail(tokens[pos - 1]!.span, () =>
+      "a `mutual` block declares at least one `data` declaration or function");
     return declaration({ kind: "mutual", decls: datas.length > 0 ? datas : fns, span: spanFrom(begin) });
   };
 

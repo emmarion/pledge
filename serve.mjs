@@ -1,7 +1,8 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
-const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".map": "application/json", ".pledge": "text/plain", ".json": "application/json" };
+const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".map": "application/json",
+  ".pledge": "text/plain", ".json": "application/json" };
 const port = Number(process.argv[2] ?? 8000);
 createServer(async (req, res) => {
   const path = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname));

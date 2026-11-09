@@ -13,7 +13,8 @@ import { goalGiven, qedFn, rejectFn } from "./goal.ts";
 import type { Goal } from "./goal.ts";
 import { info, queries } from "./info.ts";
 
-const nothing: PositionInfo = { expected: { entries: null }, termination: null, scope: [], refutations: null, globals: [] };
+const nothing: PositionInfo = { expected: { entries: null }, termination: null, scope: [], refutations: null,
+  globals: [] };
 
 function run<T>(span: Span, f: () => T): T {
   try {
@@ -51,8 +52,10 @@ export const check: Check = (source, phase, where = position(source)) => {
       here(d.span);
       newName(ctx, top, d.name, new Set());
       const name = d.name.name ?? "_";
-      const params = telescope(ctx, top, d.params.map(p => ({ name: p.name, ann: { kind: "type" as const, term: p.type }, mult: null, span: p.span })), "binder").tele;
-      const g: Global & { kind: "type" } = { kind: "type", name, sig: { head: { kind: "type", name }, params, ret: TYPE }, ctors: [], done: false };
+      const params = telescope(ctx, top, d.params.map(p => ({ name: p.name,
+        ann: { kind: "type" as const, term: p.type }, mult: null, span: p.span })), "binder").tele;
+      const g: Global & { kind: "type" } = { kind: "type", name,
+        sig: { head: { kind: "type", name }, params, ret: TYPE }, ctors: [], done: false };
       top = { ...top, scope: declare(top.scope, g.sig) };
       declareGlobal(st, g);
       return g;
@@ -65,9 +68,11 @@ export const check: Check = (source, phase, where = position(source)) => {
         const name = c.name.name ?? "_";
         const fields = telescope(ctx, top, c.fields, "binder");
         if (c.ret.head.name !== owner.name || c.ret.args === null)
-          fail(c.ret.span, () => `${name} returns ${owner.name} applied to one argument per parameter of ${owner.name} (§5)`);
+          fail(c.ret.span, () =>
+            `${name} returns ${owner.name} applied to one argument per parameter of ${owner.name} (§5)`);
         const ret = term(ctx, fields.local, c.ret);
-        const sig = { head: { kind: "ctor" as const, name }, params: fields.tele, ret: abstract(ret.local.scope, ref(ret.id), fields.ids) };
+        const sig = { head: { kind: "ctor" as const, name }, params: fields.tele,
+          ret: abstract(ret.local.scope, ref(ret.id), fields.ids) };
         top = { ...top, scope: declare(top.scope, sig) };
         declareGlobal(st, { kind: "ctor", name, sig });
         owner.ctors?.push(name);
@@ -86,12 +91,14 @@ export const check: Check = (source, phase, where = position(source)) => {
     });
     const heads = group.map((f, i) => {
       const name = names[i]!;
-      const fn: FnCtx = { name, group: names, subterms: [], info: { fn: name, subtermParams: f.params.filter(p => p.subterm).map(p => p.name.name ?? "_"), group: names } };
+      const fn: FnCtx = { name, group: names, subterms: [],
+        info: { fn: name, subtermParams: f.params.filter(p => p.subterm).map(p => p.name.name ?? "_"), group: names } };
       const c: Ctx = { ...ctx, fn };
       record(c, top, f.span, null);
       const { params, returns } = header(c, { ...top, allTainted: false }, f);
       fn.subterms.push(...params.ids.filter((_, j) => f.params[j]!.subterm));
-      const sig: FnSig = { params: params.tele, returns: returns.tele, subterm: f.params.map(p => p.subterm), tainted: false };
+      const sig: FnSig = { params: params.tele, returns: returns.tele, subterm: f.params.map(p => p.subterm),
+        tainted: false };
       globals[i]!.sig = sig;
       return { f, c, sig, local: params.local, env: params.ids.map(ref) };
     });
@@ -104,7 +111,8 @@ export const check: Check = (source, phase, where = position(source)) => {
       if (!now.some((t, i) => t && !heads[i]!.sig.tainted)) {
         heads.forEach((h, i) => {
           const tree = bodies[i]!.tree;
-          fns.set(names[i]!, { fn: { ...h.f, body: tree.kind === "block" ? tree : { kind: "block", stmts: [], final: tree, span: tree.span } }, globals: env });
+          fns.set(names[i]!, { fn: { ...h.f, body: tree.kind === "block" ? tree
+            : { kind: "block", stmts: [], final: tree, span: tree.span } }, globals: env });
         });
         return;
       }
@@ -136,11 +144,13 @@ export const check: Check = (source, phase, where = position(source)) => {
           if (t.kind !== "patlet") return;
           const v = ran.value = evaluated(t.rhs.span, tree, tainted);
           if (v && v.head !== t.pat.ctor.name)
-            fail(t.rhs.span, () => `this evaluates to ${showValue(v)}, which is not headed by ${t.pat.ctor.name} (§11)`);
+            fail(t.rhs.span, () =>
+              `this evaluates to ${showValue(v)}, which is not headed by ${t.pat.ctor.name} (§11)`);
         });
         for (const b of o.bound) declareGlobal(st, { kind: "binding", ...b });
         const v = ran.value;
-        if (!o.local.allTainted) env = t.kind === "patlet" && v ? bindPattern(env, t.pat, v) : run(t.span, () => evalStmt(fns, env, o.tree));
+        if (!o.local.allTainted) env = t.kind === "patlet" && v ? bindPattern(env, t.pat, v)
+          : run(t.span, () => evalStmt(fns, env, o.tree));
         top = o.local;
         return;
       }
@@ -157,7 +167,8 @@ export const check: Check = (source, phase, where = position(source)) => {
         if (goal) fail(t.span, () => "a program has at most one `goal` (§12)");
         if ("params" in t.type) {
           const { params, returns } = header(ctx, top, t.type);
-          goal = { type: { params: params.tele, returns: returns.tele }, tainted: params.tainted || returns.tainted || top.allTainted, span: t.span };
+          goal = { type: { params: params.tele, returns: returns.tele }, tainted: params.tainted || returns.tainted
+            || top.allTainted, span: t.span };
           return;
         }
         const g = annotate(ctx, top, { kind: "type", term: t.type });
@@ -170,7 +181,8 @@ export const check: Check = (source, phase, where = position(source)) => {
         if (qedSeen) fail(t.span, () => "a program has at most one `qed` (§12)");
         qedSeen = true;
         if (!goal) return fail(t.span, () => "`qed` comes after `goal`, and no `goal` is set before this `qed` (§12)");
-        const tainted = "params" in goal.type ? qedFn(ctx, top, goal.type, t.expr, goalGiven(goal)) : qedExpr(t.expr, goalGiven(goal), t.span);
+        const tainted = "params" in goal.type ? qedFn(ctx, top, goal.type, t.expr, goalGiven(goal))
+          : qedExpr(t.expr, goalGiven(goal), t.span);
         qedChecks = true;
         proved = !tainted && !top.allTainted && !goal.tainted;
         return;
@@ -189,7 +201,8 @@ export const check: Check = (source, phase, where = position(source)) => {
     gap(source.length);
   })?.error ?? null;
   const fallback = (offset: number): Snapshot =>
-    gaps.filter(g => g.span.start <= offset).at(-1) ?? gaps[0] ?? record({ ...ctx, st: { ...st, record: false } }, top, { start: 0, end: 0 }, null);
+    gaps.filter(g => g.span.start <= offset).at(-1) ?? gaps[0]
+      ?? record({ ...ctx, st: { ...st, record: false } }, top, { start: 0, end: 0 }, null);
   return {
     phase, error, qedChecks, prints, containsSorry,
     goalProved: tops.some(t => t.kind === "goal") ? error === null && proved : null,

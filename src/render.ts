@@ -39,9 +39,11 @@ export function render(scope: Scope, t: OpenTerm, opts: RenderOptions = {}): Ren
 }
 
 export const renderBinder = (scope: Scope, b: Binder, bound: readonly (string | null)[], canonical = true): Rendered =>
-  cat(b.mult === "erased" ? "erased " : "", b.name ?? "_", b.is ? " is " : " : ", render(scope, b.is ?? b.type, { canonical, bound }));
+  cat(b.mult === "erased" ? "erased " : "", b.name ?? "_", b.is ? " is " : " : ",
+    render(scope, b.is ?? b.type, { canonical, bound }));
 
-export function renderTelescope(scope: Scope, tele: Telescope, outer: readonly (string | null)[] = [], canonical = true): Rendered {
+export function renderTelescope(scope: Scope, tele: Telescope, outer: readonly (string | null)[] = [],
+    canonical = true): Rendered {
   const bound = [...outer, ...tele.map(b => b.name)];
   return cat("(", ...join(tele.map(b => renderBinder(scope, b, bound, canonical)), ", "), ")");
 }
@@ -58,5 +60,6 @@ export function entryInfo(scope: Scope, id: EntryId, canonical = true): EntryInf
 
 export function explain(scope: Scope, t: Term): { canonical: Rendered; rewrites: Rewrite[] } {
   const raw = (u: Term) => render(scope, u, { canonical: false });
-  return { canonical: render(scope, t), rewrites: rewrites(scope, t).map(s => ({ from: raw(s.from), to: raw(s.to), by: s.by, at: s.at })) };
+  return { canonical: render(scope, t), rewrites: rewrites(scope, t).map(s =>
+    ({ from: raw(s.from), to: raw(s.to), by: s.by, at: s.at })) };
 }

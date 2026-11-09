@@ -60,11 +60,13 @@ export const bound = (index: number): Bound => ({ tag: "bound", index });
 export const app = <B = never>(head: Head, ...args: Term<B>[]): App<B> => ({ tag: "app", head, args });
 export const TYPE: App = app({ kind: "type", name: "Type" });
 
-export const declare = (scope: Scope, sig: Signature): Scope => ({ ...scope, sigs: pset(scope.sigs, sig.head.name, sig) });
+export const declare = (scope: Scope, sig: Signature): Scope =>
+  ({ ...scope, sigs: pset(scope.sigs, sig.head.name, sig) });
 export const signature = (scope: Scope, name: string): Signature | undefined => pget(scope.sigs, name);
 
 export const emptyScope = (where: (offset: number) => string): Scope =>
-  declare({ where, supply: { next: 0 }, table: null, names: null, sigs: null, order: null }, { head: TYPE.head, params: [], ret: TYPE });
+  declare({ where, supply: { next: 0 }, table: null, names: null, sigs: null, order: null },
+    { head: TYPE.head, params: [], ret: TYPE });
 
 export function entry(scope: Scope, id: EntryId): Entry {
   const e = pget(scope.table, id);
@@ -100,7 +102,8 @@ export function withName(scope: Scope, id: EntryId, name: string): Scope {
 }
 
 export const forget = (inner: Scope, outer: Scope, named: readonly { name: string; id: EntryId }[]): Scope =>
-  named.reduce((s, { name, id }) => put(s, { ...entry(s, id), names: entry(s, id).names.filter(n => n !== name) }), { ...inner, names: outer.names });
+  named.reduce((s, { name, id }) => put(s, { ...entry(s, id), names: entry(s, id).names.filter(n => n !== name) }),
+    { ...inner, names: outer.names });
 
 export const mark = (scope: Scope, id: EntryId, flags: { erased?: boolean; tainted?: boolean }): Scope =>
   put(scope, { ...entry(scope, id), ...flags });

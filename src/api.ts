@@ -17,7 +17,13 @@ export interface EntryInfo {
   tainted: boolean;
 }
 
-export interface ExpectedEntry { name: string | null; type: Rendered | null; rule: Rendered | null; undetermined: boolean; erased: boolean }
+export interface ExpectedEntry {
+  name: string | null;
+  type: Rendered | null;
+  rule: Rendered | null;
+  undetermined: boolean;
+  erased: boolean;
+}
 
 export interface ExpectedInfo {
   entries: ExpectedEntry[] | null;
@@ -36,7 +42,12 @@ export interface RefutationInfo {
   derivation: () => Rendered[];
 }
 
-export interface GlobalInfo { kind: "fn" | "type" | "binding"; name: string; signature: Rendered; ctors?: { name: string; signature: Rendered }[] }
+export interface GlobalInfo {
+  kind: "fn" | "type" | "binding";
+  name: string;
+  signature: Rendered;
+  ctors?: { name: string; signature: Rendered }[];
+}
 
 export interface PositionInfo {
   expected: ExpectedInfo;
@@ -60,7 +71,9 @@ export interface CheckResult {
 
   explainAt(offset: number): { canonical: Rendered; rewrites: Rewrite[] } | null;
 
-  evalAt(offset: number, text: string): { type: Rendered; canonicalType: Rendered; rule: Rendered | null; canonicalRule: Rendered | null } | { error: Diagnostic };
+  evalAt(offset: number, text: string):
+    | { type: Rendered; canonicalType: Rendered; rule: Rendered | null; canonicalRule: Rendered | null }
+    | { error: Diagnostic };
 }
 
 export type Check = (source: string, phase: Phase, where?: (offset: number) => string) => CheckResult;

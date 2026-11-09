@@ -35,7 +35,8 @@ export interface Given { wants: readonly Want[]; env: readonly Ref[]; whole: boo
 export interface Local { scope: Scope; tainted: ReadonlySet<string>; erased: ReadonlySet<string>; allTainted: boolean }
 export interface Result { id: EntryId; tainted: boolean; erased: boolean }
 
-export const isTainted = (e: Entry, tainted: ReadonlySet<string>): boolean => e.tainted || e.names.some(n => tainted.has(n));
+export const isTainted = (e: Entry, tainted: ReadonlySet<string>): boolean => e.tainted
+  || e.names.some(n => tainted.has(n));
 
 export interface FnCtx { name: string; group: readonly string[]; subterms: EntryId[]; info: TerminationInfo }
 
@@ -61,7 +62,14 @@ export interface State {
 }
 
 export interface Hole { id: EntryId; span: Span; is: Term | null; from: number }
-export interface Ctx { st: State; fn: FnCtx | null; skeleton: boolean; limit: number | null; erased: boolean; holes: Hole[] }
+export interface Ctx {
+  st: State;
+  fn: FnCtx | null;
+  skeleton: boolean;
+  limit: number | null;
+  erased: boolean;
+  holes: Hole[];
+}
 
 export const APP = "app";
 export const HOLE = "_";
@@ -79,7 +87,8 @@ export function declareGlobal(st: State, g: Global): void {
 }
 
 export const describe = (g: Global): string =>
-  g.kind === "fn" ? "a function" : g.kind === "type" ? "a type constructor" : g.kind === "ctor" ? "a value constructor" : "a value";
+  g.kind === "fn" ? "a function" : g.kind === "type" ? "a type constructor" : g.kind === "ctor" ? "a value constructor"
+    : "a value";
 
 export function record(ctx: Ctx, local: Local, span: Span, given: Given | null, inspect = false): Snapshot {
   const snap: Snapshot = { span, local, given, fn: ctx.fn, refutations: null, limit: visible(ctx), inspect };
@@ -93,7 +102,8 @@ export function point(ctx: Ctx, scope: Scope, span: Span, term: Term): void {
 
 export const written = (scope: Scope, t: Term): Term => mapLeaves(t, u => {
   const e = entry(scope, u.id);
-  return e.rule && (e.origin.kind === APP || e.origin.kind === HOLE) && !e.names.length ? written(scope, e.rule.term) : u;
+  return e.rule && (e.origin.kind === APP || e.origin.kind === HOLE) && !e.names.length ? written(scope, e.rule.term)
+    : u;
 });
 
 export function newName(ctx: Ctx, local: Local, id: Id, seen: Set<string>): void {
@@ -108,6 +118,7 @@ export function newName(ctx: Ctx, local: Local, id: Id, seen: Set<string>): void
 export function innermost<T extends { span: Span }>(items: readonly T[], offset: number): T | undefined {
   let best: T | undefined;
   for (const x of items)
-    if (x.span.start <= offset && offset <= x.span.end && (!best || x.span.end - x.span.start <= best.span.end - best.span.start)) best = x;
+    if (x.span.start <= offset && offset <= x.span.end
+      && (!best || x.span.end - x.span.start <= best.span.end - best.span.start)) best = x;
   return best;
 }

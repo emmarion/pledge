@@ -9,7 +9,8 @@ export type Token =
   | { kind: "eof"; text: ""; span: Span }
   | { kind: "error"; text: ""; span: Span; diag: Diagnostic };
 
-const phase1Keywords = ["comptime", "data", "fn", "goal", "inspect", "is", "let", "match", "mutual", "print", "qed", "same", "sorry", "subterm"];
+const phase1Keywords = ["comptime", "data", "fn", "goal", "inspect", "is", "let", "match", "mutual", "print", "qed",
+  "same", "sorry", "subterm"];
 const phase2Keywords = ["erased", "many"];
 
 const keywords = (phase: Phase): Set<string> =>
@@ -34,7 +35,8 @@ export function lex(source: string, phase: Phase): Token[] {
     const code = source.codePointAt(i)!;
     if (code > 0x7f) {
       const char = String.fromCodePoint(code);
-      return error(i, i + new TextEncoder().encode(char).length, () => `non-ASCII character ${JSON.stringify(char)}; source text is ASCII`);
+      return error(i, i + new TextEncoder().encode(char).length, () =>
+        `non-ASCII character ${JSON.stringify(char)}; source text is ASCII`);
     }
     if (/\s/.test(c)) { i++; continue; }
     if (source.startsWith("--", i)) {
@@ -47,7 +49,8 @@ export function lex(source: string, phase: Phase): Token[] {
       const text = source.slice(start, i);
       const span = { start, end: i };
       if (text === "_") tokens.push({ kind: "underscore", text, span });
-      else if (!/^[A-Za-z]/.test(text)) return error(start, i, () => `${JSON.stringify(text)} is not a name: a name starts with a letter`);
+      else if (!/^[A-Za-z]/.test(text)) return error(start, i, () =>
+        `${JSON.stringify(text)} is not a name: a name starts with a letter`);
       else tokens.push({ kind: reserved.has(text) ? "keyword" : "name", text, span });
       continue;
     }

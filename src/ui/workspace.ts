@@ -5,14 +5,16 @@ import type { Phase, Span } from "../syntax.ts";
 import { lineCol } from "../position.ts";
 import { fill, h, load, save, type Child } from "./dom.ts";
 import { Editor, highlight, type NameKind } from "./editor.ts";
-import { entryTip, evalView, explainView, globalTip, infoView, inspectView, statusView, verdict, type Host } from "./panels.ts";
+import { entryTip, evalView, explainView, globalTip, infoView, inspectView, statusView, verdict,
+  type Host } from "./panels.ts";
 
 interface Box { text: string; key: string | null; holdsQed?: boolean }
 
 interface ProgramSpec { label: string; boxes: number[] }
 
 const nameKinds = (globals: GlobalInfo[]): Map<string, NameKind> => new Map<string, NameKind>([["Type", "type"],
-  ...globals.flatMap(g => g.kind === "binding" ? [] : [[g.name, g.kind] as const, ...(g.ctors ?? []).map(c => [c.name, "ctor"] as const)])]);
+  ...globals.flatMap(g => g.kind === "binding" ? [] : [[g.name, g.kind] as const,
+    ...(g.ctors ?? []).map(c => [c.name, "ctor"] as const)])]);
 
 class Program implements Host {
   result: CheckResult | null = null;
@@ -46,7 +48,8 @@ class Program implements Host {
   private within(index: number, span: Span): Span | null {
     const start = this.starts()[index]!;
     const length = this.editors[index]!.text.length;
-    return this.locate(span.start).index === index ? { start: span.start - start, end: Math.min(span.end - start, length) } : null;
+    return this.locate(span.start).index === index ? { start: span.start - start,
+      end: Math.min(span.end - start, length) } : null;
   }
 
   private place(offset: number, box: (n: number) => string, line: string): string {
@@ -78,7 +81,8 @@ class Program implements Host {
     if (!this.result || this.stale) return null;
     const entry = this.result.infoAt(offset).scope.find(e => e.names.includes(name));
     if (entry) return entryTip(entry, this.showErased);
-    const global = this.globals.flatMap(g => [g, ...(g.ctors ?? []).map(c => ({ ...c, kind: "value constructor" }))]).find(g => g.name === name);
+    const global = this.globals.flatMap(g => [g, ...(g.ctors ?? []).map(c =>
+      ({ ...c, kind: "value constructor" }))]).find(g => g.name === name);
     return global ? globalTip(global.kind, global.name, global.signature) : null;
   }
 
@@ -113,7 +117,8 @@ class Program implements Host {
     const outputs = [
       ...r.error ? [{ span: r.error.span, node: h("span", { class: "message bad", tabindex: "0" }, error) }] : [],
       ...r.prints.map(p => ({ span: p.span, node: h("code", { class: "message print", tabindex: "0" },
-        highlight(p.value, lex(p.value, phase), this.kinds).map(c => [c, /[(,]$/.test(typeof c === "string" ? c : c.textContent!) && h("wbr")])) })),
+        highlight(p.value, lex(p.value, phase), this.kinds).map(c => [c,
+          /[(,]$/.test(typeof c === "string" ? c : c.textContent!) && h("wbr")])) })),
       ...r.inspects.map(i => ({ span: i.span, node: inspectView(i.info, this) })),
     ];
     this.members.forEach((box, index) => {
@@ -125,7 +130,8 @@ class Program implements Host {
         return at ? [{ line: lineCol(editor.text, at.start).line, node }] : [];
       }), this.kinds);
     });
-    this.status = statusView(r, error, this.members.some(i => this.ws.boxes[i]!.holdsQed && !hasKeyword(this.ws.editors[i]!.text, phase, "qed")), this);
+    this.status = statusView(r, error, this.members.some(i => this.ws.boxes[i]!.holdsQed
+      && !hasKeyword(this.ws.editors[i]!.text, phase, "qed")), this);
   }
 }
 
@@ -136,16 +142,19 @@ export class Workspace {
   readonly explanation = h("div", { class: "explanation" });
   readonly evaluation = h("div", { class: "evaluation" });
   readonly tools: HTMLElement;
-  private readonly query = h("input", { type: "text", class: "query", spellcheck: "false", placeholder: "a type or an expression", "aria-label": "Type or expression" });
+  private readonly query = h("input", { type: "text", class: "query", spellcheck: "false",
+    placeholder: "a type or an expression", "aria-label": "Type or expression" });
   private readonly programs: Program[];
   private program: Program;
   private active: number;
   private timer = 0;
   globalsOpen = false;
 
-  constructor(readonly boxes: Box[], readonly phase: () => Phase, programs: ProgramSpec[] = [{ label: "", boxes: boxes.map((_, i) => i) }]) {
+  constructor(readonly boxes: Box[], readonly phase: () => Phase,
+      programs: ProgramSpec[] = [{ label: "", boxes: boxes.map((_, i) => i) }]) {
     this.programs = programs.map(p => new Program(this, p.label, p.boxes));
-    this.editors = boxes.map((box, i) => new Editor(box.key === null ? box.text : load(box.key) ?? box.text, box.key !== null, phase,
+    this.editors = boxes.map((box, i) => new Editor(box.key === null ? box.text : load(box.key) ?? box.text,
+      box.key !== null, phase,
       () => {
         if (box.key !== null) save(box.key, this.editors[i]!.text);
         const affected = this.programs.filter(p => p.members.includes(i));
@@ -158,9 +167,11 @@ export class Workspace {
     this.program = this.programs[0]!;
     this.active = this.program.members.at(-1)!;
     this.tools = h("div", { class: "tools" },
-      h("div", { class: "row" }, h("button", { type: "button", onclick: () => this.program.explain(this.caret()) }, "Explain the term at the caret")),
+      h("div", { class: "row" }, h("button", { type: "button", onclick: () => this.program.explain(this.caret()) },
+        "Explain the term at the caret")),
       this.explanation,
-      h("form", { class: "row", onsubmit: (e: Event) => { e.preventDefault(); this.program.evaluate(this.caret(), this.query.value); } },
+      h("form", { class: "row",
+        onsubmit: (e: Event) => { e.preventDefault(); this.program.evaluate(this.caret(), this.query.value); } },
         h("label", {}, "At the caret: ", this.query), h("button", { type: "submit" }, "Check")),
       this.evaluation);
   }
@@ -187,7 +198,8 @@ export class Workspace {
   }
 
   private refresh(): void {
-    fill(this.status, this.programs.length > 1 && h("span", { class: "describing" }, `Describing: ${this.program.label}`), this.program.status);
+    fill(this.status, this.programs.length > 1 && h("span", { class: "describing" },
+      `Describing: ${this.program.label}`), this.program.status);
     fill(this.panels, this.program.panels(this.caret()));
   }
 

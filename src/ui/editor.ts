@@ -42,7 +42,8 @@ const errorMarks = (text: string, { start, end }: Span): Decoration[] => {
   const runs = [...text.slice(start, end).matchAll(/\S(?:[^\n]*\S)?/g)]
     .map(m => ({ start: start + m.index, end: start + m.index + m[0].length, cls: "hl-error" }));
   const atBreak = start >= text.length || text[start] === "\n";
-  return [...atBreak ? [{ start, end: start, cls: "hl-error" }] : runs.length ? [] : [{ start, end: start + 1, cls: "hl-error" }], ...runs];
+  return [...atBreak ? [{ start, end: start, cls: "hl-error" }] : runs.length ? []
+    : [{ start, end: start + 1, cls: "hl-error" }], ...runs];
 };
 
 const partners = (tokens: Token[]): Map<Token, Token> => {
@@ -68,12 +69,15 @@ const segments = (text: string, decorations: Decoration[]): (HTMLElement | strin
     return cls ? h("span", { class: cls, "data-at": `${start}` }, content) : content;
   };
   return cuts.flatMap((start, i) => [
-    ...decorations.some(d => d.start === start && d.end === start) ? [span(start, d => d.start === start && d.end === start, " ")] : [],
-    ...i + 1 < cuts.length ? [span(start, d => d.start <= start && cuts[i + 1]! <= d.end, text.slice(start, cuts[i + 1]))] : [],
+    ...decorations.some(d => d.start === start && d.end === start)
+      ? [span(start, d => d.start === start && d.end === start, " ")] : [],
+    ...i + 1 < cuts.length ? [span(start, d => d.start <= start && cuts[i + 1]! <= d.end,
+      text.slice(start, cuts[i + 1]))] : [],
   ]);
 };
 
-export const highlight = (text: string, tokens: Token[], kinds: Map<string, NameKind>, extra: Decoration[] = []): (HTMLElement | string)[] =>
+export const highlight = (text: string, tokens: Token[], kinds: Map<string, NameKind>,
+  extra: Decoration[] = []): (HTMLElement | string)[] =>
   segments(text, [
     ...tokens.flatMap(t => {
       const cls = tokenClass(t, kinds);
@@ -108,13 +112,15 @@ export class Editor {
     });
     this.area.value = text;
     this.area.addEventListener("input", () => { this.show(null, null); onEdit(); });
-    for (const event of ["keyup", "click", "focus", "select"]) this.area.addEventListener(event, () => onCaret(event === "click"));
+    for (const event of ["keyup", "click", "focus", "select"]) this.area.addEventListener(event,
+      () => onCaret(event === "click"));
     for (const event of ["focus", "blur"]) this.area.addEventListener(event, () => this.paint());
     document.addEventListener("selectionchange", () => { if (document.activeElement === this.area) this.paint(); });
     this.area.addEventListener("scroll", () => this.scrolled());
     addEventListener("scroll", () => this.hover(null), true);
     this.area.addEventListener("mousemove", e => this.hover(e));
-    for (const event of ["mouseleave", "keydown", "mousedown"]) this.area.addEventListener(event, () => this.hover(null));
+    for (const event of ["mouseleave", "keydown", "mousedown"]) this.area.addEventListener(event,
+      () => this.hover(null));
     this.code.append(this.area);
     this.root = h("div", { class: editable ? "editor" : "editor readonly" }, this.gutter, this.code, this.outputs);
     this.show(null, []);
@@ -156,7 +162,8 @@ export class Editor {
     const focused = document.activeElement === this.area;
     const caret = focused && this.area.selectionStart === this.area.selectionEnd ? this.caret : null;
     const paired = [...this.pairs.keys()];
-    const bracket = caret === null ? undefined : paired.find(t => t.span.start === caret) ?? paired.find(t => t.span.end === caret);
+    const bracket = caret === null ? undefined : paired.find(t => t.span.start === caret)
+      ?? paired.find(t => t.span.end === caret);
     fill(this.layer, highlight(text, this.tokens, this.kinds, [
       ...this.mark ? errorMarks(text, this.mark) : [],
       ...bracket ? [bracket, this.pairs.get(bracket)!].map(t => ({ ...t.span, cls: "hl-bracket" })) : [],
@@ -165,7 +172,8 @@ export class Editor {
     const errorLine = line(this.mark && this.mark.start);
     const caretLine = focused ? line(this.area.selectionStart) : 0;
     fill(this.gutter, Array.from({ length: text.split("\n").length }, (_, i) =>
-      h("span", { class: [i + 1 === errorLine && "error-line", i + 1 === caretLine && "current"].filter(Boolean).join(" ") }, `${i + 1}`)));
+      h("span", { class: [i + 1 === errorLine && "error-line", i + 1 === caretLine && "current"].filter(Boolean)
+        .join(" ") }, `${i + 1}`)));
     this.caretLine.hidden = !caretLine;
     this.caretLine.style.top = `${padding + (caretLine - 1) * lineHeight}px`;
     this.scrolled();
@@ -177,7 +185,8 @@ export class Editor {
   }
 
   private hover(e: MouseEvent | null): void {
-    const at = e && [...this.layer.querySelectorAll<HTMLElement>(".hl-name")].find(el => within(el.getBoundingClientRect(), e.clientX, e.clientY));
+    const at = e && [...this.layer.querySelectorAll<HTMLElement>(".hl-name")]
+      .find(el => within(el.getBoundingClientRect(), e.clientX, e.clientY));
     const offset = at ? Number(at.dataset.at) : -1;
     const token = this.tokens.find(t => t.kind === "name" && t.span.start <= offset && offset < t.span.end) ?? null;
     if (token === this.hovered) return;
@@ -193,7 +202,8 @@ export class Editor {
       tip.hidden = false;
       const r = at.getBoundingClientRect();
       tip.style.left = `${Math.max(8, Math.min(r.left, innerWidth - tip.offsetWidth - 8))}px`;
-      tip.style.top = `${r.bottom + tip.offsetHeight + 12 > innerHeight ? r.top - tip.offsetHeight - 6 : r.bottom + 6}px`;
+      const below = r.bottom + tip.offsetHeight + 12 <= innerHeight;
+      tip.style.top = `${below ? r.bottom + 6 : r.top - tip.offsetHeight - 6}px`;
     }, hoverDelay);
   }
 }

@@ -1,5 +1,6 @@
 import type { Ann, Arg, Expr, Header, Id, LetBinder, Mult, Pattern, Span, Stmt, Tele, WrittenTerm } from "./syntax.ts";
-import { TYPE, abstract, addRule, app, canon, create, entry, forget, identical, isStrictSubterm, lookup, mark, mentions, occurs, ref, subst, typeOf, withName } from "./terms.ts";
+import { TYPE, abstract, addRule, app, canon, create, entry, forget, identical, isStrictSubterm, lookup, mark,
+  mentions, occurs, ref, subst, typeOf, withName } from "./terms.ts";
 import type { Binder, EntryId, Ref, Scope, Signature, Telescope, Term } from "./terms.ts";
 import { force, open, unify } from "./telescope.ts";
 import type { Forced } from "./telescope.ts";
@@ -23,7 +24,8 @@ export const plural = (n: number, what: string): string => `${n} ${what}${n === 
 
 export function single(out: Out, span: Span): Result {
   const [r] = out.results;
-  if (!r || out.results.length > 1) fail(span, () => `this produces ${plural(out.results.length, "value")}, and one is expected here (§8)`);
+  if (!r || out.results.length > 1) fail(span, () =>
+    `this produces ${plural(out.results.length, "value")}, and one is expected here (§8)`);
   return r;
 }
 
@@ -36,13 +38,16 @@ export function expr(ctx: Ctx, local: Local, e: Expr, given: Given | null): Out 
   const built = build(c, local, e, g, record(c, local, e.span, g));
   const out = built.local.allTainted ? { ...built, results: built.results.map(r => ({ ...r, tainted: true })) } : built;
   const leak = whole ? -1 : out.results.findIndex((r, i) => r.erased && !erasedAt(g, i));
-  if (leak >= 0) fail(e.span, () => `${e.kind === "var" ? `\`${e.name.name}\`` : out.results.length === 1 ? "this value" : `value ${leak + 1} of this`} is erased, ` +
-    "and an erased value is allowed only in an erased position: a type, an argument for an erased parameter or field, or the result for an erased return or binder (§16)");
+  if (leak >= 0) fail(e.span, () =>
+    (e.kind === "var" ? `\`${e.name.name}\`` : out.results.length === 1 ? "this value" : `value ${leak + 1} of this`) +
+    " is erased, and an erased value is allowed only in an erased position: a type, " +
+    "an argument for an erased parameter or field, or the result for an erased return or binder (§16)");
   return whole || out.results.every(r => r.tainted) ? { ...out, tree: { kind: "removed", span: e.span } } : out;
 }
 
 function produced(ctx: Ctx, local: Local, given: Given | null, results: Result[], span: Span, tree: Expr): Out {
-  return { local: given ? { ...local, scope: against(ctx, local.scope, given, results.map(r => r.id), span) } : local, results, tree };
+  return { local: given ? { ...local, scope: against(ctx, local.scope, given, results.map(r => r.id), span) } : local,
+    results, tree };
 }
 
 const wanted = (given: Given, ids: readonly EntryId[], i: number): { type: Term | null; is: Term | null } => {
@@ -54,21 +59,24 @@ function solveHoles(ctx: Ctx, scope: Scope, lhs: Term, rhs: Term, at: Span): Sco
   if (!ctx.holes.length) return scope;
   const { scope: now, stuck } = unify(scope, lhs, rhs, at, id => ctx.holes.some(h => h.id === id));
   const hole = stuck && ctx.holes.find(h => stuck.some(t => occurs(h.id, t)));
-  if (stuck && hole) fail(hole.span, () => `this \`_\` cannot be inferred: it would need ${show(now, stuck[0])} and ${show(now, stuck[1])} to be equal, ` +
+  if (stuck && hole) fail(hole.span, () =>
+    `this \`_\` cannot be inferred: it would need ${show(now, stuck[0])} and ${show(now, stuck[1])} to be equal, ` +
     "and this checker solves a `_` only by giving a rule to its own entry");
   return now;
 }
 
 function against(ctx: Ctx, before: Scope, given: Given, ids: readonly EntryId[], span: Span): Scope {
   const n = given.wants.length;
-  if (ids.length !== n) fail(span, () => `${plural(n, "value")} ${n === 1 ? "is" : "are"} expected here, and this produces ${ids.length}`);
+  if (ids.length !== n) fail(span, () =>
+    `${plural(n, "value")} ${n === 1 ? "is" : "are"} expected here, and this produces ${ids.length}`);
   return given.wants.reduce((acc, w, i) => {
     const id = ids[i]!, { type, is } = wanted(given, ids, i);
     const what = () => w.name !== null ? `\`${w.name}\`` : n === 1 ? "the value expected here" : `value ${i + 1}`;
     const withType = type ? solveHoles(ctx, acc, type, entry(acc, id).type, span) : acc;
     const scope = is ? solveHoles(ctx, withType, is, ref(id), span) : withType;
     if (type && !identical(scope, type, entry(scope, id).type))
-      fail(span, () => `${what()} must have type ${show(scope, type)}, and this has type ${show(scope, entry(scope, id).type)}`);
+      fail(span, () =>
+        `${what()} must have type ${show(scope, type)}, and this has type ${show(scope, entry(scope, id).type)}`);
     if (is && !identical(scope, is, ref(id)))
       fail(span, () => `${what()} must be ${show(scope, is)}, and this is ${show(scope, ref(id))}`);
     return scope;
@@ -78,19 +86,27 @@ function against(ctx: Ctx, before: Scope, given: Given, ids: readonly EntryId[],
 function settle(ctx: Ctx, scope: Scope, given: Given | null, ids: readonly EntryId[], since: number): boolean {
   const mine = ctx.holes.slice(since);
   if (!mine.length) return false;
-  const among = (holes: readonly Hole[], t: Term | null): boolean => t !== null && mentions(canon(scope, t), id => holes.some(h => h.id === id));
+  const among = (holes: readonly Hole[], t: Term | null): boolean => t !== null
+    && mentions(canon(scope, t), id => holes.some(h => h.id === id));
   const outer = ctx.holes.slice(0, since);
-  if (outer.length && given?.wants.some((_, i) => { const { type, is } = wanted(given, ids, i); return among(outer, type) || among(outer, is); })) return false;
+  if (outer.length && given?.wants.some((_, i) => { const { type, is } = wanted(given, ids, i);
+    return among(outer, type) || among(outer, is); })) return false;
   const values = mine.map(({ id, span, is, from }) => {
     const value = canon(scope, ref(id)), type = entry(scope, id).type, has = typeOf(scope, value);
     point(ctx, scope, span, ref(id));
-    if (among(ctx.holes, value)) fail(span, () => "this `_` cannot be inferred: this checker solves a `_` only from the other arguments " +
+    if (among(ctx.holes, value)) fail(span, () =>
+      "this `_` cannot be inferred: this checker solves a `_` only from the other arguments " +
       "and what the position is given, and these do not determine it");
-    if (mentions(value, x => x > id)) fail(span, () => `this \`_\` would be ${show(scope, value)}, which mentions what is produced only after it, ` +
+    if (mentions(value, x => x > id)) fail(span, () =>
+      `this \`_\` would be ${show(scope, value)}, which mentions what is produced only after it, ` +
       "such as a result of the call it is an argument of, and this checker solves a `_` only to what exists before it");
-    if (!identical(scope, type, has)) fail(span, () => `this \`_\` would be ${show(scope, value)}, of type ${show(scope, has)}, and it must have type ${show(scope, type)}`);
-    if (is && !identical(scope, is, value)) fail(span, () => `this \`_\` must be ${show(scope, is)}, and it would be ${show(scope, value)}`);
-    for (const p of ctx.st.explains.slice(from)) if (!entry(p.scope, id).rule) p.scope = addRule(p.scope, id, value, span);
+    if (!identical(scope, type, has)) fail(span, () =>
+      `this \`_\` would be ${show(scope, value)}, of type ${show(scope, has)}, ` +
+      `and it must have type ${show(scope, type)}`);
+    if (is && !identical(scope, is, value)) fail(span, () =>
+      `this \`_\` must be ${show(scope, is)}, and it would be ${show(scope, value)}`);
+    for (const p of ctx.st.explains.slice(from))
+      if (!entry(p.scope, id).rule) p.scope = addRule(p.scope, id, value, span);
     return value;
   });
   ctx.holes.length = since;
@@ -101,11 +117,13 @@ function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snaps
   switch (e.kind) {
     case "var": {
       const name = e.name.name;
-      if (name === null) return fail(e.span, () => "`_` stands only for a whole argument, for an erased parameter or field (§16)");
+      if (name === null) return fail(e.span, () =>
+        "`_` stands only for a whole argument, for an erased parameter or field (§16)");
       const found = lookup(local.scope, name);
       if (!found) return notValue(ctx, e.name);
       point(ctx, local.scope, e.span, ref(found.id));
-      return produced(ctx, local, given, [{ id: found.id, tainted: local.tainted.has(name), erased: found.erased || local.erased.has(name) }], e.span, e);
+      return produced(ctx, local, given, [{ id: found.id, tainted: local.tainted.has(name),
+        erased: found.erased || local.erased.has(name) }], e.span, e);
     }
     case "app": {
       const name = e.head.name ?? "_", g = global(ctx, name);
@@ -117,11 +135,13 @@ function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snaps
     }
     case "tuple": {
       if (given && given.wants.length !== e.elems.length)
-        fail(e.span, () => `${plural(given.wants.length, "value")} expected here, and this tuple has ${plural(e.elems.length, "element")}`);
+        fail(e.span, () => `${plural(given.wants.length, "value")} expected here, ` +
+          `and this tuple has ${plural(e.elems.length, "element")}`);
       const results: Result[] = [], elems: Expr[] = [];
       e.elems.forEach((el, i) => {
         const w = given?.wants[i];
-        const out = expr(ctx, local, el, given && w ? { wants: [w], env: [...given.env, ...results.map(r => ref(r.id))], whole: false } : null);
+        const out = expr(ctx, local, el, given && w ? { wants: [w],
+          env: [...given.env, ...results.map(r => ref(r.id))], whole: false } : null);
         local = out.local;
         results.push(single(out, el.span));
         elems.push(out.tree);
@@ -157,7 +177,8 @@ function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snaps
 function notValue(ctx: Ctx, id: Id): never {
   const name = id.name ?? "_", g = global(ctx, name);
   return fail(id.span, () => !g ? `${name} is not in scope`
-    : `${name} is ${describe(g)}, which is not a value: ${g.kind === "fn" ? "functions are not first class (§4)" : `it is applied, as in ${name}(...)`}`);
+    : `${name} is ${describe(g)}, which is not a value: ` +
+      (g.kind === "fn" ? "functions are not first class (§4)" : `it is applied, as in ${name}(...)`));
 }
 
 function unmarked(e: App, why: string): void {
@@ -165,22 +186,30 @@ function unmarked(e: App, why: string): void {
   if (m) fail(m.span, () => `only a call within its group has marks (§9), and ${why}`);
 }
 
-function opened(local: Local, tele: Telescope, env: readonly Term[], kind: string, span: Span, tainted: (i: number) => boolean): { local: Local; results: Result[] } {
-  const o = open(local.scope, tele, env, (b, i) => ({ origin: { kind: `${kind}.${b.name ?? i + 1}`, span }, tainted: tainted(i) }));
-  return { local: { ...local, scope: o.scope }, results: o.entries.map((id, i) => ({ id, tainted: tainted(i), erased: entry(o.scope, id).erased })) };
+function opened(local: Local, tele: Telescope, env: readonly Term[], kind: string, span: Span,
+    tainted: (i: number) => boolean): { local: Local; results: Result[] } {
+  const o = open(local.scope, tele, env, (b, i) => ({ origin: { kind: `${kind}.${b.name ?? i + 1}`, span },
+    tainted: tainted(i) }));
+  return { local: { ...local, scope: o.scope }, results: o.entries.map((id, i) =>
+    ({ id, tainted: tainted(i), erased: entry(o.scope, id).erased })) };
 }
 
-function args(ctx: Ctx, local: Local, name: string, params: Telescope, e: App, erasedArgs: boolean): { local: Local; results: Result[]; trees: Arg[]; mark: number } {
+function args(ctx: Ctx, local: Local, name: string, params: Telescope, e: App,
+    erasedArgs: boolean): { local: Local; results: Result[]; trees: Arg[]; mark: number } {
   if (e.args.length !== params.length)
-    fail(e.span, () => `${name} takes ${plural(params.length, "argument")}, and ${e.args.length} ${e.args.length === 1 ? "is" : "are"} given`);
+    fail(e.span, () => `${name} takes ${plural(params.length, "argument")}, ` +
+      `and ${e.args.length} ${e.args.length === 1 ? "is" : "are"} given`);
   const results: Result[] = [], trees: Arg[] = [], mark = ctx.holes.length;
   params.forEach((p, i) => {
     const a = e.args[i]!, env = results.map(r => ref(r.id));
     const given: Given = { wants: [erasedArgs ? { ...p, mult: "erased" } : p], env, whole: false };
     if (a.expr.kind === "var" && a.expr.name.name === null) {
       record(ctx, local, a.span, given);
-      if (!erasedAt(given, 0)) fail(a.span, () => `\`_\` stands for an erased argument (§16), and ${p.name === null ? `parameter ${i + 1}` : `\`${p.name}\``} of ${name} is not erased`);
-      const made = create(local.scope, subst(p.type, env), null, { origin: { kind: HOLE, span: a.span }, erased: true });
+      if (!erasedAt(given, 0)) fail(a.span, () =>
+        "`_` stands for an erased argument (§16), " +
+        `and ${p.name === null ? `parameter ${i + 1}` : `\`${p.name}\``} of ${name} is not erased`);
+      const made = create(local.scope, subst(p.type, env), null,
+        { origin: { kind: HOLE, span: a.span }, erased: true });
       const is = p.is && subst(p.is, env);
       ctx.holes.push({ id: made.id, span: a.span, is, from: ctx.st.explains.length });
       local = { ...local, scope: is ? solveHoles(ctx, made.scope, ref(made.id), is, a.span) : made.scope };
@@ -200,12 +229,14 @@ function construct(ctx: Ctx, local: Local, e: App, sig: Signature, given: Given 
   unmarked(e, `${sig.head.name} is not a function`);
   const a = args(ctx, local, sig.head.name, sig.params, e, sig.head.kind === "type" && ctx.st.phase >= 2);
   const refs = trees(a.local.scope, a.results), tainted = a.results.some(r => r.tainted);
-  const made = create(a.local.scope, subst(sig.ret, refs), app(sig.head, ...refs), { origin: { kind: APP, span: e.span }, tainted });
+  const made = create(a.local.scope, subst(sig.ret, refs), app(sig.head, ...refs),
+    { origin: { kind: APP, span: e.span }, tainted });
   point(ctx, made.scope, e.span, ref(made.id));
   return applied(ctx, { ...a.local, scope: made.scope }, given, [{ id: made.id, tainted, erased: false }], e, a);
 }
 
-function applied(ctx: Ctx, local: Local, given: Given | null, results: Result[], e: App, a: { trees: Arg[]; mark: number }): Out {
+function applied(ctx: Ctx, local: Local, given: Given | null, results: Result[], e: App,
+    a: { trees: Arg[]; mark: number }): Out {
   const out = produced(ctx, local, given, results, e.span, { ...e, args: a.trees });
   if (!settle(ctx, out.local.scope, given, results.map(r => r.id), a.mark)) return out;
   const scope = results.reduce((s, r) => mark(s, r.id, { tainted: true }), out.local.scope);
@@ -216,7 +247,8 @@ function call(ctx: Ctx, local: Local, e: App, name: string, sig: FnSig | null, g
   if (ctx.skeleton) return fail(e.span, () => `${name} is a function, and a type contains no function call (§3)`);
   if (!sig) return fail(e.span, () => `${name}'s parameters and returns are still being checked here`);
   const fn = ctx.fn?.group.includes(name) ? ctx.fn : null;
-  if (!fn) unmarked(e, ctx.fn ? `${name} is not in ${ctx.fn.name}'s group` : "top-level code calls any function unmarked");
+  if (!fn) unmarked(e, ctx.fn ? `${name} is not in ${ctx.fn.name}'s group`
+    : "top-level code calls any function unmarked");
   const plan = fn && marks(e, name, sig, fn);
   const a = args(ctx, local, name, sig.params, e, false);
   if (fn && plan) decrease(a.local.scope, e, a.results, fn, plan);
@@ -236,11 +268,14 @@ function marks(e: App, name: string, sig: FnSig, fn: FnCtx): Plan {
   e.args.forEach((a, i) => {
     const want = i === at ? "subterm" : subs.slice(0, k).includes(i) ? "same" : null;
     if (a.mark !== want) fail(a.span, () => want
-      ? `this argument is for a \`subterm\` parameter of ${name} before the one marked \`subterm\`, so it is marked \`same\` (§9)`
-      : `this argument is not marked: only the arguments for ${name}'s \`subterm\` parameters up to the one marked \`subterm\` are (§9)`);
+      ? `this argument is for a \`subterm\` parameter of ${name} before the one marked \`subterm\`, ` +
+        "so it is marked `same` (§9)"
+      : `this argument is not marked: only the arguments for ${name}'s \`subterm\` parameters ` +
+        "up to the one marked `subterm` are (§9)");
   });
   if (fn.subterms.length <= k)
-    fail(e.span, () => `this marks ${name}'s \`subterm\` parameter ${k + 1} \`subterm\`, and ${fn.name} has only ${plural(fn.subterms.length, "`subterm` parameter")} (§9)`);
+    fail(e.span, () => `this marks ${name}'s \`subterm\` parameter ${k + 1} \`subterm\`, ` +
+      `and ${fn.name} has only ${plural(fn.subterms.length, "`subterm` parameter")} (§9)`);
   return { subs, k };
 }
 
@@ -248,8 +283,10 @@ function decrease(scope: Scope, e: App, results: readonly Result[], fn: FnCtx, {
   subs.slice(0, k + 1).forEach((p, j) => {
     const arg = ref(results[p]!.id), own = fn.subterms[j]!, strict = j === k;
     if (strict ? !isStrictSubterm(scope, arg, ref(own)) : !identical(scope, arg, ref(own)))
-      fail(e.args[p]!.span, () => `${show(scope, arg)} is not ${strict ? "a strict subterm of" : "canonically identical to"} ${label(scope, own)}, ` +
-        `${fn.name}'s \`subterm\` parameter ${j + 1}, which is ${show(scope, ref(own))} here (§9)`);
+      fail(e.args[p]!.span, () =>
+        `${show(scope, arg)} is not ${strict ? "a strict subterm of" : "canonically identical to"} ` +
+        `${label(scope, own)}, ${fn.name}'s \`subterm\` parameter ${j + 1}, ` +
+        `which is ${show(scope, ref(own))} here (§9)`);
   });
 }
 
@@ -266,27 +303,36 @@ function match(ctx: Ctx, local: Local, e: Match, given: Given | null, snap: Snap
     names(ctx, inner, br.pat.fields);
   }
   const missing = fs.filter(f => f.forced.ok && !f.pat).map(f => f.name);
-  if (missing.length) fail(e.span, () => `no branch for ${missing.join(", ")}, which ${missing.length === 1 ? "is" : "are"} not refuted here (§10)`);
+  if (missing.length) fail(e.span, () =>
+    `no branch for ${missing.join(", ")}, which ${missing.length === 1 ? "is" : "are"} not refuted here (§10)`);
   const live = erased ? e.branches.filter(br => !absurd(br.body)) : e.branches, second = live[1];
   if (erased && second && ann.tele.some(b => b.mult === "many"))
-    fail(second.span, () => "an erased match with a `many` annotation entry has at most one branch that is not absurd, a branch being absurd when its body is " +
-      "a match with no branches, possibly the final expression of a block, since evaluation has no value to choose a branch by");
+    fail(second.span, () =>
+      "an erased match with a `many` annotation entry has at most one branch that is not absurd, " +
+      "a branch being absurd when its body is a match with no branches, possibly the final expression of a block, " +
+      "since evaluation has no value to choose a branch by");
   const wants = ann.tele.map((b, i) => erasedAt(given, i) ? { ...b, mult: "erased" as const } : b);
   const bodies = e.branches.map(br => {
     const won = survivor(branchOf(br.pat), br.pat.span, "");
-    return expr({ ...ctx, holes: [] }, bind({ ...inner, scope: won.scope }, br.pat.fields, won.fields).local, br.body, { wants, env: ann.env, whole: true });
+    return expr({ ...ctx, holes: [] }, bind({ ...inner, scope: won.scope }, br.pat.fields, won.fields).local, br.body,
+      { wants, env: ann.env, whole: true });
   });
-  snap.refutations = [...refuted, ...e.branches.filter(br => !live.includes(br)).map(br => ({ ctor: br.pat.ctor.name ?? "_", kind: "absurd" as const, derivation: () => [] }))];
+  snap.refutations = [...refuted, ...e.branches.filter(br => !live.includes(br)).map(br =>
+    ({ ctor: br.pat.ctor.name ?? "_", kind: "absurd" as const, derivation: () => [] }))];
   const taint = (i: number) => s.tainted || bodies.some(b => b.results[i]?.tainted === true);
   const o = opened(inner, ann.tele, ann.env, "match", e.span, taint);
   return produced(ctx, o.local, given, o.results, e.span,
-    { ...e, scrut: scrut.tree, branches: e.branches.flatMap((br, j) => live.includes(br) ? [{ ...br, body: bodies[j]!.tree }] : []) });
+    { ...e, scrut: scrut.tree, branches: e.branches.flatMap((br, j) => live.includes(br)
+      ? [{ ...br, body: bodies[j]!.tree }] : []) });
 }
 
-function annotation(ctx: Ctx, local: Local, tele: Tele, given: Given | null, span: Span): { tele: Telescope; env: readonly Ref[] } {
+function annotation(ctx: Ctx, local: Local, tele: Tele, given: Given | null,
+    span: Span): { tele: Telescope; env: readonly Ref[] } {
   if (tele !== "_") return { tele: telescope(ctx, local, tele, "binder").tele, env: [] };
-  if (!given?.whole) return fail(span, () => "`_` stands for the whole telescope given at its position, and none is given here (§10)");
-  return { tele: given.wants.map(w => w.type ? { ...w, type: w.type } : fail(span, () => "internal: an undetermined entry in a whole telescope")), env: given.env };
+  if (!given?.whole) return fail(span, () =>
+    "`_` stands for the whole telescope given at its position, and none is given here (§10)");
+  return { tele: given.wants.map(w => w.type ? { ...w, type: w.type }
+    : fail(span, () => "internal: an undetermined entry in a whole telescope")), env: given.env };
 }
 
 function dataCtors(ctx: Ctx, scope: Scope, id: EntryId, span: Span): { name: string; sig: Signature }[] {
@@ -303,18 +349,23 @@ function dataCtors(ctx: Ctx, scope: Scope, id: EntryId, span: Span): { name: str
   });
 }
 
-function forcings(ctx: Ctx, local: Local, id: EntryId, scrutSpan: Span, pats: readonly Pattern[], at: Span, erased: boolean): Forcing[] {
+function forcings(ctx: Ctx, local: Local, id: EntryId, scrutSpan: Span, pats: readonly Pattern[], at: Span,
+    erased: boolean): Forcing[] {
   const ctors = dataCtors(ctx, local.scope, id, scrutSpan), seen = new Set<string>();
   for (const p of pats) {
     const name = p.ctor.name ?? "_", c = ctors.find(x => x.name === name);
-    if (!c) fail(p.ctor.span, () => `${name} is not a value constructor of the scrutinee's type ${show(local.scope, entry(local.scope, id).type)}`);
+    if (!c) fail(p.ctor.span, () =>
+      `${name} is not a value constructor of the scrutinee's type ${show(local.scope, entry(local.scope, id).type)}`);
     if (seen.has(name)) fail(p.span, () => `${name} already has a branch (§10)`);
     seen.add(name);
-    if (p.fields.length !== c.sig.params.length) fail(p.span, () => `${name} has ${plural(c.sig.params.length, "field")}, and this pattern names ${p.fields.length}`);
+    if (p.fields.length !== c.sig.params.length) fail(p.span, () =>
+      `${name} has ${plural(c.sig.params.length, "field")}, and this pattern names ${p.fields.length}`);
   }
   return ctors.map(({ name, sig }) => {
     const pat = pats.find(p => p.ctor.name === name);
-    const forced = force(local.scope, id, sig, pat?.span ?? at, (b, i) => ({ origin: { kind: `${name}.${b.name ?? i + 1}`, span: pat?.fields[i]?.span ?? at }, ...(erased ? { erased } : {}) }));
+    const forced = force(local.scope, id, sig, pat?.span ?? at, (b, i) =>
+      ({ origin: { kind: `${name}.${b.name ?? i + 1}`, span: pat?.fields[i]?.span ?? at },
+      ...(erased ? { erased } : {}) }));
     return { name, forced, pat };
   });
 }
@@ -326,7 +377,8 @@ const absurd = (e: Expr): boolean => e.kind === "match" ? !e.branches.length : e
 
 function survivor(f: Forcing, span: Span, consequence: string): { scope: Scope; fields: EntryId[] } {
   const forced = f.forced;
-  if (!forced.ok) return fail(span, () => `${f.name} is refuted here, so ${consequence} (§10): ${forced.derivation().map(l => l.text).join("; ")}`);
+  if (!forced.ok) return fail(span, () =>
+    `${f.name} is refuted here, so ${consequence} (§10): ${forced.derivation().map(l => l.text).join("; ")}`);
   return forced;
 }
 
@@ -337,7 +389,8 @@ function names(ctx: Ctx, local: Local, ids: readonly Id[]): void {
 
 const never = (): boolean => false;
 
-function bind(local: Local, ids: readonly Id[], entries: readonly EntryId[], tainted: (i: number) => boolean = never, erased: (i: number) => boolean = never): { local: Local; bound: Named[] } {
+function bind(local: Local, ids: readonly Id[], entries: readonly EntryId[], tainted: (i: number) => boolean = never,
+    erased: (i: number) => boolean = never): { local: Local; bound: Named[] } {
   let scope = local.scope;
   const sets = { tainted: new Set(local.tainted), erased: new Set(local.erased) }, bound: Named[] = [];
   ids.forEach(({ name }, i) => {
@@ -354,7 +407,8 @@ function bind(local: Local, ids: readonly Id[], entries: readonly EntryId[], tai
 function letWants(ctx: Ctx, site: Local, binders: readonly LetBinder[]): Want[] {
   let local = site;
   const ids: EntryId[] = [], untyped = new Set<string>();
-  const unknown = (t: WrittenTerm): WrittenTerm | undefined => untyped.has(t.head.name ?? "") ? t : (t.args ?? []).map(unknown).find(u => u);
+  const unknown = (t: WrittenTerm): WrittenTerm | undefined => untyped.has(t.head.name ?? "") ? t
+    : (t.args ?? []).map(unknown).find(u => u);
   for (const b of binders) {
     record(ctx, local, b.span, null);
     const u = b.ann && unknown(b.ann.term);
@@ -366,7 +420,8 @@ function letWants(ctx: Ctx, site: Local, binders: readonly LetBinder[]): Want[] 
   }
   return binders.map((b, i) => {
     const id = ids[i]!;
-    return id >= 0 ? abstracted(local.scope, b, id, ids) : { name: b.name.name, type: null, is: null, mult: b.mult ?? "many", span: b.span };
+    return id >= 0 ? abstracted(local.scope, b, id, ids)
+      : { name: b.name.name, type: null, is: null, mult: b.mult ?? "many", span: b.span };
   });
 }
 
@@ -378,13 +433,16 @@ export function stmt(ctx: Ctx, local: Local, s: Stmt, comptime?: Comptime): Stmt
     case "let": {
       record(ctx, local, s.span, null);
       names(ctx, local, s.binders.map(b => b.name));
-      const out = expr(ctx, local, s.rhs, { wants: letWants(ctx, local, s.binders), env: [], whole: s.binders.every(b => b.ann) });
-      const b = bind(out.local, s.binders.map(x => x.name), out.results.map(r => r.id), i => out.results[i]!.tainted, i => s.binders[i]!.mult === "erased");
+      const out = expr(ctx, local, s.rhs, { wants: letWants(ctx, local, s.binders), env: [],
+        whole: s.binders.every(b => b.ann) });
+      const b = bind(out.local, s.binders.map(x => x.name), out.results.map(r => r.id), i => out.results[i]!.tainted,
+        i => s.binders[i]!.mult === "erased");
       return { local: b.local, tree: { ...s, rhs: out.tree }, bound: b.bound };
     }
     case "patlet": {
       const snap = record(ctx, local, s.span, null), erased = s.mult === "erased";
-      if (s.comptime && erased) fail(s.span, () => "a `comptime` pattern `let` evaluates its right-hand side (§11), so it cannot be erased (§16)");
+      if (s.comptime && erased) fail(s.span, () =>
+        "a `comptime` pattern `let` evaluates its right-hand side (§11), so it cannot be erased (§16)");
       names(ctx, local, s.pat.fields);
       const out = expr(erased ? { ...ctx, erased } : ctx, local, s.rhs, null), r = single(out, s.rhs.span);
       const fs = forcings(ctx, out.local, r.id, s.rhs.span, [s.pat], s.span, erased);
@@ -393,8 +451,11 @@ export function stmt(ctx: Ctx, local: Local, s: Stmt, comptime?: Comptime): Stmt
       const mine = fs.find(f => f.pat === s.pat)!;
       const won = survivor(mine, s.pat.span, "this pattern `let` cannot match");
       const other = s.comptime ? undefined : fs.find(f => f !== mine && f.forced.ok);
-      if (other) fail(s.pat.span, () => `${other.name} is not refuted here, and exactly one value constructor must survive forcing at a pattern \`let\` (§10)`);
-      const b = bind({ ...out.local, scope: won.scope, allTainted: out.local.allTainted || r.tainted }, s.pat.fields, won.fields);
+      if (other) fail(s.pat.span, () =>
+        `${other.name} is not refuted here, ` +
+        "and exactly one value constructor must survive forcing at a pattern `let` (§10)");
+      const b = bind({ ...out.local, scope: won.scope, allTainted: out.local.allTainted || r.tainted }, s.pat.fields,
+        won.fields);
       return { local: b.local, tree: { ...s, rhs: out.tree }, bound: b.bound };
     }
   }
@@ -402,21 +463,26 @@ export function stmt(ctx: Ctx, local: Local, s: Stmt, comptime?: Comptime): Stmt
 
 const skeleton = (t: WrittenTerm): Expr => t.args === null
   ? { kind: "var", name: t.head, span: t.span }
-  : { kind: "app", head: t.head, args: t.args.map(a => ({ mark: null, expr: skeleton(a), span: a.span })), span: t.span };
+  : { kind: "app", head: t.head, args: t.args.map(a => ({ mark: null, expr: skeleton(a), span: a.span })),
+    span: t.span };
 
 export function term(ctx: Ctx, local: Local, t: WrittenTerm): Result & { local: Local } {
-  const out = expr({ ...ctx, skeleton: true, erased: ctx.erased || ctx.st.phase >= 2, holes: [] }, local, skeleton(t), null);
+  const out = expr({ ...ctx, skeleton: true, erased: ctx.erased || ctx.st.phase >= 2, holes: [] }, local, skeleton(t),
+    null);
   return { local: out.local, ...single(out, t.span) };
 }
 
 function isType(scope: Scope, id: EntryId, span: Span): void {
   if (!identical(scope, entry(scope, id).type, TYPE))
-    fail(span, () => `${show(scope, ref(id))} is not a type: its type is ${show(scope, entry(scope, id).type)}, not Type() (§3)`);
+    fail(span, () =>
+      `${show(scope, ref(id))} is not a type: its type is ${show(scope, entry(scope, id).type)}, not Type() (§3)`);
 }
 
-export function annotate(ctx: Ctx, local: Local, ann: Ann): { local: Local; type: Term; is: Term | null; tainted: boolean } {
+export function annotate(ctx: Ctx, local: Local,
+    ann: Ann): { local: Local; type: Term; is: Term | null; tainted: boolean } {
   const t = term(ctx, local, ann.term), scope = t.local.scope, it = written(scope, ref(t.id));
-  if (ann.kind === "is") return { local: t.local, type: written(scope, entry(scope, t.id).type), is: it, tainted: t.tainted };
+  if (ann.kind === "is") return { local: t.local, type: written(scope, entry(scope, t.id).type), is: it,
+    tainted: t.tainted };
   isType(scope, t.id, ann.term.span);
   return { local: t.local, type: it, is: null, tainted: t.tainted };
 }
@@ -429,12 +495,15 @@ function opening(ctx: Ctx, local: Local, b: Binderish, kind: string): { local: L
   return { local: bind({ ...a.local, scope: made.scope }, [b.name], [made.id]).local, id: made.id, tainted: a.tainted };
 }
 
-function abstracted(scope: Scope, b: { name: Id; mult: Mult | null; span: Span }, id: EntryId, all: readonly EntryId[]): Binder {
+function abstracted(scope: Scope, b: { name: Id; mult: Mult | null; span: Span }, id: EntryId,
+    all: readonly EntryId[]): Binder {
   const e = entry(scope, id);
-  return { name: b.name.name, type: abstract(scope, e.type, all), is: e.rule && abstract(scope, e.rule.term, all), mult: b.mult ?? "many", span: b.span };
+  return { name: b.name.name, type: abstract(scope, e.type, all), is: e.rule && abstract(scope, e.rule.term, all),
+    mult: b.mult ?? "many", span: b.span };
 }
 
-export function telescope(ctx: Ctx, local: Local, binders: readonly Binderish[], kind: string, outer: readonly EntryId[] = []): Checked {
+export function telescope(ctx: Ctx, local: Local, binders: readonly Binderish[], kind: string,
+    outer: readonly EntryId[] = []): Checked {
   const seen = new Set<string>(), ids: EntryId[] = [];
   let tainted = false;
   for (const b of binders) {

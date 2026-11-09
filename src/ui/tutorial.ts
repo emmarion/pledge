@@ -18,15 +18,19 @@ const prose = page.prose.split(/\n\s*\n/).map(paragraph =>
 
 const fixed = [...page.boxes.keys()];
 const workspace = new Workspace(
-  [...page.boxes.map(text => ({ text, key: null })), { text: page.initial, key: `page:${page.slug}`, holdsQed: page.requireQed }, { text: page.solution, key: null }],
+  [...page.boxes.map(text => ({ text, key: null })), { text: page.initial, key: `page:${page.slug}`,
+    holdsQed: page.requireQed }, { text: page.solution, key: null }],
   () => page.phase,
-  [{ label: "your box", boxes: [...fixed, fixed.length] }, { label: "the solution", boxes: [...fixed, fixed.length + 1] }]);
+  [{ label: "your box", boxes: [...fixed, fixed.length] }, { label: "the solution",
+    boxes: [...fixed, fixed.length + 1] }]);
 
 document.title = `${page.title} — Pledge tutorial`;
 workspace.mount(
-  [h("h1", {}, h("a", { href: "index.html" }, "Pledge"), " tutorial"), h("span", { class: "muted" }, `Phase ${page.phase}`)],
+  [h("h1", {}, h("a", { href: "index.html" }, "Pledge"), " tutorial"),
+    h("span", { class: "muted" }, `Phase ${page.phase}`)],
   "Reset your box",
-  [h("details", { class: "disclaimer" }, h("summary", {}, "Disclaimer"), h("p", {}, linked(disclaimer))), h("h2", {}, page.title), prose],
+  [h("details", { class: "disclaimer" }, h("summary", {}, "Disclaimer"), h("p", {}, linked(disclaimer))),
+    h("h2", {}, page.title), prose],
   [h("details", { class: "solution" }, h("summary", {}, "Show a solution"), workspace.editors.at(-1)!.root),
   h("p", { class: "pager" },
     index > 0 && h("a", { href: href(index - 1) }, `← ${pages[index - 1]!.title}`),

@@ -5,7 +5,8 @@ type Attr = string | boolean | ((event: Event) => void);
 const flat = (children: Child[]): (Node | string)[] =>
   children.flatMap(c => Array.isArray(c) ? flat(c) : c === null || c === undefined || c === false ? [] : [c]);
 
-export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, Attr> = {}, ...children: Child[]): HTMLElementTagNameMap[K] {
+export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, Attr> = {},
+    ...children: Child[]): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs)) {
     if (typeof value === "function") el.addEventListener(key.slice(2), value);
