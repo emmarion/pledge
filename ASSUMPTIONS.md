@@ -83,3 +83,35 @@ and never renumbered (rule 15); a removed item leaves a gap.
 14. **`tests/design_reflection.pledge`** supplies a `decideEven`
     whose header is §11's, delegating to a recursive helper, since
     DESIGN.md gives only the signature.
+
+## Terms, scope and forcing
+
+15. **Bound variables** in a telescope are indexed by position in the
+    whole environment the telescope is opened or instantiated under
+    (an outer prefix such as the parameters, then its own binders), so
+    a return telescope continues the parameters' numbering.
+16. **Entries and applications.** Types, rules and canonical forms are
+    trees of applications with entries at the leaves; §7's "every
+    application is an entry" holds for applications written as
+    expressions, each of which gets an entry whose rule is the
+    application, and canonicalization unfolds such entries, so the two
+    forms compare equal.
+17. **Where a fact was created** (§13): an `is` rule from opening a
+    binder is attributed to the place the binder is opened, such as
+    the call, not to where it is written; a forcing rule to the
+    pattern.
+18. **A rewrite step** (§13) rewrites every occurrence of one entry by
+    its rule at once, so the shortest sequence rewrites each entry the
+    term reaches once, outer entries first. If a step is meant to
+    rewrite one occurrence, the count would differ.
+19. **Refutation derivations** (§13) are the chain of equations from
+    an initial equation of forcing to the first failing one, equations
+    being processed first in, first out, the scrutinee's before the
+    type's. That this has the fewest steps is presumed, not proved.
+20. **Anonymous entries** render as `?kind@line:col`, with the kind the
+    checker gives the entry's origin; two anonymous entries of the same
+    kind at the same position are not told apart, so the checker
+    chooses distinct kinds.
+21. **Forcing two applications with the same head but different
+    argument counts**, impossible for well-formed terms, is treated as
+    a refutation by different heads rather than an internal error.
