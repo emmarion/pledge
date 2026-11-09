@@ -535,8 +535,8 @@ or the goal's telescopes and `f`, are untainted, and no top-level
 pattern `let` whose scrutinee is tainted comes before the `qed`.
 `qed f;` passes, returns and stores nothing (§4); it names a
 declaration. The interface reports
-whether the program contains `sorry` anywhere, whether the `qed` checks
-and whether the goal is proved.
+whether the program contains `sorry` anywhere, whether the `qed` checks,
+or was not reached, and whether the goal is proved.
 
 A tutorial page shows one or more read-only boxes of source above the
 learner's editable box, and checks them all as one program, in order,
@@ -553,15 +553,19 @@ At any position in a program, the interface shows:
   neither a type nor an `is` clause.
 - **Termination**: the enclosing function's `subterm` parameters, in order,
   and the functions of its group.
-- **Scope**: the local entries, each with its names, which of them
-  are tainted (§12), its type and its `is` rule, and, in phase 2,
+- **Scope**: the local entries, those of the enclosing declaration or,
+  at the top level, the top-level ones, each with its names, which of
+  them are tainted (§12), its type and its `is` rule, and, in phase 2,
   whether it is erased; and whether the scope is tainted, with the
   scrutinee that tainted it. An entry with several names (§8) is shown
-  once, with all of them.
+  once, with all of them. An entry with no name is shown only when a
+  type or `is` rule shown under Scope or Expected mentions it.
 - **Refutations**, at a `match` or pattern `let`: the refuted value
   constructors, and, at an erased match (§16), the absurd branches.
   Clicking one shows why its forcing fails (§7), as a
-  derivation with the fewest steps.
+  derivation with the fewest steps: the equations that lead to the
+  failure, and the equation that gave each rule one of them is
+  rewritten by.
 
 Hidden until the learner opens them, the **Globals** are the top-level
 names in scope at that position: each function, with its parameters and
@@ -589,7 +593,8 @@ The statement `inspect;` reports the same information as text, beside
 the statement.
 
 Checking stops at the first error, which the interface shows where it
-occurs.
+occurs. A program that does not parse is checked up to the declaration
+or statement that fails to parse.
 
 ## 14. Implementation
 
