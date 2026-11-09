@@ -46,3 +46,40 @@ and never renumbered (rule 15); a removed item leaves a gap.
    and the prototype does not try to (rule 6).
 8. **Values are shown** as `C(a1, a2)`, with `, ` between arguments;
    §12 does not fix the spacing.
+
+## Syntax
+
+9. **Extra `;`** (§1) is read as allowed after the `}` that closes a
+   `data`, `fn` or `mutual` declaration and after a block's final
+   expression when that expression ends in `}`; any `;` can be
+   followed by more. A `;` with nothing before it, at the start of
+   the program or of a block, is rejected. This may be stricter or
+   looser than intended.
+10. **Where a multiplicity goes** (§16, phase 2): immediately before
+    the binder's name, after `subterm`, as `[subterm] [erased|many]
+    name`, for parameters, returns, value-constructor fields, match
+    annotation entries and each tuple-`let` binder (`let (erased a,
+    b) = e;`). `let erased C(...) = e;` and `comptime let erased
+    C(...) = e;` give a pattern `let` a multiplicity, by analogy with
+    `match erased e`. An explicit `many` is accepted wherever `erased`
+    is. No multiplicity is accepted on type-constructor parameters,
+    on `sorry`'s telescope, on a pattern's fields, or before a whole
+    tuple `let`.
+11. **`_` as an erased argument** (§16) is accepted only as a whole
+    argument of a call or application in an expression, in phase 2;
+    not inside a skeleton term such as `Vec(_, n)`, and not as a tuple
+    element.
+12. **Lexing.** A maximal run of letters, digits and `_` is one token;
+    one not starting with a letter, other than `_` alone, is an error
+    rather than being split. Any non-ASCII byte is an error, in a
+    comment too. A lexical error is reported only when the parser
+    reaches it, so an earlier syntax error wins (§13's first error).
+    `Type` is lexed as a name, not a keyword (§18).
+13. **Spans.** A statement, value-constructor declaration or branch
+    spans through its own `;` but not extra ones; a binder's span
+    includes its `subterm` mark and multiplicity. A `_` standing for a
+    whole telescope has no span of its own, so an error about it
+    points at the enclosing `match` or `sorry`.
+14. **`tests/design_reflection.pledge`** supplies a `decideEven`
+    whose header is §11's, delegating to a recursive helper, since
+    DESIGN.md gives only the signature.

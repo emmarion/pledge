@@ -18,17 +18,21 @@ data Option(A : Type()) : Type() {
   Some(A : Type(), x : A) : Option(A);
 }
 
-fn decideEven(subterm n : Nat()) -> (r : Option(Even(n))) {
+fn decideEvenRec(subterm n : Nat()) -> (r : Option(Even(n))) {
   match n : (r : Option(Even(n))) {
     Zero() => Some(Even(n), EvenZero());
     Succ(m) => match m : (r : Option(Even(n))) {
       Zero() => None(Even(n));
-      Succ(k) => match decideEven(subterm k) : (r : Option(Even(n))) {
+      Succ(k) => match decideEvenRec(subterm k) : (r : Option(Even(n))) {
         None(_) => None(Even(n));
         Some(_, q) => Some(Even(n), EvenSucc(m, OddSucc(k, q)));
       };
     };
   }
+}
+
+fn decideEven(n : Nat()) -> (r : Option(Even(n))) {
+  decideEvenRec(n)
 }
 
 comptime let Some(_, p) = decideEven(Succ(Succ(Zero())));

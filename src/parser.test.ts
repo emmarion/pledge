@@ -37,6 +37,22 @@ test("every tests/*.pledge parses in phases 1 and 2", () => {
   }
 });
 
+test("DESIGN.md's code appears verbatim in tests/*.pledge", () => {
+  const design = readFileSync(new URL("../DESIGN.md", import.meta.url), "utf8");
+  const examples = pledgeFiles.map(file => readFileSync(new URL(file, testsDir), "utf8"));
+  const blocks = [...design.matchAll(/```\n([\s\S]*?)```/g)].map(m => m[1]!).filter(block => "program" in parse(block, 1));
+  assert.equal(blocks.length, 7);
+  const inline = [
+    "let y is Succ(n) = e;",
+    "let x = VCons(Nat(), Zero(), Zero(), VNil(Nat()));",
+    "let (h, t) = vuncons(A, n, v);",
+    "VCons(Nat(), Zero(), x, VNil(Nat()))",
+    "fn decideEven(n : Nat()) -> (r : Option(Even(n)))",
+    "sorry(x is Zero())",
+  ];
+  for (const code of [...blocks, ...inline]) assert.ok(examples.some(example => example.includes(code)), code);
+});
+
 test("vhead's shape", () => {
   const program = ok(readFileSync(new URL("design_vhead.pledge", testsDir), "utf8"));
   assert.deepEqual(program.tops.map(t => t.kind), ["data", "data", "fn"]);

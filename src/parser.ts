@@ -42,6 +42,14 @@ export function parse(source: string, phase: Phase): { program: Program } | { er
   const start = (): number => peek().span.start;
   const spanFrom = (begin: number): Span => ({ start: begin, end: prevEnd });
   const skipExtraSemis = (): void => { while (eat(";")); };
+  const declaration = <T>(result: T): T => (skipExtraSemis(), result);
+  const braces = <T>(item: () => T): T[] => {
+    expect("{");
+    const items: T[] = [];
+    while (!at("}")) items.push(item());
+    expect("}");
+    return items;
+  };
   const endStatement = (begin: number): Span => {
     expect(";");
     const span = spanFrom(begin);
@@ -78,12 +86,16 @@ export function parse(source: string, phase: Phase): { program: Program } | { er
   const annOpt = (): Ann | null =>
     eat(":") ? { kind: "type", term: term() } : eat("is") ? { kind: "is", term: term() } : null;
 
-  const binderWith = (multAllowed: boolean) => (): Binder => {
+  const letBinderWith = (multAllowed: boolean) => (): LetBinder => {
     const begin = start();
     const m = multAllowed ? mult() : null;
     const binderName = id();
-    const ann = annOpt() ?? fail("`:` or `is`");
-    return { name: binderName, ann, mult: m, span: spanFrom(begin) };
+    return { name: binderName, ann: annOpt(), mult: m, span: spanFrom(begin) };
+  };
+  const letBinder = letBinderWith(true);
+  const binderWith = (multAllowed: boolean) => (): Binder => {
+    const b = letBinderWith(multAllowed)();
+    return b.ann ? { ...b, ann: b.ann } : fail("`:` or `is`");
   };
   const binder = binderWith(true);
   const tele = (): Binder[] => parens(binder, true);
@@ -93,12 +105,6 @@ export function parse(source: string, phase: Phase): { program: Program } | { er
     const begin = start();
     const subterm = eat("subterm");
     return { ...binder(), subterm, span: spanFrom(begin) };
-  };
-  const letBinder = (): LetBinder => {
-    const begin = start();
-    const m = mult();
-    const binderName = id();
-    return { name: binderName, ann: annOpt(), mult: m, span: spanFrom(begin) };
   };
   const pattern = (): Pattern => {
     const begin = start();
@@ -129,16 +135,13 @@ export function parse(source: string, phase: Phase): { program: Program } | { er
       const scrut = expr();
       expect(":");
       const ann: Tele = peek().kind === "underscore" ? (next(), "_") : tele();
-      expect("{");
-      const branches: Branch[] = [];
-      while (!at("}")) {
+      const branches = braces((): Branch => {
         const branchBegin = start();
         const pat = pattern();
         expect("=>");
         const body = expr();
-        branches.push({ pat, body, span: endStatement(branchBegin) });
-      }
-      expect("}");
+        return { pat, body, span: endStatement(branchBegin) };
+      });
       return { kind: "match", mult: m, scrut, ann, branches, span: spanFrom(begin) };
     }
     if (eat("sorry")) {
@@ -196,20 +199,15 @@ export function parse(source: string, phase: Phase): { program: Program } | { er
     else fail("`Type`");
     expect("(");
     expect(")");
-    expect("{");
-    const ctors: Ctor[] = [];
-    while (!at("}")) {
+    const ctors = braces((): Ctor => {
       const ctorBegin = start();
       const ctorName = name();
       const fields = parens(binder, false);
       expect(":");
       const ret = term();
-      ctors.push({ name: ctorName, fields, ret, span: endStatement(ctorBegin) });
-    }
-    expect("}");
-    const result: Data = { kind: "data", name: dataName, params, ctors, span: spanFrom(begin) };
-    skipExtraSemis();
-    return result;
+      return { name: ctorName, fields, ret, span: endStatement(ctorBegin) };
+    });
+    return declaration({ kind: "data", name: dataName, params, ctors, span: spanFrom(begin) });
   };
 
   const fn = (): Fn => {
@@ -220,28 +218,22 @@ export function parse(source: string, phase: Phase): { program: Program } | { er
     expect("->");
     const returns = tele();
     const body = block();
-    const result: Fn = { kind: "fn", name: fnName, params, returns, body, span: spanFrom(begin) };
-    skipExtraSemis();
-    return result;
+    return declaration({ kind: "fn", name: fnName, params, returns, body, span: spanFrom(begin) });
   };
 
   const mutual = (): Top => {
     const begin = start();
     expect("mutual");
-    expect("{");
     const datas: Data[] = [];
     const fns: Fn[] = [];
-    while (!at("}")) {
+    braces((): void => {
       if (at("data") && fns.length === 0) datas.push(data());
       else if (at("fn") && datas.length === 0) fns.push(fn());
       else if (at("data") || at("fn")) failAt(peek(), () => "a `mutual` block holds either `data` declarations or functions, not both");
       else fail("`data` or `fn`");
-    }
-    if (datas.length === 0 && fns.length === 0) failAt(peek(), () => "a `mutual` block declares at least one `data` declaration or function");
-    expect("}");
-    const result: Top = { kind: "mutual", decls: datas.length > 0 ? datas : fns, span: spanFrom(begin) };
-    skipExtraSemis();
-    return result;
+    });
+    if (datas.length === 0 && fns.length === 0) failAt(tokens[pos - 1]!, () => "a `mutual` block declares at least one `data` declaration or function");
+    return declaration({ kind: "mutual", decls: datas.length > 0 ? datas : fns, span: spanFrom(begin) });
   };
 
   const top = (): Top => {
