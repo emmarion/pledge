@@ -34,7 +34,8 @@ export type Expr =
   | { kind: "tuple"; elems: Expr[]; span: Span }
   | { kind: "block"; stmts: Stmt[]; final: Expr; span: Span }
   | { kind: "match"; mult: Mult | null; scrut: Expr; ann: Tele; branches: Branch[]; span: Span }
-  | { kind: "sorry"; tele: Tele; span: Span };
+  | { kind: "sorry"; tele: Tele; span: Span }
+  | { kind: "removed"; span: Span };
 
 export type Stmt =
   | { kind: "let"; binders: LetBinder[]; rhs: Expr; span: Span }
