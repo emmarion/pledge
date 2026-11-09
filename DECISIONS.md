@@ -33,15 +33,7 @@ P3. The Scope panel shows whether each entry is tainted.
 
 ## Open questions
 
-O5. A block's results keep the types they were created with, and its
-    facts end with it (§7). So after
-    `let (t : Vec(A, n)) = { let VCons(_, _, _, r) = v; r };`, with
-    `v : Vec(A, Succ(n))`, the binder's type is checked inside the
-    block (§8) and passes, yet `t`, naming `r`'s entry (§8), has a
-    type that mentions the pattern's fields rather than `A` and `n`.
-    Is that intended, or should a block that is given something produce
-    new entries typed by it, as a match's results are typed by its
-    annotation?
+None at present.
 
 ## Pending edits
 
