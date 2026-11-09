@@ -179,9 +179,6 @@ and never renumbered (rule 15); a removed item leaves a gap.
 33. **Functions declared after a tainted top-level pattern `let`** are
     not tainted by it, §12's rule speaking of top-level statements;
     this seems harmless since nothing evaluates after that `let`.
-34. **Every top-level `let` is evaluated** as DESIGN.md §11 says;
-    SOUNDNESS.md part 8 says ordinary top-level `let`s are never
-    evaluated, which the two files should settle between them.
 35. **Taint of `goal`'s type**, a skeleton term, is computed as for an
     expression: a variable is tainted when it names a tainted binder,
     an application when an argument is.

@@ -18,8 +18,8 @@ Pledge has `Type() : Type()` and no positivity requirement (§3). The usual
 paradoxes seem not to reach it:
 
 1. **Types never compute.** A type contains no call (§3), and the
-   checker evaluates only where `comptime` or `print` asks it to (§11,
-   §12).
+   checker evaluates only top-level statements, as they are checked
+   (§11, §12), never inside a type.
 2. **Termination does not come from types.** Every call goes down in an
    order made of the definition order of groups and the `subterm`
    parameters (§9), and neither looks at a type.
@@ -279,16 +279,15 @@ the arguments, and 5.1's induction is on the derivation 6.2 provides.
 Canonicalization ends because the rules are acyclic (part 3). Forcing
 ends (Lemma 3.3), and so does comparison for identity. `_` in place of
 an annotation copies a telescope the position already has. Compile-time
-evaluation, by `comptime` and `print`, ends by Theorem 6.2. Nothing
+evaluation of each top-level statement ends by Theorem 6.2. Nothing
 here looks at whether `Type()` contains itself.
 
 ## 8. Consistency (K)
 
 Suppose a program checks with `goal T;` and `qed e;`. The top-level
 statements before the `qed` evaluate (Theorem 6.2) to a valuation
-`rho` satisfying the top-level context (Theorem 5.1); this is the full
-semantics, in which ordinary top-level `let`s are evaluated too,
-although Pledge never evaluates them (§11). Then `e` evaluates to a
+`rho` satisfying the top-level context (Theorem 5.1), every top-level
+`let` included, as §11 has it. Then `e` evaluates to a
 value `v` with `|- v : T rho`. If `T` is a data type whose data type
 constructor declares no value constructors, Corollary 2.3 rules this
 out. ∎
