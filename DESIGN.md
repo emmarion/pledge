@@ -167,7 +167,10 @@ is `e`; when it is instantiated, the entry it gets must canonicalize to
 the same skeleton term as `e`. Either way, each bound variable in `e`
 stands for the entry its binder got.
 
-A tuple `let` binder is allowed to carry a type, an `is` clause, or neither. A
+A tuple `let` binder is allowed to carry a type, an `is` clause, or neither.
+The binders of a tuple `let` are a telescope (§1): a type or `is` clause
+is allowed to refer to the binders before it, but not to one that
+carries neither. A
 type or `is` clause written on a tuple `let` binder must be canonically
 identical to what the checker infers for the result it names (§8), so `let y is Succ(n) = e;` asserts
 a fact the checker must already know.
@@ -203,7 +206,7 @@ entry too, the newer of the two takes the rule. Whenever an entry is
 equated with a term, their types are equated too. In a match, the facts of forcing a
 branch's value constructor last until
 the branch ends; for a pattern `let`, they last to the end of the enclosing
-block, or, at the top level, of the program (§10). Forcing fails, refuting the value constructor (§10), when:
+match branch or function body, or of the program (§10). Forcing fails, refuting the value constructor (§10), when:
 
 1. an entry is equated with a skeleton term that strictly contains it;
 2. two applications of different type constructors, of different value
@@ -410,9 +413,9 @@ and the match on `p` has no branches.
 
 A pattern `let`, `let C(x1, ..., xn) = e;`, is a statement, in a block
 or at the top level. Exactly one value constructor of `e`'s type must
-survive forcing, and it must be `C`; its fields and facts stay in scope
-for the rest of the enclosing block, or, at the top level, of the
-program. A `comptime` pattern `let` (§11) differs only in what rules out
+survive forcing, and it must be `C`; its names are in scope for the rest
+of the enclosing block; its fields and facts last to the end of the
+enclosing match branch or function body, or of the program. A `comptime` pattern `let` (§11) differs only in what rules out
 the other value constructors.
 
 ## 11. Compile time
@@ -486,8 +489,11 @@ result is produced, never from canonicalization:
 - a tuple `let` binder is tainted when the result it binds is, and so
   is the result of every use of it;
 - a pattern `let`, plain or `comptime`, whose scrutinee is tainted
-  taints every result of its block, or, at the top level, every result
-  of the top-level statements after it;
+  taints every result of the match branch or function body it is in,
+  or, at the top level, every result of the top-level statements after
+  it;
+- a `_` (§16) is tainted when the term it is solved to mentions a
+  tainted entry;
 - nothing else is tainted.
 
 So a function whose body binds a tainted result that reaches none of
@@ -516,7 +522,11 @@ a function signature, its telescopes checked as a function's are (§8),
 with no name and no body. `qed e;` checks `e` against a type goal;
 `qed f;`, naming a function, checks `f`'s parameter and return
 telescopes against a function goal's, which must be canonically
-identical position by position, binder names aside. Each is a top-level
+identical position by position, binder names aside, compared as terms
+whose bound variables refer to their binders, so an earlier binder's
+`is` clause is not in force for later ones; `is` clauses and, in
+phase 2, multiplicities must agree, and `subterm` marks are not
+compared. Each is a top-level
 statement and appears at most once in a program, `qed` after `goal`.
 The goal is proved when the `qed` checks, the results of `T` and of `e`,
 or the goal's telescopes and `f`, are untainted, and no top-level
@@ -545,7 +555,8 @@ At any position in a program, the interface shows:
   `is` rule, and, in phase 2, whether it is erased. An entry with
   several names (§8) is shown once, with all of them.
 - **Refutations**, at a `match` or pattern `let`: the refuted value
-  constructors. Clicking one shows why its forcing fails (§7), as a
+  constructors, and, at an erased match (§16), the absurd branches.
+  Clicking one shows why its forcing fails (§7), as a
   derivation with the fewest steps.
 
 Hidden until the learner opens them, the **Globals** are the top-level
@@ -598,7 +609,9 @@ Pledge has no uniqueness, no `at` and no coercions, in any phase.
 Phase 2 adds erasure. Every binder has a multiplicity, `many` or
 `erased`: function parameters and returns, value-constructor fields, the
 binders of every kind of `let`, and match annotation entries.
-A binder is `many` unless written `erased`.
+A binder is `many` unless written `erased`. A multiplicity is written
+immediately before the binder's name, after `subterm`; an explicit
+`many` is allowed wherever `erased` is.
 Type-constructor arguments are always erased. Value constructors
 themselves are never erased, and every value built by one carries its
 tag.
@@ -609,12 +622,17 @@ return or binder, and everything inside these. A call whose results are
 all erased takes any arguments. Evaluation skips erased positions, and
 `print` shows an erased field as `_`.
 
-`match erased e : (...)` takes its scrutinee erased; a match without a
-multiplicity is `many`. A destructure binds a field erased when the
+`match erased e : (...)` and `let erased C(...) = e;` take their
+scrutinee erased; a match without a multiplicity is `many`. A destructure binds a field erased when the
 field or the match is erased, and `many` otherwise. An erased match with
-a `many` annotation entry has at most one branch.
+a `many` annotation entry has at most one branch that is not absurd; a
+branch is absurd when its body is a match with no branches, possibly
+the final expression of a block, and evaluation runs the branch that is
+not absurd.
 
-`_` then also stands for erased arguments, solved by unification.
+`_` then also stands for erased arguments, solved by unification; `_`
+in place of an annotation takes the given telescope with its
+multiplicities.
 
 Phase 3 is to be designed later. It will allow creating an executable,
 a program with input and output.

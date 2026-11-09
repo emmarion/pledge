@@ -174,8 +174,8 @@ P20. Smaller points, some of which seem to follow from DESIGN.md as it
        meant.
      - §17: the review status.
 
-P21. Details of function goals (§12), proposed with them and not
-     separately approved:
+P21. A detail of function goals (§12), proposed and not separately
+     approved (the other, on `subterm` marks, §12 now settles):
      `subterm` marks are not part of a signature, so the goal states
      none and `f` is allowed any marking; and the goal's telescopes
      are allowed `_` names, since names do not matter for the match.

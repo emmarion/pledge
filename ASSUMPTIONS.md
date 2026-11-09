@@ -57,16 +57,6 @@ and never renumbered (rule 15); a removed item leaves a gap.
    followed by more. A `;` with nothing before it, at the start of
    the program or of a block, is rejected. This may be stricter or
    looser than intended.
-10. **Where a multiplicity goes** (§16, phase 2): immediately before
-    the binder's name, after `subterm`, as `[subterm] [erased|many]
-    name`, for parameters, returns, value-constructor fields, match
-    annotation entries and each tuple-`let` binder (`let (erased a,
-    b) = e;`). `let erased C(...) = e;` and `comptime let erased
-    C(...) = e;` give a pattern `let` a multiplicity, by analogy with
-    `match erased e`. An explicit `many` is accepted wherever `erased`
-    is. No multiplicity is accepted on type-constructor parameters,
-    on `sorry`'s telescope, on a pattern's fields, or before a whole
-    tuple `let`.
 11. **`_` as an erased argument** (§16) is accepted only as a whole
     argument of a call or application in an expression, in phase 2;
     not inside a skeleton term such as `Vec(_, n)`, and not as a tuple
@@ -161,24 +151,18 @@ and never renumbered (rule 15); a removed item leaves a gap.
 
 ## Checking
 
-30. **Tuple `let` binders** are not a telescope: each binder's type or
-    `is` clause is checked in the scope before the `let`, since §8
-    puts the binders in scope only after it, so
-    `let (a : Nat(), b is Succ(a)) = e;` is rejected.
-31. **What survives a block.** §7 and §8 seem not to say what happens
-    to the entries a block creates, though its results can be such
-    entries. The checker keeps every entry created in the block, with
-    the rules it has at the block's end, and drops the rules the block
-    added to older entries (related to DECISIONS.md O5). In a block
-    whose results are tainted by a pattern `let` inside it, a kept
-    entry's rules can be inconsistent with the facts outside; a review
-    found no way to reach such an entry from an untainted value, but
-    this is an open question rather than a proof.
+31. **Inside one body**, after a pattern `let` whose scrutinee is
+    tainted, every result produced later in checking order is tainted,
+    later parts of the same statement included; results produced
+    earlier in that statement are not, though the statement is never
+    evaluated. DECISIONS.md D45 speaks of the body's results and does
+    not mention the statement holding the pattern `let`.
 32. **A later error** anywhere in the program leaves the goal unproved,
     even when the `qed` checked before it; §12 does not say.
-33. **Functions declared after a tainted top-level pattern `let`** are
-    not tainted by it, §12's rule speaking of top-level statements;
-    this seems harmless since nothing evaluates after that `let`.
+33. **Functions declared after a top-level statement containing a
+    tainted pattern `let`** are not tainted by it, §12's rule speaking
+    of top-level statements; a review found this harmless, since
+    nothing after that statement evaluates or proves a goal.
 35. **Taint of `goal`'s type**, a skeleton term, is computed as for an
     expression: a variable is tainted when it names a tainted binder,
     an application when an argument is.
@@ -264,22 +248,9 @@ and never renumbered (rule 15); a removed item leaves a gap.
     argument of; it also rejects a `_` determined only by a later
     argument's call result, and it still accepts a solution naming an
     earlier argument's call result, which no written argument could.
-    A block used as an argument never helps solve a `_` of the
-    enclosing application, even when the block contains no `_`, so
-    `g(_, { v }, Zero())` is rejected where `g(_, v, Zero())` is
-    accepted; a match or a tuple there is fine. Whether a block should
-    take part is an open question for the owner: it would mean
-    unifying the block's results with what it is given in the outer
-    scope, after the block's facts end.
-52. **Taint through `_`.** A `_` whose canonical solution mentions an
-    entry that is tainted, or that has a tainted name, taints the
-    application. This is stricter than §12's rule for a written
-    argument: when an entry has both a clean name `n` and a tainted
-    one, `k(n, _)` is tainted where `k(n, n)` is not. It is also looser
-    in one direction: with `x` from `sorry(x is Zero())`, `k(Zero(), _)`
-    is untainted though `k(Zero(), x)` is tainted, since the solution
-    is the ground term `Zero()`. Both only matter in programs that
-    contain `sorry`.
+    A block's final expression takes part in solving a `_` of the
+    application the block is an argument of, as a direct argument
+    does; the block's statements and a match branch's body do not.
 53. **Scope and Expected panels** mark an entry erased when it was
     opened erased or every one of its names was bound erased; `_`
     entries are hidden like anonymous application entries. Interactive
@@ -294,16 +265,10 @@ and never renumbered (rule 15); a removed item leaves a gap.
     learner who wants to give up writes a function whose body is
     `sorry(_)`. `qed f;` against a type goal is an error. Nothing is
     evaluated at such a `qed`.
-56. **Identity of telescopes.** The goal's parameters and returns are
-    opened as one telescope in the scope at the `qed`, its `is` clauses
-    as rules, and the function's binders are compared position by
-    position, canonically, with `is` clauses both absent or both
-    present and identical, and multiplicities equal. So an earlier
-    binder's `is` clause counts for later ones, `x : Nat()` differs from
-    `x is Zero()`, and facts in force at the `qed`, including those of
-    untainted top-level pattern `let`s after the `goal`, count. A
-    mismatch is an error at the name, so `qedChecks` stays false, and
-    the message names the first position that differs.
+56. **Comparing telescopes at `qed f;`** (DECISIONS.md D47) happens in
+    the scope at the `qed`, so facts in force there count. A mismatch is
+    an error at the name, so `qedChecks` stays false, and the message
+    names the first position that differs.
 57. **Taint.** The goal is tainted as a telescope is; the function's
     taint is its body's (§12), so a function whose own telescopes
     mention a tainted binding is not tainted by that. The alternative,
@@ -317,9 +282,8 @@ and never renumbered (rule 15); a removed item leaves a gap.
     `Times(m, n, r)` and `Plus(r, n, s)` for `Times(Succ(m), n, s)`.
     Existential witnesses are extra returns. Distributivity is proved
     through an `exchange` lemma, (w + y) + (x + z) = (w + x) + (y + z),
-    whose steps carry `--` comments giving each proof's type, since a
-    tuple `let` binder's type cannot mention an earlier binder of the
-    same `let` (item 30). The shown proofs sit in the learner's box with
+    whose `let`s give each proof's type, mentioning the witnesses bound
+    before it in the same `let`. The shown proofs sit in the learner's box with
     one branch missing, since a function cannot be split between a
     read-only box and the learner's box.
 60. **The phase 2 pages** erase, in the example types, `VNil`'s and
