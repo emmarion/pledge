@@ -23,7 +23,7 @@ D35. For D16's "may": DESIGN.md says "is allowed to" for permission and
 
 ## Approved rules awaiting wording
 
-P3. The Scope panel shows whether each entry is tainted.
+None at present.
 
 ## Proposals, not approved
 

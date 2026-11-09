@@ -488,10 +488,12 @@ result is produced, never from canonicalization:
   becomes tainted;
 - a tuple `let` binder is tainted when the result it binds is, and so
   is the result of every use of it;
-- a pattern `let`, plain or `comptime`, whose scrutinee is tainted
-  taints every result of the match branch or function body it is in,
-  or, at the top level, every result of the top-level statements after
-  it;
+- a scope is tainted when a fact forced from a tainted scrutinee is
+  in force in it (§7): each branch of a `match` whose scrutinee is
+  tainted, and, after a pattern `let`, plain or `comptime`, whose
+  scrutinee is tainted, the rest of the match branch or function body
+  it is in, or, at the top level, of the program; every result
+  produced in a tainted scope is tainted;
 - a `_` (§16) is tainted when the term it is solved to mentions a
   tainted entry;
 - nothing else is tainted.
@@ -551,9 +553,11 @@ At any position in a program, the interface shows:
   neither a type nor an `is` clause.
 - **Termination**: the enclosing function's `subterm` parameters, in order,
   and the functions of its group.
-- **Scope**: the local entries, each with its names, its type and its
-  `is` rule, and, in phase 2, whether it is erased. An entry with
-  several names (§8) is shown once, with all of them.
+- **Scope**: the local entries, each with its names, which of them
+  are tainted (§12), its type and its `is` rule, and, in phase 2,
+  whether it is erased; and whether the scope is tainted, with the
+  scrutinee that tainted it. An entry with several names (§8) is shown
+  once, with all of them.
 - **Refutations**, at a `match` or pattern `let`: the refuted value
   constructors, and, at an erased match (§16), the absurd branches.
   Clicking one shows why its forcing fails (§7), as a
