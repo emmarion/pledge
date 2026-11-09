@@ -31,6 +31,7 @@ line. A name is a letter followed by any number of letters, digits and
 Blocks are delimited by braces; layout is not significant.
 Statements, value-constructor declarations and match branches end with `;`.
 A `;` is also allowed after a `}` that needs none, and a `;` is allowed to be repeated.
+§19 gives the grammar.
 
 A binder is written `name : T`, or `name is e` (§6). A telescope is a
 parenthesized, comma-separated list of binders. It is checked in the
@@ -67,9 +68,10 @@ telescope (§5), so `VNil` and `VCons` each declare their own `A`.
 
 ## 2. Names
 
-There is one namespace, and no name is allowed to be shadowed: a binder
-is not allowed to reuse a name that is in scope where it is written, or
-a keyword. A name
+There is one namespace, and no name is allowed to be shadowed: a declaration or binder
+is not allowed to reuse a name that is in scope where it is written, other than its own, or
+a keyword. A telescope, a pattern or a tuple `let` is not allowed to
+introduce one name twice. A name
 refers to a value, a function, a type constructor or a value
 constructor. `Type` is a built-in type constructor with no parameters,
 and not a data type constructor (§5); `Type()` is the type of every
@@ -77,7 +79,7 @@ type, itself included (§3, §4). Only a value is allowed to be passed,
 returned, bound or stored.
 
 Names come into scope in the order they are written. A function's own
-name is in scope in its body, and every function a `mutual` block
+name is in scope in its telescopes and body, and every function a `mutual` block
 declares is in scope throughout the block. §5 says where the names a
 `data` declaration introduces are in scope.
 
@@ -95,7 +97,7 @@ entry, when its telescope is checked, when a body, branch or pattern
 `let` is entered, and at the results of a call, a match or `sorry`. It
 is instantiated, getting an existing entry, when an entry is checked
 against it or bound to it: a call's or application's argument, a result
-checked against returns or an annotation, or a `let`'s right-hand side.
+checked against returns or an annotation, or a tuple `let`'s right-hand side.
 
 Each application in a skeleton term must check against the telescope of
 the type constructor or value constructor it applies (§8). A type is a skeleton term of type `Type()`. Type checking
@@ -157,7 +159,7 @@ mutual {
 ## 6. `is`
 
 `x is e` is allowed in place of `x : T` in function parameters and
-returns, value-constructor fields, match annotations, `let` binders and
+returns, value-constructor fields, match annotations, tuple `let` binders and
 `sorry`'s telescope, but not in type-constructor parameters. The type of
 `x` is then the type of `e`, and `e` must be a skeleton term (§3). When
 a binder `x is e` is opened (§3), its fresh entry gets the rule that it
@@ -165,9 +167,9 @@ is `e`; when it is instantiated, the entry it gets must canonicalize to
 the same skeleton term as `e`. Either way, each bound variable in `e`
 stands for the entry its binder got.
 
-A `let` binder is allowed to carry a type, an `is` clause, or neither. A
-type or `is` clause written on a `let` binder must be canonically
-identical to what the checker infers, so `let y is Succ(n) = e;` asserts
+A tuple `let` binder is allowed to carry a type, an `is` clause, or neither. A
+type or `is` clause written on a tuple `let` binder must be canonically
+identical to what the checker infers for the result it names (§8), so `let y is Succ(n) = e;` asserts
 a fact the checker must already know.
 
 ## 7. What the checker knows
@@ -177,7 +179,8 @@ an `is` rule, a rewrite from the entry to a skeleton term (§3).
 Canonicalizing a skeleton term rewrites it by these rules to a fixed
 point.
 
-The checker knows only what it can infer from the text. After
+The checker knows only what it can infer from the text, and, after a
+`comptime` pattern `let`, which value constructor a run produced (§11). After
 `let x = VCons(Nat(), Zero(), Zero(), VNil(Nat()));`, `x` canonicalizes
 to `VCons(Nat(), Zero(), Zero(), VNil(Nat()))`. The results of a
 function call or of `sorry` are new entries known only by their types,
@@ -190,16 +193,17 @@ application's entry `x` has the rule `x is F(a1, ..., an)`, where `F` is
 the type constructor or value constructor applied and each `ai` is its
 argument's entry.
 
-**Forcing.** Entering a match branch equates the scrutinee with the
-branch's value constructor applied to fresh fields, and the scrutinee's type
+**Forcing** a value constructor at a match or pattern `let` equates the scrutinee with
+that value constructor applied to fresh fields, and the scrutinee's type
 with that application's type. Both sides of an equation are
 canonicalized first. Two applications of the same type constructor, or
 of the same value constructor, are equated argument by argument, and an equation between a term and itself
 is dropped. An entry `x` is given the rule `x is e`; when `e` is an
 entry too, the newer of the two takes the rule. Whenever an entry is
-equated with a term, their types are equated too. The facts last until
-the branch ends, or, for a pattern `let`, to the end of the enclosing
-block, or, at the top level, of the program (§10). Forcing fails, refuting the branch, when:
+equated with a term, their types are equated too. In a match, the facts of forcing a
+branch's value constructor last until
+the branch ends; for a pattern `let`, they last to the end of the enclosing
+block, or, at the top level, of the program (§10). Forcing fails, refuting the value constructor (§10), when:
 
 1. an entry is equated with a skeleton term that strictly contains it;
 2. two applications of different type constructors, of different value
@@ -214,7 +218,8 @@ fn name(params) -> (returns) { body }
 Functions are defined only at the top level. There are no nested
 functions and no closures. Mutually recursive functions are written
 together in a `mutual` block, their **group**; a function outside any
-`mutual` block is a group of its own.
+`mutual` block is a group of its own. A `mutual` block is allowed to
+hold functions that do not call each other.
 
 A function returns one or more values. The return telescope can depend
 on the parameters and on earlier returns; its names are in scope in its
@@ -223,7 +228,11 @@ later entries, not in the body.
 A block, `{ s1; ...; sn; e }`, is an expression: zero or more statements
 followed by a final expression, whose results are the block's. A
 statement in a block is a tuple or pattern `let`, or `inspect;`, and
-`let x = e;` is `let (x) = e;`, a tuple `let` with one binder.
+`let x = e;` is `let (x) = e;`, a tuple `let` with one binder. A tuple
+`let` binder names the entry produced for it and adds no entry and no
+rule: after `let y = x;`, `x` and `y` are two names for one entry. A
+tuple `let`'s binders are in scope after the `let`, to the end of the
+enclosing block, or, at the top level, of the program.
 A function's body is a block, and a block is allowed wherever an
 expression is, such as a match branch. A program is a sequence of
 declarations (`data`, `fn` and `mutual`) and top-level statements:
@@ -270,9 +279,20 @@ entry. For example, `VCons(Nat(), Zero(), x, VNil(Nat()))` needs
 `x : Nat()` and `VNil(Nat()) : Vec(Nat(), Zero())`, and its type
 canonicalizes to `Vec(Nat(), Succ(Zero()))`.
 
-A body's or a branch's results are checked against its return telescope
-or annotation in the same way: each return or annotation entry is
-instantiated to the entry of the result produced for it. A parameter is
+Some positions give the expression there what it must produce. A
+function body is given its returns, a branch body the match's
+annotation (§10), and a `qed`'s expression the goal (§12). A tuple
+`let` gives its right-hand side its binders, a binder with neither a
+type nor an `is` clause taking any result. A block gives its final
+expression what the block is given. A call or application gives each
+argument its parameter or field, and a tuple gives each element the
+matching entry of what the tuple is given, the earlier entries being
+instantiated to the entries of the earlier arguments or elements.
+Nothing else is given. An expression's results are checked against what
+it is given as a call's arguments are against its parameters: each
+entry is instantiated to the entry of the result produced for it. So a
+block's results are checked against what the block is given in the
+block's scope, with the block's facts in force (§7). A parameter is
 opened when the body is entered, so the body refers to its entry
 directly.
 
@@ -287,7 +307,8 @@ Parameters are allowed to be marked `subterm`, including `is` parameters
 (`subterm m is Succ(n)`). A call within the group marks, for some `k`,
 the argument for the callee's `k`-th `subterm` parameter `subterm e`,
 and the argument for each of its earlier `subterm` parameters `same e`;
-every other argument is unmarked. The call is accepted when the caller
+every other argument is unmarked. Only a call within the group has
+marks. The call is accepted when the caller
 has at least `k` `subterm` parameters and:
 
 - the `subterm` argument is a strict subterm of the caller's own `k`-th
@@ -334,16 +355,26 @@ In a `match`, and in a pattern `let` (below), the type of `e` must
 canonicalize to a data type (§5).
 
 The annotation is mandatory; it is the telescope the match produces, so
-a match may return several values. Its names are in scope in its later
+a match can produce several values. Its names are in scope in its later
 entries, as a return telescope's are (§8). It is checked in the scope
 before the match. Each branch's results are checked against it in the branch's
 scope, where forcing has refined it. The match's results are new entries
-typed by the annotation as it stands before the match. `_` in its place
-reuses the telescope the position expects.
+typed by the annotation as it stands before the match.
 
-A branch binds one name per field of its value constructor; its body is
-an expression, often a block (§8). Patterns do not nest: each field is
-bound to a name, or to `_`. Every value constructor has at most one
+`_` in place of the annotation, or of `sorry`'s telescope (§12), stands
+for the telescope given at its position (§8). It is allowed only where
+a whole telescope is given: at a function body, a branch body, the
+right-hand side of a tuple `let` whose binders all carry a type or an
+`is` clause, and a block's final expression at one of these. At a
+`qed`'s expression, whether it is allowed is an implementation choice
+(§14). `_` never stands for one entry of a telescope, so it is not
+allowed at an argument or at a tuple's element.
+
+Each branch is for a value constructor of the scrutinee's data type
+constructor. Patterns do not nest: a branch gives the fresh entry each
+field of its value constructor is opened to (§3) a name, or `_`. Its
+body is an expression, often a block (§8).
+Every value constructor has at most one
 branch. A value constructor is **refuted** when its forcing fails (§7);
 a refuted value constructor has no branch, and every other value
 constructor has one. So a match whose scrutinee's data type constructor
@@ -377,27 +408,37 @@ branch for `Succ`. In that branch, `p : IsZero(Succ(m))`, while
 `IsZeroHere()` has type `IsZero(Zero())`, so `IsZeroHere` is refuted
 and the match on `p` has no branches.
 
-A pattern `let`, `let C(x1, ..., xn) = e;`, is a statement. Exactly one
-value constructor of `e`'s type must survive forcing, and it must be `C`; its
-fields and facts stay in scope for the rest of the enclosing block. A
-pattern `let` is not allowed at the top level in phase 1, where
-`comptime let` (§11) takes its place. A later phase might allow it once
-programs can be built as executables (§16).
+A pattern `let`, `let C(x1, ..., xn) = e;`, is a statement, in a block
+or at the top level. Exactly one value constructor of `e`'s type must
+survive forcing, and it must be `C`; its fields and facts stay in scope
+for the rest of the enclosing block, or, at the top level, of the
+program. A `comptime` pattern `let` (§11) differs only in what rules out
+the other value constructors.
 
 ## 11. Compile time
 
 A program has no run-time stage: code is evaluated only at compile
-time, and only when asked to, by `print` (§12) and two top-level
-statements:
+time. Each top-level statement is evaluated as soon as it is checked,
+every `let` included, except for what taint removes (§12). Only `print`
+shows a value, apart from the error of a `comptime` pattern `let`
+below. A value is a tree of applications of type constructors and value
+constructors.
 
-- `comptime let x = e;` evaluates `e` during checking. The checker
-  knows of `x` exactly what it would know after `let x = e;`.
-- `comptime let C(x1, ..., xn) = e;` evaluates `e` during
-  checking and requires the result to be headed by `C`; otherwise it is
-  an error showing the value. It is then checked as a pattern `let`
-  (§10), except that the run, not forcing, rules out the other
-  value constructors, and its fields and facts stay in scope for the rest of
-  the program.
+Evaluation is eager: a call evaluates its arguments, in order, before
+its body, and a block evaluates its statements in order, then its final
+expression. A match evaluates its scrutinee, then the branch for the
+value constructor that heads the value, with the branch's fields bound
+to the value's arguments; a pattern `let` binds its fields the same
+way.
+
+`comptime let C(x1, ..., xn) = e;` is a top-level statement. It
+evaluates `e` during checking and requires its value to be headed by
+`C`; otherwise it is an error showing the value. It is then checked as
+a pattern `let` (§10), except that the run, not forcing, rules out the
+other value constructors: `C` must survive forcing, and the others need
+not be refuted. Its fields and facts stay in scope for the rest of the
+program. `comptime` is written only on a pattern `let`, and only at the
+top level.
 
 This is how a proof by reflection is written, given
 
@@ -415,33 +456,68 @@ and a function `decideEven(n : Nat()) -> (r : Option(Even(n)))`, with
 comptime let Some(_, p) = decideEven(Succ(Succ(Zero())));
 ```
 
-After it, `p : Even(Succ(Succ(Zero())))`.
-
-In both forms of `comptime let`, `e` is allowed to refer only to
-functions, type constructors, value constructors and earlier `comptime`
-bindings.
+After it, `p : Even(Succ(Succ(Zero())))`. Without `comptime`, the
+`let` would be an error, since forcing does not refute `None`.
 
 ## 12. `sorry`, `print`, `goal` and `qed`
 
-`sorry` is an expression of any type, and checking goes on past it as
-past any other expression. The interface reports whether a program
-contains `sorry` anywhere. Once an evaluation reaches `sorry`, the
-program evaluates nothing more: from there on, every `print` shows
-`sorry` and every `comptime` pattern `let` is accepted without its head
-check.
+`sorry(telescope)` is an expression that produces one new entry per
+entry of its telescope, described by it, types and `is` rules alike
+(§6), so `sorry(x is Zero())` produces one entry, whose rule is that it
+is `Zero()`. Its telescope's names are in scope only in its later
+entries, as a match annotation's are (§10). `sorry(_)` stands for the
+telescope given at its position (§10). Checking goes on past `sorry` as
+past any other expression.
 
-`print e;` is a top-level statement that evaluates `e` at compile time
-and shows its value, as a tree of applications of type constructors and
-value constructors, beside the statement. As in a `comptime let` (§11), `e` is allowed to
-refer only to functions, type constructors, value constructors and
-`comptime` bindings.
+Any use of `sorry` is unsound; **taint** tracks what relies on one. It
+is decided from the text, without evaluation, and comes from how a
+result is produced, never from canonicalization:
 
-`goal T;` sets the program's goal, a type. `qed e;` checks `e` against
-it. Each is a top-level statement and appears at most once in a program,
-`qed` after `goal`. The goal is proved when the `qed` checks and the
-program contains no `sorry`. A `qed` that checks in a program containing
-`sorry` proves nothing; the interface reports that the `qed` checks
-and that the program contains `sorry`.
+- every result of `sorry` is tainted;
+- an application's result is tainted when any argument's is; a tuple's
+  or a block's result when the matching result of its element or final
+  expression is; and a match's result when the scrutinee's result or
+  the matching result of any branch is;
+- every result of a call is tainted when the function is tainted or any
+  argument's result is;
+- a function is tainted when any result of its body is; within a group,
+  every function starts untainted, and taint spreads until nothing more
+  becomes tainted;
+- a tuple `let` binder is tainted when the result it binds is, and so
+  is the result of every use of it;
+- a pattern `let`, plain or `comptime`, whose scrutinee is tainted
+  taints every result of its block, or, at the top level, every result
+  of the top-level statements after it;
+- nothing else is tainted.
+
+So a function whose body binds a tainted result that reaches none of
+its results is untainted, and a call to it is tainted only by its
+arguments, though the program still contains `sorry`.
+
+Before code is evaluated, every expression whose results are all
+tainted is removed, with everything in it, so evaluation never reaches
+a `sorry`. An unread `let` whose right-hand side is a match on a
+`sorry`, for example, is never evaluated, and a match only some of
+whose results are tainted still runs, for the others. A `comptime`
+pattern `let` whose scrutinee is tainted evaluates nothing, so it does
+not check that the value is headed by its value constructor. After a
+top-level pattern `let`, plain or `comptime`, whose scrutinee is
+tainted, nothing evaluates, every `print` shows `sorry` and no `qed`
+proves the goal, though checking goes on.
+
+`print e;` is a top-level statement that evaluates `e` and shows its
+value beside the statement, as a tree of applications of type
+constructors and value constructors. When `e`'s result is tainted, it
+evaluates nothing and shows `sorry`.
+
+`goal T;` sets the program's goal, a type, checked in the scope where
+it is written. `qed e;` checks `e` against it. Each is a top-level
+statement and appears at most once in a program, `qed` after `goal`.
+The goal is proved when the `qed` checks, the results of `T` and of `e`
+are untainted, and no top-level pattern `let` whose scrutinee is
+tainted comes before the `qed`. The interface reports
+whether the program contains `sorry` anywhere, whether the `qed` checks
+and whether the goal is proved.
 
 A tutorial page shows one or more read-only boxes of source above the
 learner's editable box, and checks them all as one program, in order,
@@ -452,11 +528,15 @@ Whether the learner's box must hold the `qed` is up to the page.
 
 At any position in a program, the interface shows:
 
-- **Expected**: the telescope still to be produced there.
+- **Expected**: what the position is given (§8) and is still to be
+  produced there, with an explicit indication wherever nothing has been
+  determined: where nothing is given, and for a tuple `let` binder with
+  neither a type nor an `is` clause.
 - **Termination**: the enclosing function's `subterm` parameters, in order,
   and the functions of its group.
-- **Scope**: the local entries, each with its type and `is` rule, and,
-  in phase 2, whether it is erased.
+- **Scope**: the local entries, each with its names, its type and its
+  `is` rule, and, in phase 2, whether it is erased. An entry with
+  several names (§8) is shown once, with all of them.
 - **Refutations**, at a `match` or pattern `let`: the refuted value
   constructors. Clicking one shows why its forcing fails (§7), as a
   derivation with the fewest steps.
@@ -465,7 +545,7 @@ Hidden until the learner opens them, the **Globals** are the top-level
 names in scope at that position: each function, with its parameters and
 returns; each type constructor, with its parameters and its value
 constructors, each with its fields and return; and each top-level
-binding, with its type and `is` rule, marked `comptime` or not.
+binding, with its type and `is` rule.
 
 Types and skeleton terms are shown canonicalized. An anonymous entry is
 shown by a marker giving what kind of entry it is and where it was
@@ -483,20 +563,26 @@ Functions appear under Termination and among the Globals, never under
 Scope, because they are not first class (§4); they are still in the one
 namespace (§2).
 
-The statement `inspect;` reports the same information as text.
+The statement `inspect;` reports the same information as text, beside
+the statement.
+
+Checking stops at the first error, which the interface shows where it
+occurs.
 
 ## 14. Implementation
 
 Checking produces, for the code it evaluates, a separate syntax tree
-with erased positions removed, and a tree-walking interpreter evaluates
-that tree.
+without what taint removes (§12) and, from phase 2 on, without erased
+positions (§16); a tree-walking interpreter evaluates that tree.
+
+Whether `_` is allowed at a `qed`'s expression, standing for the goal,
+so whether `qed sorry(_);` is allowed, is an implementation choice.
 
 ## 15. Not in phase 1
 
 Every binder has multiplicity `many`; no multiplicity is written. There
 are no literals, strings, characters or input. `_` is inferred only in
-place of a match annotation. A pattern `let` without `comptime` is not
-allowed at the top level (§10).
+place of a match annotation or `sorry`'s telescope (§10).
 
 Pledge has no uniqueness, no `at` and no coercions, in any phase.
 
@@ -510,7 +596,7 @@ Type-constructor arguments are always erased. Value constructors
 themselves are never erased, and every value built by one carries its
 tag.
 
-An erased name may be used only in an erased position: a type, an
+An erased name is allowed only in an erased position: a type, an
 argument for an erased parameter or field, the result for an erased
 return or binder, and everything inside these. A call whose results are
 all erased takes any arguments. Evaluation skips erased positions, and
@@ -528,11 +614,47 @@ a program with input and output.
 
 ## 17. Review status
 
-The owner has skimmed the introduction and §1 to §6 and tentatively
-approved their wording. The other sections have not yet been reviewed.
+The owner has confirmed the wording of the introduction and §1 to §9,
+apart from edits not yet reviewed; the rest of the file awaits review.
 
 ## 18. Keywords
 
 `comptime`, `data`, `fn`, `goal`, `inspect`, `is`, `let`, `match`,
 `mutual`, `print`, `qed`, `same`, `sorry`, `subterm`. Phase 2 adds
 `erased` and `many` (§16).
+
+## 19. Grammar
+
+The grammar of phase 1, without the extra `;` that §1 allows. `NAME` is
+a name that is not a keyword (§1, §18); `[x]` is an optional `x`, `x*`
+is zero or more `x`, and `x+` is one or more.
+
+```
+program   ::= (data | fn | mutual | statement | topstatement)*
+mutual    ::= 'mutual' '{' (data+ | fn+) '}'
+data      ::= 'data' NAME '(' [typed (',' typed)*] ')' ':' 'Type' '(' ')'
+              '{' (NAME '(' [binders] ')' ':' term ';')* '}'
+typed     ::= id ':' term
+fn        ::= 'fn' NAME '(' [param (',' param)*] ')' '->' '(' binders ')' block
+param     ::= ['subterm'] binder
+binders   ::= binder (',' binder)*
+binder    ::= id (':' term | 'is' term)
+id        ::= NAME | '_'
+term      ::= NAME | NAME '(' [term (',' term)*] ')'
+block     ::= '{' statement* expr '}'
+statement ::= 'let' letlhs '=' expr ';' | 'inspect' ';'
+topstatement ::= 'comptime' 'let' pattern '=' expr ';'
+              | 'print' expr ';' | 'goal' term ';' | 'qed' expr ';'
+letlhs    ::= '(' letbinder (',' letbinder)* ')' | letbinder | pattern
+letbinder ::= id [':' term | 'is' term]
+pattern   ::= NAME '(' [id (',' id)*] ')'
+expr      ::= NAME | NAME '(' [arg (',' arg)*] ')' | '(' expr (',' expr)* ')'
+              | block | match | sorry
+arg       ::= ['subterm' | 'same'] expr
+match     ::= 'match' expr ':' ('(' binders ')' | '_') '{' (pattern '=>' expr ';')* '}'
+sorry     ::= 'sorry' '(' (binders | '_') ')'
+```
+
+A `NAME` followed by `(` in `expr` is a call when it names a function,
+and otherwise an application of the type constructor or value
+constructor it names. Only a call within its group has marks (§9).
