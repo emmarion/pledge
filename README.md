@@ -1,5 +1,7 @@
 # Pledge
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24092650.svg)](https://doi.org/10.5281/zenodo.24092650)
+
 Pledge is a small language for learning restricted dependent types,
 built so that you can see what its type checker knows at every point of
 a program. It runs entirely in the browser:
@@ -94,5 +96,6 @@ to `main` type-checks, runs the tests and deploys `web/` to GitHub Pages.
 
 ## Citing and license
 
-[CITATION.cff](CITATION.cff) has the citation. Apache-2.0, see
+[CITATION.cff](CITATION.cff) has the citation; the code is at
+https://doi.org/10.5281/zenodo.24092650. Apache-2.0, see
 [LICENSE](LICENSE) and [NOTICE](NOTICE).

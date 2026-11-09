@@ -10,6 +10,7 @@ authors:
 repository-code: "https://github.com/emmarion/pledge"
 url: "https://emmarion.github.io/pledge/"
 license: Apache-2.0
+doi: 10.5281/zenodo.24092650
 keywords:
   - programming languages
   - dependent types
