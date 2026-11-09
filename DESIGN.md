@@ -7,8 +7,8 @@ what the type checker knows at any point of a program (§13).
 The language comes in phases, each a superset of the one before. A
 program is checked under one phase, chosen by the learner or by a
 tutorial page (§12), with the features of that phase and of every
-earlier one. This file describes phase 1; §16 lists what is planned
-beyond it.
+earlier one. This file describes phase 1; §16 describes phase 2 and
+what is planned beyond it.
 
 Soundness is essential: no program can prove `False`. Pledge has
 `Type() : Type()`. In place of a universe hierarchy, it relies on three
