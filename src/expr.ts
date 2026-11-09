@@ -335,7 +335,8 @@ function match(ctx: Ctx, local: Local, e: Match, given: Given | null, snap: Snap
     const won = survivor(branchOf(br.pat), br.pat.span, "");
     const bound = bind(ctx, { ...inner, scope: won.scope, taintedBy: reach(inner, s, e.scrut.span) }, br.pat.fields,
       won.fields).local;
-    return expr({ ...ctx, holes: [] }, bound, br.body, { wants, env: ann.env, whole: true, ...(label ? { label } : {}) });
+    return expr({ ...ctx, holes: [] }, bound, br.body,
+      { wants, env: ann.env, whole: true, ...(label ? { label } : {}) });
   });
   snap.refutations = [...refuted, ...e.branches.filter(br => !live.includes(br)).map(br =>
     ({ ctor: br.pat.ctor.name, kind: "absurd" as const, derivation: () => [] }))];
