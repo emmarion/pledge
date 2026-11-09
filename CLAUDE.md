@@ -1,24 +1,22 @@
 # Working agreement for this project
 
-> **Origin of this file.** This file was copied word for word from the
-> working agreement of [Sleight](https://github.com/emmarion/sleight),
-> the language Pledge is loosely based on, and has not yet been adapted
-> to Pledge. Parts of it probably describe Sleight rather than
-> Pledge: it calls the project an OCaml implementation, and it names
-> files and tools (DESIGN.md, ASSUMPTIONS.md, BUGS.md, WARNINGS.md,
-> slc and others) that may not exist here. Where a rule refers to
-> something this repo lacks, ask the owner how it applies rather than
-> guessing. The owner's intent for each rule is presumably the same
-> here, but that has not been confirmed rule by rule.
+> **Origin of this file.** This file was copied from the working
+> agreement of [Sleight](https://github.com/emmarion/sleight), the
+> language Pledge is loosely based on, and is only partly adapted to
+> Pledge. Rules 2, 3, 14, 16 and 17 still describe Sleight: they name
+> OCaml, `dune`, `slc`, WARNINGS.md and an audit or bug index, none of
+> which this repo has. Where a rule refers to something this repo
+> lacks, ask the owner how it applies rather than guessing. The
+> owner's intent for each rule is presumably the same here, but that
+> has not been confirmed rule by rule.
 
-This is a from-scratch prototype OCaml implementation of a programming
-language design belonging to the repo owner. Ground rules below were set
+This is a from-scratch prototype TypeScript implementation of a
+programming language design belonging to the repo owner. Ground rules below were set
 by the owner and apply to every session.
 
 1. **Hedge permanent claims.** Anything committed to git — code comments,
    commit messages, docs, design notes — must hedge any claim that doesn't
-   come directly from the owner. This subfield (type theory / advanced
-   OCaml type-system features) is one where Claude can get confidently
+   come directly from the owner. This subfield (type theory) is one where Claude can get confidently
    wrong, and unhedged claims compound when read by future Claude sessions.
    Confident prose is fine in chat with the owner if it helps move things
    along, but even there, defaulting to the same hedging habit is safest.
@@ -111,8 +109,7 @@ by the owner and apply to every session.
     do so as the pattern to follow.
 
 15. **Numbered items are never renumbered.** DESIGN.md's sections and
-    the items of ASSUMPTIONS.md, SPEC-REVIEW.md, OPEN.md,
-    TOOLING-WISHLIST.md, MINIMAL.md, BUGS.md and WARNINGS.md are
+    the items of ASSUMPTIONS.md and DECISIONS.md are
     cited by number from the code and from each other. An item or
     section that goes away is deleted and its number left as a gap;
     nothing after it moves.
@@ -131,7 +128,7 @@ by the owner and apply to every session.
     version. When something changes, rewrite the text as if it had
     always been that way. History belongs in git commit messages.
 
-19. **Read all of DESIGN.md before writing Sleight code.** Read every
+19. **Read all of DESIGN.md before writing Pledge code.** Read every
     section, not a summary or the parts that look relevant. Re-read any
     section that has dropped out of context before relying on it.
 
