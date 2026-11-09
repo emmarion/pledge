@@ -19,8 +19,7 @@ and never renumbered (rule 15); a removed item leaves a gap.
    `src/**/*.test.ts`, run on the TypeScript directly by Node's type
    stripping, with imports written with the `.ts` extension and
    rewritten by `tsc` on output. The GitHub Actions workflow in
-   `.github/` builds and deploys `web/` to GitHub Pages; the owner has
-   to enable Pages for the repository.
+   `.github/` builds and deploys `web/` to GitHub Pages.
 3. **Positions** in the interface (§13) are byte offsets into the
    source; the editor is a plain `textarea`, and the selected position
    is the caret. No editor library is used.
