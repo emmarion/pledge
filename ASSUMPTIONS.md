@@ -13,22 +13,21 @@ and never renumbered (rule 15); a removed item leaves a gap.
 1. **Source files** of Pledge programs use the extension `.pledge`.
    DESIGN.md names no extension; `.pl` would collide with Perl and
    Prolog.
-2. **Build.** The TypeScript is compiled by `tsc` alone, to native ES
-   modules that the page loads without a bundler; the compiled
-   `web/js/` is not committed. Tests are `node --test` over
+2. **Build.** Vite builds the pages in `web/` into `dist/`, which is
+   not committed; `tsc` only type-checks. Tests are `node --test` over
    `src/**/*.test.ts`, run on the TypeScript directly by Node's type
-   stripping, with imports written with the `.ts` extension and
-   rewritten by `tsc` on output. Since type stripping checks no types,
-   `npm run typecheck` checks the tests too, under `tsconfig.test.json`.
+   stripping, with imports written with the `.ts` extension. Since type
+   stripping checks no types, `npm run typecheck` checks the tests too,
+   under `tsconfig.test.json`.
    The GitHub Actions workflow in `.github/` type-checks, tests, builds
-   and deploys `web/` to GitHub Pages.
+   and deploys `dist/` to GitHub Pages.
 3. **Positions** in the interface (§13) are offsets into the source
    as a JavaScript string, which for ASCII source are also byte
    offsets; the editor is a plain `textarea`, and the selected position
    is the caret. No editor library is used.
-4. **Dependencies.** The only dependencies are TypeScript itself and
+4. **Dependencies.** The only dependencies are TypeScript itself,
    Node's type declarations, which the tests are type-checked against,
-   both development dependencies.
+   and Vite, all development dependencies.
 14. **`tests/design_reflection.pledge`** supplies a `decideEven`
     whose header is §11's, delegating to a recursive helper, since
     DESIGN.md gives only the signature.
