@@ -1,5 +1,5 @@
 import type { Section } from "./pages.ts";
-import { nat } from "../examples.ts";
+import { nat, vec, vheadBy } from "../examples.ts";
 import { paragraphs, box, evenOdd, plusFn, eq, isZero, plusRel, plus } from "./programs.ts";
 
 const gap = " sorry(_)";
@@ -38,6 +38,20 @@ const plusZeroRight = `fn plusZeroRight(subterm n : Nat()) -> (p : Plus(n, Zero(
     Succ(k) => PlusSucc(k, Zero(), k, plusZeroRight(subterm k));
   }
 }`;
+
+const vappend = (nil: string, cons: string): string =>
+  `fn vappend(A : Type(), m : Nat(), n : Nat(), subterm v : Vec(A, m),
+    w : Vec(A, n)) -> (r : Nat(), p : Plus(m, n, r), u : Vec(A, r)) {
+  match v : _ {
+    VNil(_) =>${nil};
+    VCons(_, m1, x, rest) =>${cons};
+  }
+}
+qed vappend;
+let (r, p, u) = vappend(Nat(), two, one, xs, ys);
+print r;
+print u;
+`;
 
 const lemma = (name: string, conclusion: string) => ({
   fn: (zero: string, succ: string): string => `fn ${name}(m : Nat(), n : Nat(), r : Nat(), subterm p : Plus(m, n, r))
@@ -292,16 +306,44 @@ ${plusZero(gap, gap)}
     }`), "plusZero"),
   },
   {
+    slug: "vappend",
+    title: "Appending vectors",
+    phase: 1,
+    prose: paragraphs(
+      "Appending puts one vector after another: lengths m and n give a vector of length m + n. The type of `vappend` should say so, as `vhead`'s type said \"not empty\". In some other languages, as far as this tutorial knows, you would write the result's type as `Vec(A, m + n)`. In Pledge you cannot: as the previous page showed, a type contains no function call.",
+      "So `vappend` does what `plus` did on the previous page, and the first box shows `plus` again: it returns the answer together with evidence. Its returns are a length `r`, evidence `p : Plus(m, n, r)`, and the vector `u : Vec(A, r)`. You can read them as \"there is an `r` such that m + n = r and `u` has length `r`\". The second box states this as a function goal, and `qed vappend;` is already in your box.",
+      "Like `plus`, `vappend` is a recursion on its first argument, here `v`, marked `subterm`. Put the caret on the first `sorry(_)`: Scope shows that `m` is `Zero()` and `v` is `VNil(A)`, and Expected asks for `r : Nat()`, `p : Plus(Zero(), n, r)` and `u : Vec(A, r)`.",
+      "On the second, Scope shows that `m` is `Succ(m1)` and `v` is `VCons(A, m1, x, rest)`, so `rest` is a strict subterm of `v`. Write the branch as `plus` writes its `Succ(k)` branch: a block whose tuple `let` binds the three results of `vappend(A, m1, n, subterm rest, w)`. With a `sorry(_)` as the block's last expression, Scope there shows `p1 : Plus(m1, n, r1)` and `u1 : Vec(A, r1)`, marked tainted while a `sorry` is left in `vappend`.",
+      "Then build the three results: one more on the length, a `PlusSucc` around the evidence, a `VCons` around the vector. Each element of the tuple has its own Expected, with the earlier ones filled in: after `Succ(r1)`, the second asks for `p : Plus(Succ(m1), n, Succ(r1))`.",
+      "The run then prints three and the appended vector, but the checker knows less. Put the caret on the last line: Scope shows `r : Nat()` with no rule and `u : Vec(Nat(), r)`. As on the page \"is binders\", the checker knows a call's results only by the function's returns. So the call `vhead(Nat(), two, u)`, which needs a vector of length three, is rejected. This seems to be the price of stating addition as a relation; the last page of the main path, \"What Pledge leaves out\", comes back to it."),
+    task: "Replace each `sorry(_)`, until the status line reads \"No sorry\" and \"Goal proved\". Then add `print vhead(Nat(), two, u);` at the end of your box, read the error, and delete the line.",
+    refs: "§3, §7, §8, §9, §10, §12, §13",
+    boxes: [box(nat, vec, plus, vheadBy("")), `let one = Succ(Zero());
+let two = Succ(one);
+let xs = VCons(Nat(), one, Zero(),
+  VCons(Nat(), Zero(), one, VNil(Nat())));
+let ys = VCons(Nat(), Zero(), two, VNil(Nat()));
+goal fn (A : Type(), m : Nat(), n : Nat(), v : Vec(A, m), w : Vec(A, n))
+    -> (r : Nat(), p : Plus(m, n, r), u : Vec(A, r));`],
+    initial: `-- Replace each sorry(_), then read what the two prints show.
+${vappend(gap, gap)}`,
+    requireQed: true,
+    solution: vappend(" (n, PlusZero(n), w)", ` {
+      let (r1, p1, u1) = vappend(A, m1, n, subterm rest, w);
+      (Succ(r1), PlusSucc(m1, n, r1, p1), VCons(A, r1, x, u1))
+    }`),
+  },
+  {
     slug: "plus-succ",
     title: "A lemma about Plus",
     phase: 1,
     prose: paragraphs(
       "This page and the next three prove facts about arithmetic that you know from school. Writing a + b = c for `Plus(a, b, c)`, this page proves: if m + n = r, then m + (n + 1) = r + 1, where n + 1 is `Succ(n)`. It is a lemma, a small fact proved to help with a bigger one: the next page needs it for commutativity.",
-      "Each fact is a function goal, as on the previous page: the parameters are the assumptions, and the returns are the conclusion. This time `qed plusSucc;` is already in your box, so the status line reads \"qed checks\" and \"Goal not proved\" from the start.",
+      "Each fact is a function goal, as on the page \"Proof by recursion\": the parameters are the assumptions, and the returns are the conclusion. As on the previous page, `qed plusSucc;` is already in your box, so the status line reads \"qed checks\" and \"Goal not proved\" from the start.",
       "The proof is an induction on m, written as a recursion on the evidence `p`, which is marked `subterm`. The match on `p` has one branch for each way m + n = r can have been shown.",
       "Put the caret on the first `sorry(_)`. Scope shows that `m` is `Zero()` and `r` is `n`, so Expected asks for `Plus(Zero(), Succ(n), Succ(n))`: zero plus `Succ(n)` is `Succ(n)`. One `PlusZero` shows that.",
       "On the second, `m` is `Succ(m1)`, `r` is `Succ(r1)` and `p1 : Plus(m1, n, r1)`, and Expected asks for `Plus(Succ(m1), Succ(n), Succ(Succ(r1)))`. Scope also shows that `p` is `PlusSucc(m1, n, r1, p1)`, so `p1` is a strict subterm of `p`, and the recursive call `plusSucc(m1, n, r1, subterm p1)` is allowed. It gives `Plus(m1, Succ(n), Succ(r1))`, and one `PlusSucc` around it gives what Expected asks for.",
-      "The first box also holds `plusZeroRight`, evidence that n + 0 = n, built by recursion on `n`. It is the previous page's fact in another form: it produces evidence of `Plus` instead of taking it apart. This page does not need it; the next one does."),
+      "The first box also holds `plusZeroRight`, evidence that n + 0 = n, built by recursion on `n`. It is the fact of the page \"Proof by recursion\" in another form: it produces evidence of `Plus` instead of taking it apart. This page does not need it; the next one does."),
     task: replaceAll,
     refs: "§7, §9, §12, §13",
     boxes: [box(nat, plusRel, plusZeroRight), plusSuccLemma.goal],
@@ -333,7 +375,7 @@ ${withQed(plusCommLemma.fn(gap, gap), "plusComm")}`,
     title: "Associativity of addition",
     phase: 1,
     prose: paragraphs(
-      "Associativity says that (a + b) + c and a + (b + c) are the same number. With `Plus`, every sum has to be named. Given ab with a + b = ab, and r with ab + c = r, the goal asks for a number bc with b + c = bc and a + bc = r. A return that later returns mention, like `bc`, can be read as \"there is a `bc` such that\".",
+      "Associativity says that (a + b) + c and a + (b + c) are the same number. With `Plus`, every sum has to be named. Given ab with a + b = ab, and r with ab + c = r, the goal asks for a number bc with b + c = bc and a + bc = r. As with `r` on the page \"Appending vectors\", `bc` can be read as \"there is a `bc` such that\".",
       "Your box holds the whole proof, `qed` included, except for one branch. It is an induction on a, as a recursion on `p`. Read the `PlusSucc(a1, _, ab1, p1)` branch first, from the top.",
       "Put the caret on its first line, the pattern `let` on `q`. Scope shows what forcing `PlusSucc` told the checker: `a` is `Succ(a1)`, `ab` is `Succ(ab1)`, and so `q : Plus(Succ(ab1), c, r)`. A `PlusZero` would need `q`'s first argument to be `Zero()`, so it is refuted, as Refutations shows, and the pattern `let` is accepted. After it, `r` is `Succ(r1)` and `q3 : Plus(ab1, c, r1)`.",
       "The recursive call marks `p1` `subterm`, a strict subterm of `p`. It gives `bc`, `s1 : Plus(b, c, bc)` and `s2 : Plus(a1, bc, r1)`. On the last line, Expected asks for `Plus(Succ(a1), bc, Succ(r1))` as the third result, and `PlusSucc` turns `s2` into that. For now Scope marks `bc`, `s1` and `s2` as tainted: the call relies on the `sorry` still in `plusAssoc`.",
