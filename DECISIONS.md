@@ -67,9 +67,21 @@ D35. For D16's "may": DESIGN.md says "is allowed to" for permission and
      "can" for possibility, as in "no program can prove `False`",
      applied to each section as the section-by-section pass reaches it.
 
+D43. Function goals. `goal fn (params) -> (returns);` states a goal
+     that is a function signature, with no name and no body. `qed f;`
+     names a function declared in the program. The goal is proved when
+     `f`'s parameter and return telescopes are canonically identical to
+     the goal's, position by position, binder names aside, and §12's
+     other conditions hold: `f` is untainted, the goal's telescopes are
+     untainted, and no tainted top-level pattern `let` comes before the
+     `qed`. Nothing is passed, returned or stored, so §4 stands.
+     `goal T;` and `qed e;` stay as they are. The owner approved this
+     "generally"; P21 holds the two details the proposal left to the
+     owner.
+
 ## Approved rules awaiting wording
 
-None at present.
+D43.
 
 ## Proposals, not approved
 
@@ -173,6 +185,11 @@ P20. Smaller points, some of which seem to follow from DESIGN.md as it
      - §3, §6: "tuple `let`" where only a tuple `let`'s binders are
        meant.
      - §17: the review status.
+
+P21. Details of D43, proposed with it and not separately approved:
+     `subterm` marks are not part of a signature, so the goal states
+     none and `f` is allowed any marking; and the goal's telescopes
+     are allowed `_` names, since names do not matter for the match.
 
 ## Open questions
 
