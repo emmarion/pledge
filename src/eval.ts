@@ -25,46 +25,95 @@ const take = (vs: Value[], n: number): Value[] =>
   : vs.length === 1 && vs[0] === removed ? Array<Value>(n).fill(removed)
   : fail(`expected ${n} values, got ${vs.length}`);
 
+const one = (vs: Value[]): Value => take(vs, 1)[0]!;
+
 const tag = (v: Value): string => v === removed ? fail("a removed value was inspected") : v.head;
 
-export const evalOne = (fns: Fns, env: Env, e: Expr): Value => take(evalExpr(fns, env, e), 1)[0]!;
+export const evalOne = (fns: Fns, env: Env, e: Expr): Value => one(evalExpr(fns, env, e));
 
 export const bindPattern = (env: Env, pat: Pattern, v: Value, mult: Mult | null = null): Env =>
   mult === "erased" ? bind(env, pat.fields, pat.fields.map(() => removed))
   : tag(v) === pat.ctor.name ? bind(env, pat.fields, v.args) : fail(`pattern ${pat.ctor.name} met ${showValue(v)}`);
 
+const afterStmt = (env: Env, s: Stmt, vs: Value[]): Env =>
+  s.kind === "let" ? bind(env, s.binders.map(b => b.name), take(vs, s.binders.length))
+  : s.kind === "patlet" ? bindPattern(env, s.pat, one(vs), s.mult) : env;
+
+type Block = Expr & { kind: "block" };
+type Match = Expr & { kind: "match" };
+type Step = Value[] | { expr: Expr; env: Env };
+type Frame =
+  | { kind: "take"; n: number }
+  | { kind: "seq"; env: Env; exprs: readonly Expr[]; done: Value[]; head: Id | null }
+  | { kind: "block"; env: Env; block: Block; i: number }
+  | { kind: "match"; env: Env; match: Match };
+
 export const evalExpr = (fns: Fns, env: Env, e: Expr): Value[] => {
-  switch (e.kind) {
-    case "var": return [env.get(e.name.name ?? "_") ?? fail(`unbound ${e.name.name}`)];
-    case "app": {
-      const args = e.args.map(a => evalOne(fns, env, a.expr));
-      const def = fns.get(e.head.name ?? "_");
-      if (!def) return [{ head: e.head.name ?? fail("application of _"), args }];
-      const { fn, globals } = def;
-      return take(evalExpr(fns, bind(globals, fn.params.map(p => p.name), args), fn.body), fn.returns.length);
+  const stack: Frame[] = [];
+  const returning = (n: number): void => {
+    const top = stack.at(-1);
+    if (top?.kind !== "take" || top.n !== n) stack.push({ kind: "take", n });
+  };
+  const seq = (env: Env, exprs: readonly Expr[], done: Value[], head: Id | null): Step => {
+    const next = exprs[done.length];
+    if (next) return stack.push({ kind: "seq", env, exprs, done, head }), { expr: next, env };
+    if (!head) return done;
+    const def = fns.get(head.name ?? "_");
+    if (!def) return [{ head: head.name ?? fail("application of _"), args: done }];
+    returning(def.fn.returns.length);
+    return { expr: def.fn.body, env: bind(def.globals, def.fn.params.map(p => p.name), done) };
+  };
+  const block = (env: Env, b: Block, i: number): Step => {
+    const s = b.stmts[i];
+    if (!s) return { expr: b.final, env };
+    stack.push({ kind: "block", env, block: b, i });
+    return s.kind === "inspect" ? [] : { expr: s.rhs, env };
+  };
+  const branch = (env: Env, m: Match, v: Value): Step => {
+    const [only, ...others] = m.branches;
+    const br = m.mult !== "erased" ? m.branches.find(b => b.pat.ctor.name === tag(v)) ?? fail(`no branch for ${showValue(v)}`)
+      : only && !others.length ? only : fail(`an erased match with ${m.branches.length} branches`);
+    if (m.ann !== "_") returning(m.ann.length);
+    return { expr: br.body, env: bindPattern(env, br.pat, v, m.mult) };
+  };
+  const enter = (env: Env, e: Expr): Step => {
+    switch (e.kind) {
+      case "var": return [env.get(e.name.name ?? "_") ?? fail(`unbound ${e.name.name}`)];
+      case "app": return seq(env, e.args.map(a => a.expr), [], e.head);
+      case "tuple": return seq(env, e.elems, [], null);
+      case "block": return block(env, e, 0);
+      case "match": return stack.push({ kind: "match", env, match: e }), { expr: e.scrut, env };
+      case "sorry": return fail("sorry was reached");
+      case "removed": return [removed];
     }
-    case "tuple": return e.elems.map(x => evalOne(fns, env, x));
-    case "block": return evalExpr(fns, e.stmts.reduce((acc, s) => evalStmt(fns, acc, s), env), e.final);
-    case "match": {
-      const v = evalOne(fns, env, e.scrut);
-      const [only, ...others] = e.branches;
-      const br = e.mult !== "erased" ? e.branches.find(b => b.pat.ctor.name === tag(v)) ?? fail(`no branch for ${showValue(v)}`)
-        : only && !others.length ? only : fail(`an erased match with ${e.branches.length} branches`);
-      const vs = evalExpr(fns, bindPattern(env, br.pat, v, e.mult), br.body);
-      return e.ann === "_" ? vs : take(vs, e.ann.length);
+  };
+  const resume = (f: Frame, vs: Value[]): Step => {
+    switch (f.kind) {
+      case "take": return take(vs, f.n);
+      case "seq": return seq(f.env, f.exprs, [...f.done, one(vs)], f.head);
+      case "block": return block(afterStmt(f.env, f.block.stmts[f.i]!, vs), f.block, f.i + 1);
+      case "match": return branch(f.env, f.match, one(vs));
     }
-    case "sorry": return fail("sorry was reached");
-    case "removed": return [removed];
+  };
+  for (let step: Step = { expr: e, env };;) {
+    if (!Array.isArray(step)) step = enter(step.env, step.expr);
+    else {
+      const f = stack.pop();
+      if (!f) return step;
+      step = resume(f, step);
+    }
   }
 };
 
-export const evalStmt = (fns: Fns, env: Env, s: Stmt): Env => {
-  switch (s.kind) {
-    case "let": return bind(env, s.binders.map(b => b.name), take(evalExpr(fns, env, s.rhs), s.binders.length));
-    case "patlet": return bindPattern(env, s.pat, evalOne(fns, env, s.rhs), s.mult);
-    case "inspect": return env;
-  }
-};
+export const evalStmt = (fns: Fns, env: Env, s: Stmt): Env =>
+  afterStmt(env, s, s.kind === "inspect" ? [] : evalExpr(fns, env, s.rhs));
 
-export const showValue = (v: Value): string =>
-  v === removed ? "_" : `${v.head}(${v.args.map(showValue).join(", ")})`;
+export const showValue = (v: Value): string => {
+  const out: string[] = [];
+  const todo: (Value | string)[] = [v];
+  for (let x = todo.pop(); x !== undefined; x = todo.pop())
+    if (typeof x === "string") out.push(x);
+    else if (x === removed) out.push("_");
+    else todo.push(")", ...x.args.flatMap((a, i) => i ? [", ", a] : [a]).reverse(), `${x.head}(`);
+  return out.join("");
+};

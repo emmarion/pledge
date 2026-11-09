@@ -41,9 +41,11 @@ and never renumbered (rule 15); a removed item leaves a gap.
    reading its tag, at a match or a pattern `let`, is an internal
    error, on the reading that taint and erasure guarantee it never
    happens.
-7. **Evaluation recurses on the JS stack.** `ack(3, 6)` evaluates,
-   `ack(3, 7)` overflows Node's default stack. DESIGN.md sets no depth,
-   and the prototype does not try to (rule 6).
+7. **Evaluation is a loop over an explicit stack**, so JavaScript's
+   stack does not bound a run's depth, and a call in tail position, the
+   final expression of a body, block or branch, runs in constant space.
+   Non-tail depth is bounded by the heap. DESIGN.md sets no depth and
+   says nothing about tail calls.
 8. **Values are shown** as `C(a1, a2)`, with `, ` between arguments;
    §12 does not fix the spacing.
 
@@ -198,8 +200,8 @@ and never renumbered (rule 15); a removed item leaves a gap.
     program does not parse. A `qed`'s expression is evaluated as any
     top-level statement, its value discarded; `qed sorry(_);` is
     allowed (§14).
-40. **An exception from the evaluator**, such as a JavaScript stack
-    overflow on a deep recursion, is reported as the program's error at
+40. **An exception from the evaluator**, such as running out of
+    memory on a deep recursion, is reported as the program's error at
     the statement being evaluated.
 41. **§13 snapshots.** Information is recorded at every expression,
     statement, binder and declaration, and `infoAt` answers from the

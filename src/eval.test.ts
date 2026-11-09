@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Binder, Expr, Fn, Id, Param, Pattern, Stmt, Term } from "./syntax.ts";
-import { bindPattern, evalExpr, evalOne, evalStmt, InternalError, removed, showValue, type Env, type Fns } from "./eval.ts";
+import { bindPattern, evalExpr, evalOne, evalStmt, InternalError, removed, showValue, type Env, type Fns, type Value } from "./eval.ts";
 
 const span = { start: 0, end: 0 };
 const id = (name: string): Id => ({ name: name === "_" ? null : name, span });
@@ -96,4 +96,35 @@ test("an erased match or pattern let binds its fields to the removed value and n
   assert.throws(() => run(erased(match(rem, 1))), InternalError);
   const env = evalStmt(fns, empty, { ...patlet(pat("Succ", "p"), rem), mult: "erased" } as Stmt);
   assert.equal(showValue(env.get("p")!), "_");
+});
+
+const natValue = (n: number): Value => {
+  let out: Value = { head: "Zero", args: [] };
+  for (let i = 0; i < n; i++) out = { head: "Succ", args: [out] };
+  return out;
+};
+const depth = (x: Value): number => {
+  let n = 0;
+  for (; x.head === "Succ"; n++) x = x.args[0]!;
+  assert.equal(x.head, "Zero");
+  return n;
+};
+
+test("a tail call runs in constant space", () => {
+  const count = fn("count", ["n", "acc"], 1, block([], match(v("n"), 1,
+    [pat("Zero"), v("acc")],
+    [pat("Succ", "k"), app("count", v("k"), app("Succ", v("acc")))])));
+  const withCount: Fns = new Map([...fns, ["count", { fn: count, globals: empty }]]);
+  const env: Env = new Map([["n", natValue(100000)], ["acc", natValue(0)]]);
+  assert.equal(depth(evalOne(withCount, env, app("count", v("n"), v("acc")))), 100000);
+});
+
+test("deep non-tail recursion does not use the JavaScript stack", () => {
+  assert.equal(depth(evalOne(fns, new Map([["m", natValue(100000)]]), app("plus", v("m"), nat(1)))), 100001);
+  assert.equal(depth(evalOne(fns, empty, app("ack", nat(3), nat(7)))), 1021);
+  assert.equal(depth(evalOne(fns, empty, app("ack", nat(3), nat(8)))), 2045);
+});
+
+test("showValue on a deep value", () => {
+  assert.equal(showValue(natValue(50000)).length, 50000 * "Succ()".length + "Zero()".length);
 });
