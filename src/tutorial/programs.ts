@@ -21,6 +21,23 @@ export const plusFn = (mark: string): string => `fn plus(${mark}m : Nat(), n : N
   }
 }`;
 
+export const plusRel = `data Plus(m : Nat(), n : Nat(), r : Nat()) : Type() {
+  PlusZero(n : Nat()) : Plus(Zero(), n, n);
+  PlusSucc(m : Nat(), n : Nat(), r : Nat(), p : Plus(m, n, r))
+    : Plus(Succ(m), n, Succ(r));
+}`;
+
+export const plus = box(plusRel, `fn plus(subterm m : Nat(), n : Nat())
+    -> (r : Nat(), p : Plus(m, n, r)) {
+  match m : _ {
+    Zero() => (n, PlusZero(n));
+    Succ(k) => {
+      let (r, p) = plus(subterm k, n);
+      (Succ(r), PlusSucc(k, n, r, p))
+    };
+  }
+}`);
+
 export const eq = `data Eq(A : Type(), x : A, y : A) : Type() {
   Refl(A : Type(), x : A) : Eq(A, x, x);
 }`;

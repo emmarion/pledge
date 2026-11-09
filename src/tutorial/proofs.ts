@@ -1,6 +1,6 @@
 import type { Section } from "./pages.ts";
 import { nat } from "../examples.ts";
-import { paragraphs, box, evenOdd, plusFn, eq, isZero } from "./programs.ts";
+import { paragraphs, box, evenOdd, plusFn, eq, isZero, plusRel, plus } from "./programs.ts";
 
 const falseType = `data False() : Type() {}`;
 
@@ -10,23 +10,6 @@ const isZeroEq = (succBranch: string): string => `fn f(n : Nat(), p : IsZero(n))
   }
 }
 `;
-
-const plusRel = `data Plus(m : Nat(), n : Nat(), r : Nat()) : Type() {
-  PlusZero(n : Nat()) : Plus(Zero(), n, n);
-  PlusSucc(m : Nat(), n : Nat(), r : Nat(), p : Plus(m, n, r))
-    : Plus(Succ(m), n, Succ(r));
-}`;
-
-const plus = box(plusRel, `fn plus(subterm m : Nat(), n : Nat())
-    -> (r : Nat(), p : Plus(m, n, r)) {
-  match m : _ {
-    Zero() => (n, PlusZero(n));
-    Succ(k) => {
-      let (r, p) = plus(subterm k, n);
-      (Succ(r), PlusSucc(k, n, r, p))
-    };
-  }
-}`);
 
 const times = `data Times(m : Nat(), n : Nat(), r : Nat()) : Type() {
   TimesZero(n : Nat()) : Times(Zero(), n, Zero());
