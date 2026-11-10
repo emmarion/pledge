@@ -3,6 +3,7 @@ import Pledge.Core
 import Pledge.CoreLemmas
 import Pledge.Unify
 import Pledge.UnifyTest
+import Pledge.UnifySound
 import Pledge.Eval
 import Pledge.EvalTest
 import Pledge.Lexer

@@ -32,6 +32,24 @@ def abstract (Γ : Entries) (t : Term) (ids : List Nat) : Term :=
   let leaf (i : Nat) (other : Term) : Term := ((ids.idxOf? i).map .bound).getD other
   t.mapEntries fun i => leaf i (((Γ[i]?).bind (·.rule)).elim (.entry i) (·.mapEntries fun j => leaf j (.entry j)))
 
+mutual
+  /-- Every bound variable's index is below `n`. -/
+  def Term.boundsBelow (n : Nat) : Term → Bool
+    | .entry _ => true
+    | .bound i => decide (i < n)
+    | .app _ as => Term.boundsBelowList n as
+  def Term.boundsBelowList (n : Nat) : List Term → Bool
+    | [] => true
+    | a :: as => a.boundsBelow n && Term.boundsBelowList n as
+end
+
+/-- No bound variable occurs. -/
+def Term.closed (t : Term) : Bool := t.boundsBelow 0
+
+/-- `abstract`, when the term and the rules it expands are closed. -/
+def abstract? (Γ : Entries) (t : Term) (ids : List Nat) : Option Term :=
+  if (t.canon Γ).closed then some (abstract Γ t ids) else none
+
 structure Opened where
   Γ : Entries
   ids : List Nat
