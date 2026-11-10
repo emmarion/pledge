@@ -324,6 +324,7 @@ theorem comptimeLet_sound {st st' : TopState} {ρ : List Value} {p : Pos} {m : O
       rw [her, hbm, hm]
     obtain ⟨env', hb, hE⟩ := EnvRel.pattern (tb := reach o.sc r rhs.pos) (hs := o.sc.holes)
       (EnvRel.extend ρ₁ (hI.live ht).env hnm hpre0 hI.len) hI₁.sat.1.1 hpre hids hfl hsig' hent' (fun _ => hR) rfl
+      (by rw [hws.length_eq]; simpa using (congrArg List.length hmult).symm)
     rw [henv] at hb
     cases hb
     rw [List.append_assoc] at hI₃ hE
