@@ -456,7 +456,12 @@ pre.foreign {
 .canonical-pop h4 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
 .canonical-pop h5 { margin: 10px 0 2px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--muted); font-weight: 600; }
-.canonical-pop ol.rules { margin: 0; padding-left: 26px; }
+.canonical-pop ol.rules { margin: 0; padding-left: 26px; list-style: none; counter-reset: rule; }
+.canonical-pop ol.rules > li { counter-increment: rule; }
+.canonical-pop ol.rules summary { list-style: none; margin-left: -26px; cursor: pointer; }
+.canonical-pop ol.rules summary::-webkit-details-marker { display: none; }
+.canonical-pop ol.rules summary::before { content: counter(rule) ".\a0\25B6\FE0E\a0"; }
+.canonical-pop ol.rules details[open] > summary::before { content: counter(rule) ".\a0\25BC\FE0E\a0"; }
 .canonical-pop table.rewriting { border-collapse: collapse; }
 .canonical-pop table.rewriting td { padding: 1px 8px 1px 0; vertical-align: top; }
 .canonical-pop table.rewriting td:last-child { white-space: nowrap; }
