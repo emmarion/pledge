@@ -91,8 +91,12 @@ const canonicalView = (title: Child, raw: Rendered, from: Child, c: Canonical, c
 };
 
 const dialog = (text: Child, title: string, body: () => Child): Child[] => {
+  const close = h("button", { class: "close", type: "button", title: "Close", "aria-label": "Close",
+    onclick: () => pop.hidePopover() }, "\u00d7");
   const pop = h("div", { class: "canonical-pop", popover: "auto",
-    ontoggle: (e: Event) => { if ((e as ToggleEvent).newState === "open" && !pop.hasChildNodes()) fill(pop, body()); },
+    ontoggle: (e: Event) => {
+      if ((e as ToggleEvent).newState === "open" && !pop.hasChildNodes()) fill(pop, close, body());
+    },
   });
   return [link(text, title, () => pop.togglePopover()), pop];
 };
