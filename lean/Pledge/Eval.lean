@@ -238,9 +238,9 @@ def certify {ε α} : (x : Except ε α) → Except ε { a // x = .ok a }
   | .error e => .error e
 
 mutual
-  /-- Evaluates an expression (§11). It is `partial`, a stopgap until a totality theorem covers every program: a
-  result it returns is certified by its type to be what `Eval` relates the expression to, but neither its
-  termination nor the absence of an error result is established about it. -/
+  /-- Evaluates an expression (§11). It is `partial`: a result it returns is certified by its type to be what `Eval`
+  relates the expression to, but neither its termination nor the absence of an error result is established about
+  it. -/
   partial def evalExpr (P : Prog) (env : Env) : (e : Expr) → Except String { vs // Eval P env e vs }
     | .var x => match h : x.name.bind (List.lookup · env) with
       | some v => pure ⟨[v], .var h⟩

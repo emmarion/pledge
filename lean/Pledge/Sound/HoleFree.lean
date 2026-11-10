@@ -33,8 +33,8 @@ mutual
     | b :: bs => b.holeFree && Branch.holeFreeList bs
 end
 
-/-- No type constructor or value constructor is named as `junkHead` is, which a parsed program meets since
-`sorry` is a keyword. -/
+/-- No type constructor or value constructor is named as `junkHead` is, which a parsed program is believed to
+meet since `sorry` is a keyword; no theorem says so. -/
 def Data.holeFree (d : Data) : Bool := d.name.name != junkHead.name && d.ctors.all (·.name.name != junkHead.name)
 
 def Top.holeFree : Top → Bool

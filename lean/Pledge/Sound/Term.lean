@@ -934,8 +934,7 @@ theorem telescope_chain {C : Ctx} {sc : Scope} {bs : List Binder} {kind : String
 end TermFill
 
 /-- Opening a checked telescope to values satisfying it, after the values `outerv` of the entries `outer` it was
-abstracted over first, satisfies the scope it was checked in, extended by those values (cf. stage 1's
-`telescope_sound`). -/
+abstracted over first, satisfies the scope it was checked in, extended by those values. -/
 theorem telescope_sound {C : Ctx} {sc : Scope} {bs : List Binder} {kind : String} {outer : List Nat} {out : Checked}
     {n0 : Nat} {Sc : Sigs} {ρ outerv vs : List Value} (hT : TermInv sc n0 Sc ρ)
     (h : telescope C sc bs kind outer = .ok out) (houter : Term.evalList ρ [] (outer.map .entry) = some outerv)

@@ -2,7 +2,8 @@
 
 A second implementation of Pledge's checker and evaluator, in Lean 4
 with no library beyond Lean's core, together with soundness theorems
-that Lean checks for phase 1 programs without `sorry`. Claude sessions
+that Lean checks for programs without `_` arguments, under any phase,
+`sorry` and erasure included. Claude sessions
 wrote it, and this file is a Claude session's description of it. As
 for the TypeScript implementation, DESIGN.md is the specification, and
 where the two disagree, DESIGN.md is right.
@@ -52,7 +53,8 @@ requests that touch `lean/` or `src/`.
   and §16, and source text to `Program`.
 - `Pledge/Core.lean`: terms, values, signatures, entries,
   canonicalization, and the definitions the theorems are stated with:
-  `Term.eval`, `HasType`, `TeleSat`, `Sat`, `Sig.close`.
+  `Term.eval`, `HasType`, `TeleSat`, `WType`, `WSat`, `Sat`,
+  `Value.junk`, `Approx`, `Rel`, `MultRel`, `Sig.close`.
 - `Pledge/Unify.lean`: opening telescopes, `abstract?`, the strict
   subterm relation, `difference` (§12), and the equation solver behind
   forcing (§7) and `_` arguments (§16).
@@ -65,80 +67,151 @@ requests that touch `lean/` or `src/`.
   `Top.lean` has `runProgram`, `run` and `Outcome`.
 - `Main.lean`: the command line.
 - `Pledge/CoreLemmas.lean`, `UnifySound.lean`, `Pledge/Sound/`: the
-  proofs. `Sound/Plain.lean` defines `Program.plain`, `Sound/Defs.lean`
-  the invariants and `GoalHolds`, `Sound/Measure.lean` the measure of
-  SOUNDNESS.md part 6 that the totality proof inducts on, and
-  `Sound/Top.lean` the headline theorems.
+  proofs. `Sound/HoleFree.lean` defines `Program.holeFree`;
+  `Sound/Defs.lean` worlds, the invariants, the function
+  specifications and `GoalHolds`; `Sound/Measure.lean` the measure of
+  SOUNDNESS.md part 6 that the totality proof inducts on;
+  `Sound/Expr.lean` the main lemma, `Expr.sound` and `Stmt.sound`, by
+  one lemma per construct, whose proofs are mostly in
+  `Sound/Simple.lean`, `Call.lean`, `Match.lean` and `Erased.lean`;
+  `Sound/Fn.lean` and `Data.lean` the declaration groups, and
+  `Data.lean` the `goal` item; `Sound/Stmt.lean` the other top-level
+  statements; and `Sound/Top.lean` the headline theorems.
 - `Pledge/ParserTest.lean`, `EvalTest.lean`, `UnifyTest.lean`: `#guard`
   tests.
 - `tests/`: the differential comparison with the TypeScript checker
   (`tests/README.md`), `Audit.lean` and `gate.mjs`.
 
+## The model the theorems use
+
+The theorems relate two kinds of value. An **ideal valuation** gives
+each entry of a scope a value, as the valuation of SOUNDNESS.md part 3
+does, and values are typed (`HasType`) by the program's signatures
+closed by the ideal values of the top-level entries they mention
+(`Sig.close`). **Run-time values** are what the evaluation relation
+computes, with `removed` where taint or erasure removed code (§12,
+§16). At a position that is not erased, a run-time value is related to
+an ideal one by `Rel`: the same head, and each argument related in the
+same way, except an erased argument, which only approximates
+(`Approx`: `removed`, or the same head over approximating arguments).
+At an erased position the relation is `Approx` (`MultRel`).
+
+A tainted entry (§12) need not have a value of its type. `Sat`, the
+counterpart of SOUNDNESS.md's `rho |= Gamma`, asks every entry for a
+value without `removed` that agrees with its rule and has its type by
+its head (`WType`), and asks only the untainted entries for a value of
+their type (`HasType`). The proofs give a result of `sorry` its `is`
+clause's value or else `Value.junk A`, an application of `junkHead`,
+named `sorry`, to its type `A`, which has `A` by its head and, in the
+worlds the proofs use, no type. Once a scope is tainted, nothing is
+asserted about its valuation: the main lemma (`ExprPost`, `StmtPost` in
+`Sound/Defs.lean`) concludes only when the scope after the expression
+or statement is untainted, and the top level's invariant (`TopInv`)
+then keeps only the facts that do not depend on the valuation, and a
+goal proved before.
+
+A function's specification (`FnSpec` and `CallSpec`) has two halves:
+for ideal arguments satisfying the parameters there are ideal results
+satisfying the returns, and on run-time arguments related to those
+ideal arguments by the parameters' multiplicities, the call
+(`CallRel`) returns run-time results related to the ideal results by
+the returns' multiplicities. A tainted function has no specification.
+`GoalHolds W phase g qedFn` says what a goal `g` means in a world `W`
+(`Sound/Defs.lean`): for a type goal, its type evaluates under `W.ρ` to
+a type that some value has; for a function goal, the function `qedFn`
+names is in `W`'s functions and meets the goal's telescopes with both
+halves of a specification.
+
 ## What Lean checks
 
-A program is **plain** (`Program.plain`) when it contains no `sorry`,
-no written multiplicity and no `removed` node; for a phase 1 program
-the parser produces, this is meant to mean that it contains no
-`sorry`. For a plain program `prog`, any `has` (what the source is
-taken to contain, which `run` reads off the tokens) and any syntax
-error `err`, writing `out` for `runProgram 1 prog has err`, Lean checks:
+A program is **hole-free** (`Program.holeFree`, `Sound/HoleFree.lean`)
+when no expression in it is `_` (§16's `_` arguments) and no type
+constructor or value constructor is named `sorry`. `sorry`, `_` in
+place of a telescope, as in `sorry(_)`, and multiplicities are allowed.
+For a hole-free program `prog`, any phase, any `has` (whether the
+source is taken to contain a keyword, which `run` reads off the
+tokens) and any syntax error `err`, writing `out` for
+`runProgram phase prog has err`, Lean checks:
 
-- `runProgram_sound`: there is a world `W` whose closed signatures
-  `W.Sc` are exactly `out.sigs.map (Sig.close W.ρ)`, whose functions
-  are `out.fns`, and whose valuation `W.ρ` satisfies the final
-  top-level scope (`Sat W.Sc out.entries W.ρ`); and if `out.goalProved
-  = some true`, the goal `out.goal` holds in `W` (`GoalHolds`).
-- `type_goal_inhabited`: if the goal is proved and is the type `t`, then
-  for some valuation `ρ` satisfying the final scope, `t` evaluates to a
-  type `V` and some value has type `V` by the program's signatures
-  closed by `ρ`.
+- `runProgram_sound`: there is a world `W` whose evaluator's view of
+  the program `W.P` is that of the final top-level state, whose closed
+  signatures `W.Sc` are `out.sigs.map (Sig.close W.ρ)`, whose functions
+  are `out.fns`, and whose valuation `W.ρ` has one value per entry of
+  `out.entries`; if the final top-level scope is untainted, `W.ρ`
+  satisfies it (`Sat W.Sc out.entries W.ρ`); and if `out.goalProved =
+  some true`, the goal `out.goal` holds in `W` (`GoalHolds`).
+- `type_goal_inhabited`: if the goal is proved and is the type `t`,
+  there is a valuation `ρ` with one value per entry of `out.entries`
+  under which `t` evaluates to a type `V`, and some value has type `V`
+  by `out.sigs` closed by `ρ`.
 - `fn_goal_holds`: if the goal is proved and is the function goal with
-  telescopes `ps` and `rs`, then for some valuation `ρ` satisfying the
-  final scope, every list of values satisfying `ps` is followed by
-  values satisfying `rs`.
+  telescopes `ps` and `rs`, there is a valuation `ρ` with one value per
+  entry of `out.entries` such that `out.qedFn` names a function `d` of
+  `out.fns`, and every list of values satisfying `ps` under `ρ` is
+  followed by values satisfying `rs`, to which `d`, run on any
+  run-time arguments related to the former by `ps`'s multiplicities,
+  returns run-time results related by `rs`'s multiplicities.
 - `no_empty_goal`: if the program declares a data type with no value
   constructors and its `goal` is an application of it, the goal is not
   reported proved.
-- `run_sound` and `run_no_empty_goal`: the same for `run source 1`,
-  given that the program `parse source 1` gives is plain.
+- `run_sound` and `run_no_empty_goal`: the same for `run source phase`,
+  given that the program `parse source phase` gives is hole-free.
+  `run_sound` keeps only `runProgram_sound`'s statements about `W.Sc`,
+  `W.P.fns` and the goal.
 - `reached_eval_ok` and `reached_run_ok`: at any state the checker
-  reaches on a plain program, an expression or statement checked there
-  at the top level has an evaluation by the relation (`Eval`,
-  `EvalStmt`), an expression's to one value that has a type under a
-  valuation satisfying the state's scope; and any value the top level's
-  evaluation (`TopState.eval`) returns for it is typed so too.
+  reaches on a hole-free program, while its scope is untainted, an
+  expression checked there at the top level, outside an erased
+  position, with an untainted result, and given nothing or closed types
+  of multiplicity `many` with no `is` clause, as `print`, `qed` against
+  a type goal and a `comptime` pattern `let` check theirs, has an
+  evaluation by the relation (`Eval`) to one run-time value, related
+  by `Rel` to an ideal
+  value that has a type under a valuation satisfying the state's scope;
+  any value the top level's evaluation (`TopState.eval`) returns for it
+  is that one. A statement checked there that leaves the scope
+  untainted has a run (`EvalStmt`).
 
 The theorems speak of evaluation as the relation. The executable
 evaluator is `partial`, so no theorem can say what it does; what links
 it to the theorems is its result type: each value or environment it
 returns comes with a derivation of the relation, which
 `TopState.eval_cert` and `TopState.run_cert` extract, and by
-determinism that is the result the theorems describe.
+determinism (`Eval.det`) that is the result the theorems describe.
 
 `tests/Audit.lean` prints the axioms these use. `Sound/Top.lean` has
-`#guard`s showing that the goal clause is reached by small programs,
-one with a recursive function and a `match`, and that a program whose
-goal is an empty type proved by `qed sorry(_);` is not plain and not
-proved. In the differential corpus, 25 phase 1 programs without
-`sorry` report their goal proved.
+`#guard`s showing that the goal clause is reached by small hole-free
+programs: phase 1 programs with a recursive function and a `match`,
+against a type goal and against a function goal; a program with
+`sorry` whose goal is proved without relying on it; and a phase 2
+program with `sorry` and erased fields. Its `#guard`s also show that,
+in phases 1 and 2, a goal tainted through its type, a goal after a
+top-level pattern `let` on `sorry`, and an empty type's goal met by
+`qed sorry(_);` are not proved. Of the 351 programs of the
+differential corpus, 305 are hole-free, and 30 of these report their
+goal proved: 25 phase 1 programs without `sorry`, 3 phase 1 programs
+with `sorry` and 2 phase 2 programs.
 
 ## What has to be trusted
 
 - Lean's kernel, and the axioms `propext`, `Classical.choice` and
   `Quot.sound`.
 - The definitions the theorems are stated with: `Value`, `Term.eval`,
-  `HasType`, `TeleSat`, `Sat`, `Sig.close`, `GoalHolds`, `World`,
-  `Program.plain`, the evaluation relation `Eval` and its companions,
-  and the meaning of `runProgram`, `run` and `Outcome`'s fields. That `HasType` captures what a value of a type is
-  rests on SOUNDNESS.md part 2, which it follows.
+  `HasType`, `TeleSat`, `WType`, `WSat`, `Sat`, `junkHead`, `Approx`,
+  `Sigs.erasedArg`, `Rel`, `MultRel`, `MultsRel`, `Sig.close`,
+  `GoalHolds`, `World`, `Program.holeFree`, the evaluation relation
+  `Eval` and its companions, `CallRel` among them, and the meaning of
+  `runProgram`, `run` and `Outcome`'s fields. That `HasType` captures
+  what a value of a type is rests on SOUNDNESS.md part 2, which it
+  follows; that `Rel` and `Approx` capture what erasure and taint may
+  remove rests on a reading of §12 and §16.
 - That the Lean checker implements DESIGN.md. Nothing proves this; it is
   supported only by the differential comparison, in which the two
   implementations agree on whether there is an error, the printed
   values, `qed`, `goalProved` and `containsSorry` for every program of
   the corpus.
 - The parser: no theorem is about it. The `run_` theorems assume that
-  the parsed program is plain and say nothing about whether it is the
-  program the source text means.
+  the parsed program is hole-free and say nothing about whether it is
+  the program the source text means.
 - Nothing is proved about the TypeScript implementation.
 
 ## How it differs from the TypeScript implementation
@@ -181,24 +254,53 @@ items 69 to 75.
 
 ## What is not proved
 
-- Programs containing `sorry`, and so taint (§12): the theorems assume
-  a plain program.
-- Phase 2 and erasure (§16).
+- Programs with `_` arguments (§16): every theorem assumes a hole-free
+  program, so the solving of `_` arguments by unification, and taint
+  through a `_` (§12), are not covered.
 - That the internal checks are unreachable on programs DESIGN.md
   accepts.
 - Anything about the executable evaluator beyond its results'
   certificates: that it terminates, and that it does not fail, on the
-  programs the theorems cover. The theorems give an evaluation by the
-  relation; that the `partial` function finds it is not established.
+  programs the theorems cover. The theorems say that an evaluation by
+  the relation exists; that the `partial` function finds it is not
+  established.
 - That checking terminates: every definition other than the evaluator's
   five is total, defined by structural or well-founded recursion, with
   no fuel, which is what the gate checks; checking a program ends if
   each evaluation it performs does.
-- That `fn_goal_holds`'s returns are computed by the function the `qed`
-  names: the proof goes through that function's specification, but the
-  statement only says that returns exist.
 - That `reached_eval_ok` and `reached_run_ok` cover every evaluation:
   they are about evaluations after an item's checking succeeds, as
   `print`, `qed`, `let` and `comptime` pattern `let` perform them; the
   link to those items is by reading `topItem`, not by a theorem about
   `Outcome.error`.
+- That the Lean checker implements DESIGN.md, that the parser reads
+  the source as DESIGN.md means it, and anything about the TypeScript
+  code (see above).
+
+The statements are also weaker than they may first read:
+
+- When the top-level scope becomes tainted after the goal is proved
+  (a top-level pattern `let` on `sorry` after the `qed`),
+  `runProgram_sound` still states that the goal holds in the final
+  world `W`, but says nothing of `W.ρ` beyond its length, since `Sat`
+  is asserted only for an untainted final scope.
+- `type_goal_inhabited` and `fn_goal_holds` say nothing of their
+  valuation `ρ` beyond its length, even when the final scope is
+  untainted: they do not state that `ρ` satisfies the final scope, so
+  a goal type that mentions top-level entries is only shown inhabited
+  under some valuation of them. `runProgram_sound` is the statement
+  that ties the goal to a valuation satisfying an untainted final
+  scope.
+- `run_sound` does not state the length of `W.ρ`, that `W.ρ` satisfies
+  an untainted final scope, or that `W.P` is the final state's view of
+  the program beyond its functions; `GoalHolds` for a function goal
+  runs the function in `W.P`, whose `kind` is then unconstrained.
+- `GoalHolds` for a function goal is vacuous when no values satisfy
+  the goal's parameters, which seems inherent in a statement of this
+  shape.
+- With `runProgram`'s default `has`, which is false for every keyword,
+  `goalProved` is `none`, so the goal clauses say nothing; `run` passes
+  the token scan `hasKeyword`.
+- `Program.holeFree` also asks that no type constructor or value
+  constructor is named `sorry`. Since `sorry` is a keyword, the parser
+  is believed never to produce one, but no theorem says so.

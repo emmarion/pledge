@@ -378,8 +378,8 @@ and never renumbered (rule 15); a removed item leaves a gap.
 
 69. **A second implementation** in `lean/`, in Lean 4 with no library
     beyond Lean's core, checks and evaluates programs under phases 1
-    and 2, with soundness theorems for phase 1 programs without `sorry`
-    (`lean/README.md`). Its interface is a command line, `pledge check
+    and 2, with soundness theorems for programs without `_` arguments,
+    under either phase (`lean/README.md`). Its interface is a command line, `pledge check
     --phase N FILE`, printing one JSON object with the program's error,
     printed values, `qed` state, whether the goal is proved, whether
     the program contains `sorry`, and the text of each `inspect;`;
@@ -399,7 +399,7 @@ and never renumbered (rule 15); a removed item leaves a gap.
     evaluator follows it and is `partial`; each result it returns
     carries a derivation of the relation. A run that does not end
     leaves checking without an end; Theorem 6.2's Lean counterpart is
-    meant to rule this out for phase 1 programs without `sorry`, but it
+    meant to rule this out for programs without `_` arguments, but it
     is about the relation, and no theorem says the evaluator returns.
     There is no fuel and no depth bound.
 73. **Internal checks.** Where the code relies on an invariant of its

@@ -184,12 +184,13 @@ end DataTop
 theorem topItems_phase (phase : Nat) (prog : Program) : (topItems (.init phase) prog).1.phase = phase :=
   DataTop.topItems_phase _ prog
 
-/-- Soundness of the checker and evaluator, for programs with `sorry` and multiplicities but no `_` argument
-(§12, §16), under any phase: there is an ideal valuation `W.ρ` of the final top-level entries, the program's
-signatures closed by it typing values, with `W.P` the evaluator's view of the program; it satisfies the final
-scope if that scope is untainted; and if the goal is reported proved, it holds there (`GoalHolds`): a type goal's
-type has a value, and the function a `qed` names computes, from run-time arguments related to ideal ones
-satisfying a function goal's parameters, run-time results related to ideal ones satisfying its returns. -/
+/-- Soundness of the checker and evaluator, for hole-free programs (no `_` argument, §16, and no type or value
+constructor named `sorry`; `sorry` and multiplicities allowed), under any phase: there is an ideal valuation `W.ρ`
+of the final top-level entries, the program's signatures closed by it typing values, with `W.P` the evaluator's
+view of the program; it satisfies the final scope if that scope is untainted, and is otherwise constrained here only
+by its length; and if the goal is reported proved, it holds there (`GoalHolds`): a type goal's type has a value,
+and the function a `qed` names computes, from run-time arguments related to ideal ones satisfying a function goal's
+parameters, run-time results related to ideal ones satisfying its returns. -/
 theorem runProgram_sound (phase : Nat) (prog : Program) (has : String → Bool) (err : Option (Pos × String))
     (hp : Program.holeFree prog = true) :
     ∃ W : World, W.P = (topItems (.init phase) prog).1.prog ∧
@@ -208,8 +209,9 @@ theorem runProgram_sound (phase : Nat) (prog : Program) (has : String → Bool) 
     exact ⟨g, hg', by simpa [topItems_phase] using hW _ (World.Le.refl _)⟩
   · cases hg
 
-/-- A proved type goal has a value: under an ideal valuation `ρ` of the final top-level entries, the goal's type
-`t` evaluates to a type `V`, and some value has type `V` by the program's signatures closed by `ρ`. -/
+/-- A proved type goal has a value: under some valuation `ρ` of the final top-level entries, of which the statement
+fixes only the length, the goal's type `t` evaluates to a type `V`, and some value has type `V` by the program's
+signatures closed by `ρ`. -/
 theorem type_goal_inhabited (phase : Nat) (prog : Program) (has : String → Bool) (err : Option (Pos × String))
     (hp : Program.holeFree prog = true) {g : CheckedGoal} {t : Term}
     (hproved : (runProgram phase prog has err).goalProved = some true)
@@ -224,7 +226,8 @@ theorem type_goal_inhabited (phase : Nat) (prog : Program) (has : String → Boo
   rw [hSc] at hh
   exact ⟨W.ρ, hl, hh⟩
 
-/-- A proved function goal holds: under an ideal valuation `ρ` of the final top-level entries, the function `n` the
+/-- A proved function goal holds: under some valuation `ρ` of the final top-level entries, of which the statement
+fixes only the length, the function `n` the
 `qed` names, `d` to the evaluator, takes every list of values satisfying the goal's parameters `ps` to values
 satisfying its returns `rs`: running `d` on those values, or on any run-time values related to them by the
 parameters' multiplicities, returns run-time results related to them by the returns' multiplicities. -/
@@ -249,7 +252,8 @@ theorem fn_goal_holds (phase : Nat) (prog : Program) (has : String → Bool) (er
   rw [hP] at hh
   exact ⟨W.ρ, n, d, hl, hn, by rw [← hF]; exact hd, hh⟩
 
-/-- `runProgram_sound` for source text whose parsed program has no `_` argument. -/
+/-- Part of `runProgram_sound`, the closed signatures, the functions and the goal clause, for source text whose
+parsed program is hole-free. -/
 theorem run_sound (source : String) (phase : Nat) (hp : Program.holeFree (parse source phase).1 = true) :
     ∃ W : World, W.Sc = (run source phase).sigs.map (Sig.close W.ρ) ∧ W.P.fns = (run source phase).fns ∧
       ((run source phase).goalProved = some true →
@@ -316,7 +320,7 @@ theorem no_empty_goal (phase : Nat) (prog : Program) (has : String → Bool) (er
   obtain ⟨h', ws, sig, -, hf, hret⟩ := hv.inv_type
   exact List.not_mem_nil (hcomp h' sig ws _ us hf hret hname).2
 
-/-- `no_empty_goal` for source text whose parsed program has no `_` argument. -/
+/-- `no_empty_goal` for source text whose parsed program is hole-free. -/
 theorem run_no_empty_goal (source : String) (phase : Nat) (hp : Program.holeFree (parse source phase).1 = true)
     (d : Data) (hd : Top.data d ∈ (parse source phase).1 ∨ ∃ p ds, Top.mutualData p ds ∈ (parse source phase).1 ∧ d ∈ ds)
     (hc : d.ctors = []) (p : Pos) (hn : Name) (args : List WTerm)

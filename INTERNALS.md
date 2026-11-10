@@ -87,8 +87,9 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
 ## The Lean implementation
 
 `lean/` holds a second implementation of the checker and evaluator, in
-Lean 4, and Lean-checked soundness theorems about it for phase 1
-programs without `sorry`; `lean/README.md` describes its layout, what
+Lean 4, and Lean-checked soundness theorems about it for programs
+without `_` arguments, under phase 1 or 2, `sorry` included;
+`lean/README.md` describes its layout, what
 is proved and how it differs from the code above. It shares no code
 with `src/`. Its evaluation is a big-step relation, run by a `partial`
 evaluator whose results each carry a derivation of it. `lean/tests/`
