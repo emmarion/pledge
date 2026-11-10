@@ -1,3 +1,8 @@
+-- Compiler correctness for expressions of literals and addition ("Hutton's razor").
+-- Code(i, j) takes a stack of depth i to one of depth j, so code that pops an empty stack can't be written.
+-- compile works continuation style and returns, alongside the code, erased evidence (Exec) that running
+-- it pushes the value the big-step semantics (Eval) gives. Only the compiler and machine run.
+
 data Nat() : Type() {
   Zero() : Nat();
   Succ(pred : Nat()) : Nat();
