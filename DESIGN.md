@@ -540,7 +540,8 @@ or was not reached, and whether the goal is proved.
 
 A tutorial page shows one or more read-only boxes of source above the
 learner's editable box, and checks them all as one program, in order,
-under a phase the page chooses (§16).
+under a phase the page chooses (§16). Line numbers run on from one
+box to the next.
 Whether the learner's box must hold the `qed` is up to the page.
 
 ## 13. Seeing what the checker sees
@@ -563,9 +564,11 @@ At any position in a program, the interface shows:
 - **Refutations**, at a `match` or pattern `let`: the refuted value
   constructors, and, at an erased match (§16), the absurd branches.
   Clicking one shows why its forcing fails (§7), as a
-  derivation with the fewest steps: the equations that lead to the
+  derivation with the fewest steps: the value constructor as a match
+  branch, then the equations that lead to the
   failure, and the equation that gave each rule one of them is
-  rewritten by.
+  rewritten by. The branch is the one written for it, if any;
+  otherwise each field is shown as `@` and its declared name.
 
 Hidden until the learner opens them, the **Globals** are the top-level
 names in scope at that position: each function, with its parameters and
@@ -574,8 +577,10 @@ constructors, each with its fields and return; and each top-level
 binding, with its type and `is` rule.
 
 Types and skeleton terms are shown canonicalized. An anonymous entry is
-shown by a marker giving what kind of entry it is and where it was
-created. Clicking a skeleton
+shown by a marker giving where it was
+created: `_@line:column` at the `_` that made or bound it, and
+otherwise `?@line:column`, with a number after the `?` when several
+were created at one position. Clicking a skeleton
 term, in the source, in the interface or in text typed into it, shows
 its canonical form and a sequence of rewrites with the fewest steps that
 produces it. Clicking or hovering over a `_` that stands for a
