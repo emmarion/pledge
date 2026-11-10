@@ -103,16 +103,6 @@ theorem checkedStmt_sound {st st' : TopState} {ρ : List Value} {s : Stmt} (hI :
   cases henv
   exact ⟨ρ', TopInv.step hI hI' hsigs rfl rfl rfl rfl rfl hI.proved⟩
 
-theorem TeleSat.hasType {S : Sigs} {ρ : List Value} :
-    ∀ {Δ : Telescope} {env vs : List Value}, TeleSat S ρ Δ env vs → ∀ v ∈ vs, ∃ V, HasType S v V
-  | [], _, _, h => by rw [TeleSat.nil_iff.1 h]; simp
-  | _ :: _, _, _, h => by
-    obtain ⟨v, vs', rfl, ⟨A, -, hv, -⟩, ht⟩ := TeleSat.cons_iff.1 h
-    intro u hu
-    rcases List.mem_cons.1 hu with rfl | hu
-    · exact ⟨A, hv⟩
-    · exact TeleSat.hasType ht u hu
-
 theorem evalList_fieldRes {ρ ws : List Value} :
     Term.evalList (ρ ++ ws) [] ((fieldRes (List.range' ρ.length ws.length)).map (·.term)) = some ws := by
   rw [Term.evalList_eq_some_iff]
