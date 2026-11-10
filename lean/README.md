@@ -290,8 +290,8 @@ items 69 to 75.
   the source as DESIGN.md means it, and anything about the TypeScript
   code (see above).
 
-The statements are also weaker than they may first read:
-
-- `GoalHolds` for a function goal is vacuous when no values satisfy
-  the goal's parameters, which seems inherent in a statement of this
-  shape.
+One thing about how the statements read: `GoalHolds` for a function
+goal says that every tuple of values satisfying the goal's parameters
+has results. When no values satisfy the parameters it holds with
+nothing to show, as an implication from a false hypothesis does; that
+is what a function goal states, not a gap in the theorem.
