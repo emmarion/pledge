@@ -322,9 +322,8 @@ theorem force_good {S Sc : Sigs} {Γ : Entries} {ρ ws : List Value} {scrut : Te
     (mk : TBinder → Nat → Entry → Entry) (hΓ : Sat Sc Γ ρ) (hS : SigsClose S ρ Sc) (hS' : SigsClose S (ρ ++ ws) Sc)
     (hs : scrut.eval ρ [] = some (.app ctor.head ws)) (hc : S.find ctor.head = some ctor)
     (hV : HasType Sc (.app ctor.head ws) V) : ForceGood Sc Γ ρ ws (force S Γ scrut ctor mk) := by
-  obtain ⟨sig, hsig, ht, hret⟩ := hS.hasType_app_iff.1 hV
-  obtain rfl := Option.some.inj (hsig.symm.trans hc)
-  obtain ⟨Δ, hΔ, hΔl, hids, henv⟩ := openTele_shape Γ sig.params [] mk
+  obtain ⟨ht, hret⟩ := (hS.hasType_app_iff hc).1 hV
+  obtain ⟨Δ, hΔ, hΔl, hids, henv⟩ := openTele_shape Γ ctor.params [] mk
   obtain ⟨hΓo, henvo⟩ := openTele_sound mk hΓ (rfl : Term.evalList ρ [] [] = some []) ht
   simp only [List.nil_append] at henvo henv
   have hlen := ht.length_eq
@@ -332,10 +331,10 @@ theorem force_good {S Sc : Sigs} {Γ : Entries} {ρ ws : List Value} {scrut : Te
   split
   · trivial
   · rename_i ty hty
-    have hq : ∀ q ∈ [⟨scrut.canon (openTele Γ sig.params [] mk).Γ,
-        (Term.app sig.head (openTele Γ sig.params [] mk).env).canon (openTele Γ sig.params [] mk).Γ, .scrutinee⟩,
-        ⟨ty.canon (openTele Γ sig.params [] mk).Γ,
-          (sig.ret.subst (openTele Γ sig.params [] mk).env).canon (openTele Γ sig.params [] mk).Γ,
+    have hq : ∀ q ∈ [⟨scrut.canon (openTele Γ ctor.params [] mk).Γ,
+        (Term.app ctor.head (openTele Γ ctor.params [] mk).env).canon (openTele Γ ctor.params [] mk).Γ, .scrutinee⟩,
+        ⟨ty.canon (openTele Γ ctor.params [] mk).Γ,
+          (ctor.ret.subst (openTele Γ ctor.params [] mk).env).canon (openTele Γ ctor.params [] mk).Γ,
           .scrutineeType⟩], Eqn.Holds (ρ ++ ws) q := by
       simp only [List.mem_cons, List.not_mem_nil, or_false]
       rintro q (rfl | rfl)

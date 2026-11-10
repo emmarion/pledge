@@ -55,10 +55,15 @@ def TopState.run (st : TopState) (s : Stmt) : CheckM Env :=
 def addSig (st : TopState) (s : Sig) (g : Global) : TopState :=
   { st with sc := { st.sc with sigs := st.sc.sigs ++ [s] }, globals := st.globals ++ [g] }
 
+/-- Rejects the program unless the telescope mentions only top-level entries. -/
+def topLevel (st : TopState) (pos : Pos) (tele : Telescope) : CheckM Unit :=
+  ensure (tele.all (·.entriesBelow st.sc.Γ.length)) pos "a telescope mentions an entry below the top level"
+
 def declType (st : TopState) (d : Data) : CheckM TopState := do
   let C := st.ctx true
   let _ ← fresh C st.sc [] d.name.name d.name.pos
   let ps ← telescope C st.sc d.params "binder"
+  topLevel st d.name.pos ps.tele
   pure (addSig st ⟨⟨.type, d.name.name⟩, ps.tele, .TYPE⟩ (.type d.name.name (some []) false))
 
 def declCtor (owner : String) (st : TopState) (k : Ctor) : CheckM TopState := do
@@ -70,6 +75,9 @@ def declCtor (owner : String) (st : TopState) (k : Ctor) : CheckM TopState := do
       s!"{code k.name.name} returns {code owner} applied to one argument per parameter of {code owner} (§5)"
   let r ← checkTerm C fs.sc k.ret
   let ret ← abstractChecked fs.sc.Γ r.term fs.ids k.ret.pos
+  topLevel st k.name.pos fs.tele
+  ensure (ret.entriesBelow st.sc.Γ.length && ret.boundsBelow fs.tele.length) k.ret.pos
+    "a value constructor's return mentions an entry below the top level or a missing field"
   let st := addSig st ⟨⟨.ctor, k.name.name⟩, fs.tele, ret⟩ (.ctor k.name.name)
   pure { st with globals := st.globals.map fun
     | .type n (some cs) d => .type n (some (if n == owner then cs ++ [k.name.name] else cs)) d
@@ -148,6 +156,7 @@ def fnHead (names : List String) (st : TopState) (f : Fn) : CheckM (TopState × 
   let subtermNames := (f.header.params.filter (·.subterm)).map fun p => p.binder.name.name.getD "_"
   let fn : FnCtx := ⟨f.name.name, names, [], subtermNames⟩
   let (ps, rs) ← header { st.ctx true with fn := some fn } st.sc f.header
+  topLevel st f.name.pos (ps.tele ++ rs.tele)
   let subterms := ((ps.ids.zip flags).filter (·.2)).map fun (i, _) => Term.entry i
   let sig : FnSig := ⟨ps.tele, rs.tele, flags, false⟩
   let st := { st with globals := st.globals.map fun g => if g.name == f.name.name then .fn g.name (some sig) else g }
@@ -245,9 +254,11 @@ def topItem (st : TopState) : Top → CheckM TopState
     let goal ← match g with
       | .fn h => do
         let (ps, rs) ← header (st.ctx true) st.sc h
+        topLevel st p (ps.tele ++ rs.tele)
         pure ⟨.fn ps.tele rs.tele, ps.tainted || rs.tainted || st.sc.taintedBy.isSome, p⟩
       | .type t => do
         let (ty, _, tainted) ← annotate st.ctx st.sc (.type t)
+        ensure (ty.entriesBelow st.sc.Γ.length) t.pos "a goal mentions an entry below the top level"
         pure ⟨.type ty, tainted || st.sc.taintedBy.isSome, t.pos⟩
     pure { st with goal := some goal }
   | .qed p e => do

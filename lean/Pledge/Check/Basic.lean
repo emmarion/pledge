@@ -212,6 +212,10 @@ def failAt (pos : Pos) (msg : Unit → String) : CheckM α := throw { pos, msg }
 def internal (pos : Pos) (what : String) : CheckM α :=
   failAt pos fun _ => s!"internal: {what}; the checker rejects the program"
 
+/-- Rejects the program unless `ok`: a check meant never to fail, which the soundness proof relies on. -/
+def ensure (ok : Bool) (pos : Pos) (what : String) : CheckM Unit :=
+  unless ok do internal pos what
+
 /-- Keeps the snapshots met so far on an error. -/
 def keep (snaps : List Snapshot) : CheckM α → CheckM α
   | .ok a => .ok a
@@ -245,6 +249,7 @@ def single (pos : Pos) : List Res → CheckM Res
 /-- After an expression is checked (§12, §16): taint from a tainted scope, the rule that an erased result is
 only in an erased position, and removal of an expression that is wholly erased or whose results are all tainted. -/
 def finish (C : Ctx) (whole : Bool) (g : Option Given) (e : Expr) (o : Out) : CheckM Out := do
+  ensure (!o.res.isEmpty) e.pos "an expression produces no value"
   let res := if o.sc.taintedBy.isSome then o.res.map ({ · with tainted := true }) else o.res
   unless whole do
     if let some i := (List.range res.length).find? fun i => (res[i]?).any (·.erased) && !g.any (·.erasedAt i) then

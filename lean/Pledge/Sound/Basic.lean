@@ -1,0 +1,929 @@
+import Pledge.Sound.Defs
+
+namespace Pledge
+
+theorem Prog.Ext.refl (P : Prog) : P.Ext P := ⟨fun _ _ h => h, fun _ _ h hk => ⟨h, hk⟩⟩
+
+theorem Prog.Ext.trans {P₁ P₂ P₃ : Prog} (h₁ : P₁.Ext P₂) (h₂ : P₂.Ext P₃) : P₁.Ext P₃ :=
+  ⟨fun n d h => h₂.fns n d (h₁.fns n d h), fun n k h hk =>
+    let ⟨h', hk'⟩ := h₁.kind n k h hk
+    h₂.kind n k h' hk'⟩
+
+theorem Sigs.Sub.trans {S₁ S₂ S₃ : Sigs} (h₁ : S₁.Sub S₂) (h₂ : S₂.Sub S₃) : S₁.Sub S₃ :=
+  fun h sig hs => h₂ h sig (h₁ h sig hs)
+
+theorem World.Le.refl (W : World) : W.Le W :=
+  ⟨Prog.Ext.refl _, Sigs.Sub.refl _, List.prefix_refl _, fun _ _ _ _ _ h h' => by rw [h] at h'; cases h'⟩
+
+theorem World.Le.trans {W₁ W₂ W₃ : World} (h₁ : W₁.Le W₂) (h₂ : W₂.Le W₃) : W₁.Le W₃ := by
+  refine ⟨h₁.prog.trans h₂.prog, h₁.sigs.trans h₂.sigs, h₁.val.trans h₂.val, ?_⟩
+  intro h sig' ws hd us hn hs hr
+  cases hm : W₂.Sc.find h with
+  | none =>
+    obtain ⟨hk, hd'⟩ := h₂.fresh h sig' ws hd us hm hs hr
+    refine ⟨hk, hd'.imp_right fun hd' => ?_⟩
+    cases h₃ : W₁.Sc.find hd with
+    | none => rfl
+    | some s => rw [h₁.sigs _ _ h₃] at hd'; cases hd'
+  | some s =>
+    obtain rfl := Option.some.inj ((h₂.sigs _ _ hm).symm.trans hs)
+    exact h₁.fresh h s ws hd us hn hm hr
+
+theorem World.Le.take {W W' : World} (h : W.Le W') : W'.ρ.take W.ρ.length = W.ρ := by
+  obtain ⟨t, ht⟩ := h.val
+  rw [← ht]; simp
+
+theorem World.Le.take_of_le {W W' : World} (h : W.Le W') {n : Nat} (hn : n ≤ W.ρ.length) :
+    W'.ρ.take n = W.ρ.take n := by
+  obtain ⟨t, ht⟩ := h.val
+  rw [← ht, List.take_append_of_le_length hn]
+
+mutual
+/-- A term that has a value mentions only entries the valuation gives values to. -/
+theorem Term.entriesBelow_of_eval {ρ env : List Value} :
+    ∀ (t : Term) {v : Value}, t.eval ρ env = some v → t.entriesBelow ρ.length = true
+  | .entry i, _, h => by
+    simp only [Term.eval] at h
+    simpa [Term.entriesBelow] using (List.getElem?_eq_some_iff.1 h).1
+  | .bound _, _, _ => rfl
+  | .app _ as, _, h => by
+    obtain ⟨vs, hvs, -⟩ := Term.eval_app.1 h
+    exact Term.entriesBelowList_of_evalList as hvs
+theorem Term.entriesBelowList_of_evalList {ρ env : List Value} :
+    ∀ (as : List Term) {vs : List Value}, Term.evalList ρ env as = some vs → Term.entriesBelowList ρ.length as = true
+  | [], _, _ => rfl
+  | a :: as, _, h => by
+    obtain ⟨v, vs, hv, hvs, -⟩ := Term.evalList_cons_eq_some.1 h
+    simp only [Term.entriesBelowList, Term.entriesBelow_of_eval a hv, Term.entriesBelowList_of_evalList as hvs,
+      Bool.and_self]
+end
+
+mutual
+/-- A term whose entries and bound variables are in range has a value. -/
+theorem Term.eval_isSome {ρ env : List Value} :
+    ∀ t : Term, t.entriesBelow ρ.length = true → t.boundsBelow env.length = true → ∃ v, t.eval ρ env = some v
+  | .entry i, h, _ => by
+    simp only [Term.entriesBelow, decide_eq_true_eq] at h
+    exact ⟨_, List.getElem?_eq_getElem h⟩
+  | .bound i, _, h => by
+    simp only [Term.boundsBelow, decide_eq_true_eq] at h
+    exact ⟨_, List.getElem?_eq_getElem h⟩
+  | .app hd as, h, h' => by
+    obtain ⟨vs, hvs⟩ := Term.evalList_isSome as h h'
+    exact ⟨_, Term.eval_app.2 ⟨vs, hvs, rfl⟩⟩
+theorem Term.evalList_isSome {ρ env : List Value} :
+    ∀ as : List Term, Term.entriesBelowList ρ.length as = true → Term.boundsBelowList env.length as = true →
+      ∃ vs, Term.evalList ρ env as = some vs
+  | [], _, _ => ⟨[], rfl⟩
+  | a :: as, h, h' => by
+    simp only [Term.entriesBelowList, Term.boundsBelowList, Bool.and_eq_true] at h h'
+    obtain ⟨v, hv⟩ := Term.eval_isSome a h.1 h'.1
+    obtain ⟨vs, hvs⟩ := Term.evalList_isSome as h.2 h'.2
+    exact ⟨v :: vs, Term.evalList_cons_eq_some.2 ⟨v, vs, hv, hvs, rfl⟩⟩
+end
+
+mutual
+theorem Term.entriesBelow_mono {n m : Nat} (hnm : n ≤ m) :
+    ∀ t : Term, t.entriesBelow n = true → t.entriesBelow m = true
+  | .entry i, h => by simp only [Term.entriesBelow, decide_eq_true_eq] at h ⊢; omega
+  | .bound _, _ => rfl
+  | .app _ as, h => Term.entriesBelowList_mono hnm as h
+theorem Term.entriesBelowList_mono {n m : Nat} (hnm : n ≤ m) :
+    ∀ as : List Term, Term.entriesBelowList n as = true → Term.entriesBelowList m as = true
+  | [], _ => rfl
+  | a :: as, h => by
+    simp only [Term.entriesBelowList, Bool.and_eq_true] at h ⊢
+    exact ⟨Term.entriesBelow_mono hnm a h.1, Term.entriesBelowList_mono hnm as h.2⟩
+end
+
+theorem TBinder.entriesBelow_mono {n m : Nat} (hnm : n ≤ m) {b : TBinder} (h : b.entriesBelow n = true) :
+    b.entriesBelow m = true := by
+  simp only [TBinder.entriesBelow, Bool.and_eq_true, Option.all_eq_true] at h ⊢
+  exact ⟨Term.entriesBelow_mono hnm _ h.1, fun e he => Term.entriesBelow_mono hnm e (h.2 e he)⟩
+
+theorem Sig.entriesBelow_mono {n m : Nat} (hnm : n ≤ m) {sig : Sig} (h : sig.entriesBelow n = true) :
+    sig.entriesBelow m = true := by
+  simp only [Sig.entriesBelow, Bool.and_eq_true, List.all_eq_true] at h ⊢
+  exact ⟨fun b hb => TBinder.entriesBelow_mono hnm (h.1 b hb), Term.entriesBelow_mono hnm _ h.2⟩
+
+theorem Term.evalList_map_append {ρ ρ' : List Value} {ts : List Term} {vs : List Value}
+    (h : Term.evalList ρ [] ts = some vs) : Term.evalList (ρ ++ ρ') [] ts = some vs :=
+  Term.evalList_frame_ρ ρ' h
+
+theorem Term.evalList_append_iff {ρ env : List Value} {as bs : List Term} {us : List Value} :
+    Term.evalList ρ env (as ++ bs) = some us ↔
+      ∃ vs ws, Term.evalList ρ env as = some vs ∧ Term.evalList ρ env bs = some ws ∧ us = vs ++ ws := by
+  constructor
+  · intro h
+    induction as generalizing us with
+    | nil => exact ⟨[], us, rfl, h, rfl⟩
+    | cons a as ih =>
+      obtain ⟨v, us', hv, hus, rfl⟩ := Term.evalList_cons_eq_some.1 h
+      obtain ⟨vs, ws, hvs, hws, rfl⟩ := ih hus
+      exact ⟨v :: vs, ws, Term.evalList_cons_eq_some.2 ⟨v, vs, hv, hvs, rfl⟩, hws, rfl⟩
+  · rintro ⟨vs, ws, hvs, hws, rfl⟩
+    exact Term.evalList_append hvs hws
+
+theorem Term.evalList_singleton {ρ env : List Value} {a : Term} {us : List Value} :
+    Term.evalList ρ env [a] = some us ↔ ∃ v, a.eval ρ env = some v ∧ us = [v] := by
+  rw [Term.evalList_cons_eq_some]
+  constructor
+  · rintro ⟨v, vs, hv, hvs, rfl⟩
+    cases hvs; exact ⟨v, hv, rfl⟩
+  · rintro ⟨v, hv, rfl⟩; exact ⟨v, [], hv, rfl, rfl⟩
+
+mutual
+theorem Value.isSub_of_mem {v : Value} : ∀ {as : List Value}, v ∈ as → Value.isSubList v as = true
+  | _ :: _, .head _ => by simp [Value.isSubList]
+  | _ :: _, .tail _ h => by simp [Value.isSubList, Value.isSub_of_mem h]
+theorem Value.isSubList_of_mem_sub {v a : Value} : ∀ {as : List Value}, a ∈ as → v.isSub a = true →
+    Value.isSubList v as = true
+  | _ :: _, .head _, h => by simp [Value.isSubList, h]
+  | _ :: _, .tail _ hm, h => by simp [Value.isSubList, Value.isSubList_of_mem_sub hm h]
+end
+
+/-- The checker's strict subtree relation is the evaluator's. -/
+theorem Value.StrictSub.lt {v w : Value} (h : v.StrictSub w) : v.lt w := by
+  induction h with
+  | arg hm => exact Value.isSub_of_mem hm
+  | deep hm _ ih => exact Value.isSubList_of_mem_sub hm ih
+
+theorem failAt_eq {α : Type} {pos : Pos} {m : Unit → String} : (failAt pos m : CheckM α) = .error ⟨pos, m, []⟩ := rfl
+
+theorem solveHoles_nil {sc : Scope} (h : sc.holes = []) (l r : Term) (pos : Pos) :
+    solveHoles sc l r pos = .ok sc := by
+  unfold solveHoles; rw [h]; rfl
+
+theorem against_go_sound {Sc : Sigs} {sc : Scope} {g : Given} {pos : Pos} {ρ envv : List Value}
+    (hΓ : Sat Sc sc.Γ ρ) (hS : SigsClose sc.sigs ρ Sc) (hh : sc.holes = [])
+    (henv : Term.evalList ρ [] g.env = some envv) :
+    ∀ (ws : List Want) (rs : List Res) (prev : List Term) (prevv vs : List Value) (sc' : Scope),
+      Term.evalList ρ [] prev = some prevv → Term.evalList ρ [] (rs.map (·.term)) = some vs →
+      (∀ v ∈ vs, ∃ V, HasType Sc v V) → ws.length = rs.length →
+      against.go g pos sc prev ws rs = .ok sc' → sc' = sc ∧ WantsSat Sc ρ ws (envv ++ prevv) vs
+  | [], [], prev, prevv, vs, sc', _, hvs, _, _, h => by
+    cases hvs; simp [against.go, pure, Except.pure] at h; exact ⟨h.symm, trivial⟩
+  | w :: ws, r :: rs, prev, prevv, vs, sc', hprev, hvs, hty, hl, h => by
+    obtain ⟨v, vs', hv, hvs', rfl⟩ := Term.evalList_cons_eq_some.1 hvs
+    have hE : Term.evalList ρ [] (g.env ++ prev) = some (envv ++ prevv) := Term.evalList_append henv hprev
+    have ih := fun (h' : against.go g pos sc (prev ++ [r.term]) ws rs = .ok sc') =>
+      against_go_sound hΓ hS hh henv ws rs (prev ++ [r.term]) (prevv ++ [v]) vs' sc'
+      (Term.evalList_append hprev (Term.evalList_singleton.2 ⟨v, hv, rfl⟩)) hvs'
+      (fun u hu => hty u (List.mem_cons_of_mem _ hu)) (by simpa using hl) h'
+    obtain ⟨V, hV⟩ := hty v List.mem_cons_self
+    rw [against.go] at h
+    simp only [Scope.typeOf, solveHoles_nil hh] at h
+    cases hT : typeOf sc.sigs sc.Γ r.term with
+    | none => simp [hT, internal, failAt, bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at h
+    | some has =>
+      have hhas := typeOf_sound hΓ hS hv hV hT
+      have hwT : ∀ T, w.type = some T → identical sc.Γ (T.subst (g.env ++ prev)) has = true →
+          ∃ A, T.eval ρ (envv ++ prevv) = some A ∧ HasType Sc v A := fun T _ hi =>
+        ⟨V, by rw [← Term.eval_subst hE, hΓ.eval_eq_of_identical hi, hhas], hV⟩
+      have hwI : ∀ e, w.is = some e → identical sc.Γ (e.subst (g.env ++ prev)) r.term = true →
+          e.eval ρ (envv ++ prevv) = some v := fun e _ hi => by
+        rw [← Term.eval_subst hE, hΓ.eval_eq_of_identical hi, hv]
+      have fin : against.go g pos sc (prev ++ [r.term]) ws rs = .ok sc' →
+          (∀ T, w.type = some T → identical sc.Γ (T.subst (g.env ++ prev)) has = true) →
+          (∀ e, w.is = some e → identical sc.Γ (e.subst (g.env ++ prev)) r.term = true) →
+          sc' = sc ∧ WantsSat Sc ρ (w :: ws) (envv ++ prevv) (v :: vs') := fun hgo h1 h2 => by
+        obtain ⟨h3, h4⟩ := ih hgo
+        exact ⟨h3, ⟨fun T hT' => hwT T hT' (h1 T hT'), fun e he => hwI e he (h2 e he)⟩, by simpa using h4⟩
+      cases hwt : w.type <;> cases hwi : w.is <;>
+        simp only [hT, hwt, hwi, Option.map_some, Option.map_none, pure, Except.pure, bind, Except.bind,
+          solveHoles_nil hh, failAt_eq] at h
+      · exact fin h (by simp [hwt]) (by simp [hwi])
+      · split at h
+        · rename_i hi; exact fin h (by simp [hwt]) (fun e he => by rw [hwi] at he; cases he; exact hi)
+        · cases h
+      · split at h
+        · rename_i hi; exact fin h (fun e he => by rw [hwt] at he; cases he; exact hi) (by simp [hwi])
+        · cases h
+      · split at h
+        · split at h
+          · rename_i hi hi'
+            exact fin h (fun e he => by rw [hwt] at he; cases he; exact hi)
+              (fun e he => by rw [hwi] at he; cases he; exact hi')
+          · cases h
+        · cases h
+
+  | [], _ :: _, _, _, _, _, _, _, _, hl, _ | _ :: _, [], _, _, _, _, _, _, _, hl, _ => by simp at hl
+
+theorem against_sound {Sc : Sigs} {sc sc' : Scope} {g : Given} {pos : Pos} {rs : List Res} {ρ envv vs : List Value}
+    (hΓ : Sat Sc sc.Γ ρ) (hS : SigsClose sc.sigs ρ Sc) (hh : sc.holes = [])
+    (hvs : Term.evalList ρ [] (rs.map (·.term)) = some vs) (hty : ∀ v ∈ vs, ∃ V, HasType Sc v V)
+    (henv : Term.evalList ρ [] g.env = some envv) (h : against sc g pos rs = .ok sc') :
+    sc' = sc ∧ rs.length = g.wants.length ∧ WantsSat Sc ρ g.wants envv vs := by
+  simp only [against] at h
+  by_cases hl : rs.length = g.wants.length
+  · simp only [hl, ne_eq, not_true_eq_false, ↓reduceIte] at h
+    obtain ⟨h1, h2⟩ := against_go_sound hΓ hS hh henv g.wants rs [] [] vs sc' rfl hvs hty hl.symm h
+    exact ⟨h1, hl, by simpa using h2⟩
+  · simp [hl, miscount, failAt_eq, bind, Except.bind] at h
+
+theorem produced_sound {Sc : Sigs} {sc : Scope} {g : Option Given} {pos : Pos} {rs : List Res} {tree : Expr}
+    {o : Out} {ρ vs : List Value} (hΓ : Sat Sc sc.Γ ρ) (hS : SigsClose sc.sigs ρ Sc) (hh : sc.holes = [])
+    (hvs : Term.evalList ρ [] (rs.map (·.term)) = some vs) (hty : ∀ v ∈ vs, ∃ V, HasType Sc v V)
+    (hg : ∀ g', g = some g' → ∃ envv, Term.evalList ρ [] g'.env = some envv)
+    (h : produced sc g pos rs tree = .ok o) :
+    o = ⟨sc, rs, tree, []⟩ ∧ ∀ g', g = some g' → ∀ envv, Term.evalList ρ [] g'.env = some envv →
+      rs.length = g'.wants.length ∧ WantsSat Sc ρ g'.wants envv vs := by
+  cases g with
+  | none =>
+    simp only [produced, pure, Except.pure, bind, Except.bind, Except.ok.injEq] at h
+    exact ⟨h.symm, by simp⟩
+  | some g =>
+    simp only [produced] at h
+    obtain ⟨sc', hsc, h⟩ := bind_eq_ok.1 h
+    cases h
+    obtain ⟨envv, henv⟩ := hg g rfl
+    obtain ⟨rfl, -⟩ := against_sound hΓ hS hh hvs hty henv hsc
+    refine ⟨rfl, fun g' hg envv henv => ?_⟩
+    cases hg
+    exact (against_sound hΓ hS hh hvs hty henv hsc).2
+
+
+theorem keep_ok {α : Type} {snaps : List Snapshot} {x : CheckM α} {a : α} : keep snaps x = .ok a ↔ x = .ok a := by
+  cases x <;> simp [keep]
+
+theorem ensure_ok {ok : Bool} {pos : Pos} {what : String} {u : Unit} (h : ensure ok pos what = .ok u) :
+    ok = true := by
+  cases ok
+  · simp [ensure, internal, failAt_eq] at h
+  · rfl
+
+theorem settle_nil {sc : Scope} (hh : sc.holes = []) (g : Option Given) (rs : List Res) (since : Nat) :
+    settle sc g rs since = .ok (sc, false) := by
+  unfold settle; rw [hh, List.drop_nil]; rfl
+
+theorem applied_sound {Sc : Sigs} {sc : Scope} {g : Option Given} {pos : Pos} {rs : List Res} {tree : Expr}
+    {since : Nat} {snaps : List Snapshot} {o : Out} {ρ vs : List Value} (hΓ : Sat Sc sc.Γ ρ)
+    (hS : SigsClose sc.sigs ρ Sc) (hh : sc.holes = []) (hvs : Term.evalList ρ [] (rs.map (·.term)) = some vs)
+    (hty : ∀ v ∈ vs, ∃ V, HasType Sc v V) (hg : ∀ g', g = some g' → ∃ envv, Term.evalList ρ [] g'.env = some envv)
+    (h : applied sc g pos rs tree since snaps = .ok o) :
+    o = ⟨sc, rs, tree, snaps⟩ ∧ ∀ g', g = some g' → ∀ envv, Term.evalList ρ [] g'.env = some envv →
+      rs.length = g'.wants.length ∧ WantsSat Sc ρ g'.wants envv vs := by
+  simp only [applied, keep_ok] at h
+  obtain ⟨o', ho', h⟩ := bind_eq_ok.1 h
+  obtain ⟨rfl, hw⟩ := produced_sound hΓ hS hh hvs hty hg ho'
+  simp only [settle_nil hh, ok_bind] at h
+  simp only [Bool.false_eq_true, ↓reduceIte, pure, Except.pure, Except.ok.injEq] at h
+  exact ⟨h.symm, hw⟩
+
+theorem Given.allErased_eq_false {g : Given} (h : ∀ w ∈ g.wants, w.mult = .many) : g.allErased = false := by
+  simp only [Given.allErased, Bool.and_eq_false_iff, List.any_eq_false]
+  exact .inl fun w hw => by simp [h w hw]
+
+theorem Given.erasedAt_eq_false {g : Given} (h : ∀ w ∈ g.wants, w.mult = .many) (i : Nat) :
+    g.erasedAt i = false := by
+  simp only [Given.erasedAt]
+  cases hw : g.wants[i]? with
+  | none => rfl
+  | some w => simp [h w (List.mem_of_getElem? hw)]
+
+/-- `finish` changes nothing, and does not remove, when nothing is tainted or erased and the expression has a
+result. -/
+theorem finish_inert {C : Ctx} {g : Option Given} {e : Expr} {o o' : Out}
+    (hg : ∀ g', g = some g' → ∀ w ∈ g'.wants, w.mult = .many) (ht : o.sc.taintedBy = none)
+    (hr : ∀ r ∈ o.res, r.tainted = false) (h : finish C false g e o = .ok o') :
+    o' = o ∧ o.res ≠ [] ∧ ∀ r ∈ o.res, r.erased = false := by
+  simp only [finish] at h
+  obtain ⟨u, hu, h⟩ := bind_eq_ok.1 h
+  have hne : o.res ≠ [] := by simpa using ensure_ok hu
+  have hall : (o.res.all fun x => x.tainted) = false := by
+    obtain ⟨r, rs, hrs⟩ := List.exists_cons_of_ne_nil hne
+    simp only [List.all_eq_false]
+    exact ⟨r, by simp [hrs], by simp [hr r (by simp [hrs])]⟩
+  have herr : ∀ i, ¬ (o.res[i]?.any (·.erased) && !g.any (·.erasedAt i)) = true → ∀ r, o.res[i]? = some r →
+      r.erased = false := by
+    intro i hi r hri
+    have : g.any (·.erasedAt i) = false := by
+      cases g with
+      | none => rfl
+      | some g' => simpa using Given.erasedAt_eq_false (hg g' rfl) i
+    simp only [hri, Option.any_some, this, Bool.not_false, Bool.and_true, Bool.not_eq_true] at hi
+    exact hi
+  simp only [ht, Option.isSome_none, Bool.false_eq_true, ↓reduceIte, Bool.false_or, hall] at h
+  split at h
+  · simp [failAt_eq, bind, Except.bind] at h
+  · rename_i x hx
+    simp only [pure, Except.pure, Except.ok.injEq] at h
+    refine ⟨by rw [← h], hne, fun r hr' => ?_⟩
+    obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hr'
+    refine herr i (fun hc => ?_) _ (List.getElem?_eq_getElem hi)
+    cases hfi : List.find? (fun i => Option.any (fun x => x.erased) o.res[i]? && !Option.any (fun x => x.erasedAt i) g)
+      (List.range o.res.length) with
+    | some j => exact absurd hfi (hx j)
+    | none =>
+      have := List.find?_eq_none.1 hfi i (List.mem_range.2 hi)
+      simp [hc] at this
+
+theorem single_ok {pos : Pos} {rs : List Res} {r : Res} (h : single pos rs = .ok r) : rs = [r] := by
+  unfold single at h
+  split at h
+  · cases h; rfl
+  · simp [miscount, failAt_eq] at h
+
+theorem opened_fst (sc : Scope) (tele : Telescope) (env : List Term) (kind : String) (pos : Pos)
+    (taint : Nat → Bool) :
+    (opened sc tele env kind pos taint).1 = { sc with Γ := (opened sc tele env kind pos taint).1.Γ } :=
+  rfl
+
+/-- Opening a telescope to entries whose values satisfy it: the scope stays satisfied, and the results are the new
+entries, taking those values. -/
+theorem opened_sound {Sc : Sigs} {sc : Scope} {tele : Telescope} {env : List Term} {kind : String} {pos : Pos}
+    {taint : Nat → Bool} {ρ envv vs : List Value} (hΓ : Sat Sc sc.Γ ρ)
+    (henv : Term.evalList ρ [] env = some envv) (ht : TeleSat Sc ρ tele envv vs) :
+    Sat Sc (opened sc tele env kind pos taint).1.Γ (ρ ++ vs) ∧
+      Term.evalList (ρ ++ vs) [] ((opened sc tele env kind pos taint).2.map (·.term)) = some vs ∧
+      (opened sc tele env kind pos taint).1.Γ.length = sc.Γ.length + tele.length ∧
+      ((∀ i, taint i = false) → ∀ r ∈ (opened sc tele env kind pos taint).2, r.tainted = false) := by
+  obtain ⟨mk, hop⟩ : ∃ mk, opened sc tele env kind pos taint = ({ sc with Γ := (openTele sc.Γ tele env mk).Γ },
+      (openTele sc.Γ tele env mk).ids.mapIdx fun i id =>
+        ⟨.entry id, taint i, (((openTele sc.Γ tele env mk).Γ[id]?).map (·.erased)).getD false⟩) := ⟨_, rfl⟩
+  rw [hop]
+  obtain ⟨hs, he⟩ := openTele_sound mk hΓ henv ht
+  obtain ⟨Δ, hΔ, hΔl, hids, henv'⟩ := openTele_shape sc.Γ tele env mk
+  have hmap : (((openTele sc.Γ tele env mk).ids.mapIdx fun i id =>
+        (⟨.entry id, taint i, (((openTele sc.Γ tele env mk).Γ[id]?).map (·.erased)).getD false⟩ : Res)).map
+          (·.term)) = (openTele sc.Γ tele env mk).ids.map .entry :=
+    List.ext_getElem (by simp) fun i h₁ h₂ => by simp [List.getElem_mapIdx]
+  refine ⟨hs, ?_, by simp only; rw [openTele_length], fun hT r hr => ?_⟩
+  · rw [hmap]
+    rw [henv'] at he
+    obtain ⟨a, b, ha, hb, hab⟩ := Term.evalList_append_iff.1 he
+    have : a = envv := by
+      have h₁ := Term.evalList_frame_ρ vs henv
+      rw [ha] at h₁; exact Option.some.inj h₁
+    subst this
+    obtain rfl := List.append_cancel_left hab
+    exact hb
+  · simp only [List.mem_mapIdx] at hr
+    obtain ⟨i, -, rfl⟩ := hr
+    exact hT i
+
+
+/-- The names `bind` and `bindIds` push, newest first. -/
+def pushed {α : Type} (ids : List Id) (xs : List α) : List (String × α) :=
+  ((ids.zip xs).filterMap fun (i, x) => i.name.map (·, x)).reverse
+
+theorem pushed_cons {α : Type} (x : Id) (ids : List Id) (a : α) (xs : List α) :
+    pushed (x :: ids) (a :: xs) = pushed ids xs ++ (x.name.map (·, a)).toList := by
+  cases h : x.name <;> simp [pushed, h]
+
+theorem Scope.bind_eq : ∀ (sc : Scope) (ids : List Id) (rs : List Res),
+    sc.bind ids rs = { sc with names := pushed ids rs ++ sc.names }
+  | sc, x :: xs, r :: rs => by
+    rw [Scope.bind, Scope.bind_eq _ xs rs, pushed_cons]
+    cases x.name <;> simp
+  | sc, [], _ => by simp [Scope.bind, pushed]
+  | sc, _ :: _, [] => by simp [Scope.bind, pushed]
+
+theorem bindIds_ok {env : Env} {ids : List Id} {vs : List Value} {env' : Env} (h : bindIds env ids vs = .ok env') :
+    ids.length = vs.length ∧ env' = pushed ids vs ++ env := by
+  unfold bindIds at h
+  split at h
+  · cases h; exact ⟨‹_›, rfl⟩
+  · simp [throw, throwThe, MonadExceptOf.throw] at h
+
+theorem bindIds_of_length {env : Env} {ids : List Id} {vs : List Value} (h : ids.length = vs.length) :
+    bindIds env ids vs = .ok (pushed ids vs ++ env) := by
+  simp [bindIds, h, pushed, pure, Except.pure]
+
+theorem bindPattern_app {env : Env} {pat : Pattern} {h : Head} {ws : List Value} {env' : Env} :
+    bindPattern env none pat (.app h ws) = .ok env' ↔
+      h.name = pat.ctor.name ∧ bindIds env pat.fields ws = .ok env' := by
+  simp only [bindPattern, destruct]
+  by_cases hn : h.name = pat.ctor.name
+  · simp [hn, pure, Except.pure, bind, Except.bind]
+  · simp [hn, throw, throwThe, MonadExceptOf.throw, bind, Except.bind]
+
+theorem lookup_append {α : Type} (l l' : List (String × α)) (n : String) :
+    (l ++ l').lookup n = (l.lookup n).or (l'.lookup n) := by
+  induction l with
+  | nil => simp
+  | cons p l ih =>
+    obtain ⟨k, a⟩ := p
+    simp only [List.cons_append, List.lookup]
+    split <;> simp_all
+
+/-- The names-to-values correspondence of the main lemma survives pushing names for results with those values. -/
+theorem names_pushed {Sc : Sigs} {ρ : List Value} :
+    ∀ (ids : List Id) (rs : List Res) (vs : List Value) (names : List (String × Res)) (env : Env),
+      (∀ n r, names.lookup n = some r → ∃ v V, env.lookup n = some v ∧ r.term.eval ρ [] = some v ∧ HasType Sc v V) →
+      Term.evalList ρ [] (rs.map (·.term)) = some vs → (∀ v ∈ vs, ∃ V, HasType Sc v V) →
+      ∀ n r, (pushed ids rs ++ names).lookup n = some r →
+        ∃ v V, (pushed ids vs ++ env).lookup n = some v ∧ r.term.eval ρ [] = some v ∧ HasType Sc v V
+  | x :: ids, r :: rs, vs, names, env, h, hvs, hty => by
+    obtain ⟨v, vs', hv, hvs', rfl⟩ := Term.evalList_cons_eq_some.1 hvs
+    rw [pushed_cons, pushed_cons, List.append_assoc, List.append_assoc]
+    refine names_pushed ids rs vs' _ _ ?_ hvs' (fun u hu => hty u (List.mem_cons_of_mem _ hu))
+    intro n r' hr'
+    rw [lookup_append] at hr' ⊢
+    cases hx : x.name with
+    | none => simpa [hx] using h n r' (by simpa [hx] using hr')
+    | some m =>
+      obtain ⟨V, hV⟩ := hty v List.mem_cons_self
+      by_cases hnm : n = m
+      · subst hnm
+        simp only [hx, Option.map_some, Option.toList_some, List.lookup, beq_self_eq_true, Option.some_or,
+          Option.some.injEq] at hr' ⊢
+        subst hr'
+        exact ⟨v, V, rfl, hv, hV⟩
+      · have hb : (n == m) = false := by simpa using hnm
+        simp only [hx, Option.map_some, Option.toList_some, List.lookup, hb, Option.none_or] at hr' ⊢
+        exact h n r' hr'
+  | [], rs, vs, names, env, h, _, _ => by simpa [pushed] using h
+  | _ :: _, [], vs, names, env, h, hvs, _ => by
+    cases hvs
+    simpa [pushed] using h
+
+theorem Inv.length {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {env : Env} {act : Act}
+    (hI : Inv C sc n0 W ρ env act) : n0 ≤ ρ.length := by
+  have := congrArg List.length hI.agree
+  simp only [List.length_take] at this
+  have := hI.n0_world
+  omega
+
+theorem Inv.termInv {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {env : Env} {act : Act}
+    (hI : Inv C sc n0 W ρ env act) : TermInv sc n0 W.Sc ρ :=
+  ⟨hI.sat, hI.length, hI.sigs ρ hI.agree, hI.sigsOk,
+    fun n r h => let ⟨v, V, _, h1, h2⟩ := hI.names n r h; ⟨v, V, h1, h2⟩, hI.inert⟩
+
+theorem Inv.sigsClose {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {env : Env} {act : Act}
+    (hI : Inv C sc n0 W ρ env act) (ρ' : List Value) : SigsClose sc.sigs (ρ ++ ρ') W.Sc :=
+  hI.sigs _ (by rw [List.take_append_of_le_length hI.length]; exact hI.agree)
+
+/-- The invariant carries over to a scope with more entries, the same names and signatures, satisfied by an
+extension of the valuation. -/
+theorem Inv.extend {C : Ctx} {sc sc' : Scope} {n0 : Nat} {W : World} {ρ ρ' : List Value} {env : Env} {act : Act}
+    (hI : Inv C sc n0 W ρ env act) (hsat : Sat W.Sc sc'.Γ (ρ ++ ρ')) (hsigs : sc'.sigs = sc.sigs)
+    (hnames : sc'.names = sc.names) (hin : sc'.Inert) : Inv C sc' n0 W (ρ ++ ρ') env act := by
+  have hl := hI.length
+  refine ⟨hI.phase, hI.erased, hsat, hI.n0_world, by rw [List.take_append_of_le_length hl]; exact hI.agree,
+    hsigs ▸ hI.sigs, hsigs ▸ hI.sigsOk, fun n r h => ?_, hsigs ▸ hI.globals, fun f hf => ?_, hin⟩
+  · have h' : sc.lookup n = some r := by simpa [Scope.lookup, hnames] using h
+    obtain ⟨v, V, h1, h2, h3⟩ := hI.names n r h'
+    exact ⟨v, V, h1, Term.eval_frame_ρ ρ' h2, h3⟩
+  · obtain ⟨ss, h1, h2⟩ := hI.act f hf
+    exact ⟨ss, Term.evalList_frame_ρ ρ' h1, h2⟩
+
+/-- The invariant carries over to a scope with names pushed for results whose values are pushed in the evaluator's
+environment. -/
+theorem Inv.bind {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {env env' : Env} {act : Act}
+    {ids : List Id} {rs : List Res} {vs : List Value} (hI : Inv C sc n0 W ρ env act)
+    (hvs : Term.evalList ρ [] (rs.map (·.term)) = some vs) (hty : ∀ v ∈ vs, ∃ V, HasType W.Sc v V)
+    (hr : ∀ r ∈ rs, r.tainted = false) (hb : bindIds env ids vs = .ok env') :
+    Inv C (sc.bind ids rs) n0 W ρ env' act := by
+  obtain ⟨-, rfl⟩ := bindIds_ok hb
+  rw [Scope.bind_eq]
+  refine ⟨hI.phase, hI.erased, hI.sat, hI.n0_world, hI.agree, hI.sigs, hI.sigsOk, ?_, hI.globals, hI.act,
+    ⟨hI.inert.holes, hI.inert.taintedBy, fun p hp => ?_⟩⟩
+  · exact names_pushed ids rs vs sc.names env (fun n r h => hI.names n r h) hvs hty
+  · rcases List.mem_append.1 hp with hp | hp
+    · simp only [pushed, List.mem_reverse, List.mem_filterMap, Option.map_eq_some_iff] at hp
+      obtain ⟨⟨i, r⟩, hm, n, -, rfl⟩ := hp
+      exact hr r (List.of_mem_zip hm).2
+    · exact hI.inert.names p hp
+
+
+theorem forM_ok {α ε : Type} {f : α → Except ε Unit} : ∀ {l : List α}, l.forM f = .ok () → ∀ x ∈ l, f x = .ok ()
+  | [], _, _, hx => by cases hx
+  | a :: l, h, x, hx => by
+    rw [List.forM] at h
+    obtain ⟨u, hu, h⟩ := bind_eq_ok.1 h
+    rcases List.mem_cons.1 hx with rfl | hx
+    · exact hu
+    · exact forM_ok h x hx
+
+theorem marks_spec {pos : Pos} {args : List Arg} {name : String} {sig : FnSig} {fn : FnCtx} {subs : List Nat}
+    {k : Nat} (h : marks pos args name sig fn = .ok (subs, k)) :
+    subs = (List.range sig.subterm.length).filter (sig.subterm.getD · false) ∧ k < subs.length ∧
+      k < fn.subterms.length := by
+  unfold marks at h
+  simp only at h
+  split at h
+  · rename_i k' hk
+    simp only [pure, Except.pure, bind, Except.bind] at h
+    split at h
+    · cases h
+    · split at h
+      · simp [failAt_eq] at h
+      · rename_i hlt
+        simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        refine ⟨rfl, ?_, by omega⟩
+        obtain ⟨i, -, hi⟩ := Option.bind_eq_some_iff.1 hk
+        exact (List.idxOf?_eq_some_iff.1 hi).1
+  · simp [failAt_eq, bind, Except.bind] at h
+
+theorem decrease_spec {sc : Scope} {pos : Pos} {args : List Arg} {rs : List Res} {fn : FnCtx} {subs : List Nat}
+    {k : Nat} (h : decrease sc pos args rs fn subs k = .ok ()) :
+    ∀ j ≤ k, ∃ p r own, subs[j]? = some p ∧ rs[p]? = some r ∧ fn.subterms[j]? = some own ∧
+      (if j = k then isStrictSubterm sc.Γ r.term own else identical sc.Γ r.term own) = true := by
+  intro j hj
+  have := forM_ok h j (List.mem_range.2 (by omega))
+  cases hp : subs[j]? with
+  | none => simp [hp, internal, failAt_eq] at this
+  | some p =>
+    cases hr : rs[p]? with
+    | none => simp [hp, hr, internal, failAt_eq] at this
+    | some r =>
+      cases ho : fn.subterms[j]? with
+      | none => simp [hp, hr, ho, internal, failAt_eq] at this
+      | some own =>
+        refine ⟨p, r, own, rfl, hr, rfl, ?_⟩
+        simp only [hp, hr, ho] at this
+        cases hc : (if j = k then isStrictSubterm sc.Γ r.term own else identical sc.Γ r.term own)
+        · simp [hc, failAt_eq] at this
+        · rfl
+
+theorem filterMap_flags : ∀ (flags : List Bool) (vs : List Value), flags.length = vs.length →
+    (flags.zip vs).filterMap (fun (b, v) => if b then some (some v) else none) =
+      ((List.range flags.length).filter (flags.getD · false)).map (fun i => vs[i]?)
+  | [], [], _ => rfl
+  | b :: fl, v :: vl, h => by
+    have ih := filterMap_flags fl vl (by simpa using h)
+    have e : ((fun i => (b :: fl).getD i false) ∘ Nat.succ) = fun i => fl.getD i false := by
+      funext i; simp
+    rw [List.zip_cons_cons, List.length_cons, List.range_succ_eq_map, List.filter_cons, List.filter_map, e]
+    cases b <;> simp [ih, Function.comp_def]
+
+theorem filterMap_flags_length : ∀ (flags : List Bool) (vs : List Value),
+    ((flags.zip vs).filterMap (fun (b, v) => if b then some (some v) else none)).length ≤ flags.count true
+  | [], _ => by simp
+  | _ :: _, [] => by simp
+  | b :: fl, v :: vl => by
+    have := filterMap_flags_length fl vl
+    cases b <;> simp <;> omega
+
+theorem calleeAct_subs (d : FnDef) (vs : List Value) (hl : d.subterm.length = vs.length)
+    (hc : d.subterm.count true ≤ d.pad) :
+    (calleeAct d vs).subs = ((List.range d.subterm.length).filter (d.subterm.getD · false)).map (fun i => vs[i]?) ++
+      List.replicate (d.pad - ((List.range d.subterm.length).filter (d.subterm.getD · false)).length) none ∧
+    (calleeAct d vs).subs.length = d.pad ∧ (calleeAct d vs).group = d.group := by
+  have h1 := filterMap_flags d.subterm vs hl
+  have h2 := filterMap_flags_length d.subterm vs
+  rw [h1, List.length_map] at h2
+  refine ⟨?_, ?_, rfl⟩
+  · simp only [calleeAct]; rw [h1, List.length_map]
+  · simp only [calleeAct]; rw [h1, List.length_append, List.length_map, List.length_replicate]; omega
+
+/-- A call within the group whose marks and decrease checked has a measure below the caller's activation. -/
+theorem call_lt {sc : Scope} {pos : Pos} {args : List Arg} {name : String} {sig : FnSig} {fn : FnCtx}
+    {rs : List Res} {subs : List Nat} {k : Nat} {d : FnDef} {act : Act} {ρ vs ss : List Value}
+    (hΓ : RulesHold sc.Γ ρ) (hm : marks pos args name sig fn = .ok (subs, k))
+    (hd : decrease sc pos args rs fn subs k = .ok ()) (hrs : Term.evalList ρ [] (rs.map (·.term)) = some vs)
+    (hss : Term.evalList ρ [] fn.subterms = some ss)
+    (hact : act.subs = ss.map some ++ List.replicate (act.subs.length - ss.length) none)
+    (hsub : d.subterm = sig.subterm) (hlen : sig.subterm.length = vs.length) (hcount : d.subterm.count true ≤ d.pad)
+    (hg : d.group = act.group) (hpad : d.pad = act.subs.length) : Act.lt (calleeAct d vs) act := by
+  obtain ⟨hsubs, hk, hkf⟩ := marks_spec hm
+  have hdec := decrease_spec hd
+  obtain ⟨hcs, hcl, hcg⟩ := calleeAct_subs d vs (hsub ▸ hlen) hcount
+  rw [hsub, ← hsubs] at hcs
+  have hssl : ss.length = fn.subterms.length := Term.length_evalList hss
+  have hvs : ∀ j ≤ k, ∃ p x y, subs[j]? = some p ∧ vs[p]? = some x ∧ ss[j]? = some y ∧
+      (if j = k then x.StrictSub y else x = y) := by
+    intro j hj
+    obtain ⟨p, r, own, hp, hr, ho, hc⟩ := hdec j hj
+    have hx := (Term.evalList_eq_some_iff.1 hrs).2
+    obtain ⟨x, hxv⟩ : ∃ x, vs[p]? = some x := by
+      have : p < vs.length := by
+        rw [Term.length_evalList hrs, List.length_map]; exact (List.getElem?_eq_some_iff.1 hr).1
+      exact ⟨_, List.getElem?_eq_getElem this⟩
+    obtain ⟨y, hyv⟩ : ∃ y, ss[j]? = some y := by
+      have : j < ss.length := by rw [hssl]; exact (List.getElem?_eq_some_iff.1 ho).1
+      exact ⟨_, List.getElem?_eq_getElem this⟩
+    have hrx : r.term.eval ρ [] = some x := by
+      rw [hx p r.term (by simp [hr])]; exact hxv
+    have hoy : own.eval ρ [] = some y := by
+      rw [(Term.evalList_eq_some_iff.1 hss).2 j own ho]; exact hyv
+    refine ⟨p, x, y, hp, hxv, hyv, ?_⟩
+    split
+    · rename_i hjk
+      simp only [hjk, ↓reduceIte] at hc
+      exact isStrictSubterm_sound hΓ hc hrx hoy
+    · rename_i hjk
+      simp only [hjk, ↓reduceIte] at hc
+      exact Option.some.inj (hrx.symm.trans ((identical.eval_eq hΓ hc).trans hoy))
+  have hca : ∀ j, j < subs.length → (calleeAct d vs).subs[j]? = some (subs[j]?.bind fun i => vs[i]?) := by
+    intro j hj
+    rw [hcs, List.getElem?_append_left (by simpa using hj)]
+    simp [List.getElem?_eq_getElem hj]
+  have hac : ∀ j, j < ss.length → act.subs[j]? = some (ss[j]?) := by
+    intro j hj
+    rw [hact, List.getElem?_append_left (by simpa using hj)]
+    simp [List.getElem?_eq_getElem hj]
+  obtain ⟨p, x, y, hp, hx, hy, hxy⟩ := hvs k (Nat.le_refl k)
+  simp only [↓reduceIte] at hxy
+  refine Act.lt_of_subs (k := k) (x := x) (y := y) (hcg.trans hg) (hcl.trans hpad) ?_ ?_ ?_ hxy.lt
+  · apply List.ext_getElem?
+    intro j
+    simp only [List.getElem?_take]
+    split
+    · rename_i hj
+      obtain ⟨p', x', y', hp', hx', hy', hxy'⟩ := hvs j (by omega)
+      simp only [show j ≠ k by omega, ↓reduceIte] at hxy'
+      rw [hca j (by omega), hac j (by omega), hp', Option.bind_some, hx', hy', hxy']
+    · rfl
+  · rw [hca k hk, hp, Option.bind_some, hx]
+  · rw [hac k (by omega), hy]
+
+
+theorem mapM_ok {α β ε : Type} {f : α → Except ε β} :
+    ∀ {l : List α} {l' : List β}, l.mapM f = .ok l' → l'.length = l.length ∧ ∀ (i : Nat) a b, l[i]? = some a →
+      l'[i]? = some b → f a = .ok b
+  | [], l', h => by
+    simp only [List.mapM_nil, pure, Except.pure, Except.ok.injEq] at h
+    subst h; exact ⟨rfl, by simp⟩
+  | a :: l, l', h => by
+    simp only [List.mapM_cons] at h
+    obtain ⟨b, hb, h⟩ := bind_eq_ok.1 h
+    obtain ⟨bs, hbs, h⟩ := bind_eq_ok.1 h
+    simp only [pure, Except.pure, Except.ok.injEq] at h
+    subst h
+    obtain ⟨hl, hi⟩ := mapM_ok hbs
+    refine ⟨by simp [hl], fun i a' b' ha hb' => ?_⟩
+    cases i with
+    | zero => simp at ha hb'; subst ha hb'; exact hb
+    | succ i => exact hi i a' b' (by simpa using ha) (by simpa using hb')
+
+theorem Scope.sig_ok {sc : Scope} {pos : Pos} {h : Head} {sig : Sig} (hs : sc.sig pos h = .ok sig) :
+    sc.sigs.find h = some sig := by
+  unfold Scope.sig at hs
+  split at hs
+  · cases hs; assumption
+  · simp [internal, failAt_eq] at hs
+
+theorem Scope.typeOf_ok {sc : Scope} {pos : Pos} {t ty : Term} (h : sc.typeOf pos t = .ok ty) :
+    Pledge.typeOf sc.sigs sc.Γ t = some ty := by
+  unfold Scope.typeOf at h
+  split at h
+  · cases h; assumption
+  · simp [internal, failAt_eq] at h
+
+/-- The value constructors `dataCtors` lists are those of the data type that heads the scrutinee's type. -/
+theorem dataCtors_spec {C : Ctx} {sc : Scope} {t : Term} {pos : Pos} {ctors : List (String × Sig)}
+    (h : dataCtors C sc t pos = .ok ctors) :
+    ∃ ty hd args T cs, typeOf sc.sigs sc.Γ t = some ty ∧ ty.canon sc.Γ = .app hd args ∧
+      C.global hd.name = some (.type T (some cs) true) ∧ ctors.map (·.1) = cs ∧
+      ∀ c sig, (c, sig) ∈ ctors → sc.sigs.find ⟨.ctor, c⟩ = some sig := by
+  unfold dataCtors at h
+  obtain ⟨ty, hty, h⟩ := bind_eq_ok.1 h
+  simp only at h
+  split at h
+  · rename_i hd args hcanon
+    split at h
+    · rename_i T cs hg
+      obtain ⟨hl, hi⟩ := mapM_ok h
+      refine ⟨ty, hd, args, T, cs, Scope.typeOf_ok hty, hcanon, hg, ?_, fun c sig hm => ?_⟩
+      · apply List.ext_getElem?
+        intro i
+        rw [List.getElem?_map]
+        cases hc : cs[i]? with
+        | none =>
+          have : ctors[i]? = none := by
+            rw [List.getElem?_eq_none_iff] at hc ⊢; omega
+          simp [this]
+        | some c =>
+          obtain ⟨p, hp⟩ : ∃ p, ctors[i]? = some p := by
+            have : i < ctors.length := by rw [hl]; exact (List.getElem?_eq_some_iff.1 hc).1
+            exact ⟨_, List.getElem?_eq_getElem this⟩
+          have := hi i c p hc hp
+          obtain ⟨s, hs, hpe⟩ := bind_eq_ok.1 this
+          simp only [pure, Except.pure, Except.ok.injEq] at hpe
+          simp [hp, ← hpe]
+      · obtain ⟨i, hi', hm⟩ := List.getElem_of_mem hm
+        obtain ⟨c', hc'⟩ : ∃ c', cs[i]? = some c' := by
+          have : i < cs.length := by rw [← hl]; exact hi'
+          exact ⟨_, List.getElem?_eq_getElem this⟩
+        have := hi i c' _ hc' (by rw [List.getElem?_eq_getElem hi', hm])
+        obtain ⟨s, hs, hpe⟩ := bind_eq_ok.1 this
+        simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at hpe
+        obtain ⟨rfl, rfl⟩ := hpe
+        exact Scope.sig_ok hs
+    all_goals simp [failAt_eq] at h
+  · simp [failAt_eq] at h
+
+
+theorem foldlM_ok {α β ε : Type} {f : β → α → Except ε β} :
+    ∀ {l : List α} {init r : β}, l.foldlM f init = .ok r → ∀ x ∈ l, ∃ s r', f s x = .ok r'
+  | [], _, _, _, x, hx => by cases hx
+  | a :: l, init, r, h, x, hx => by
+    simp only [List.foldlM_cons] at h
+    obtain ⟨s, hs, h⟩ := bind_eq_ok.1 h
+    rcases List.mem_cons.1 hx with rfl | hx
+    · exact ⟨init, s, hs⟩
+    · exact foldlM_ok h x hx
+
+/-- What `forcings` returns: one forcing per value constructor of the scrutinee's data type, none stuck, and the
+patterns name value constructors of it with their numbers of fields. -/
+theorem forcings_spec {C : Ctx} {sc : Scope} {t : Term} {sp at_ : Pos} {pats : List Pattern} {erased : Bool}
+    {fs : List Forcing} (h : forcings C sc t sp pats at_ erased = .ok fs) :
+    ∃ ctors, dataCtors C sc t sp = .ok ctors ∧
+      (∀ p ∈ pats, ∃ sig, (p.ctor.name, sig) ∈ ctors ∧ p.fields.length = sig.params.length) ∧
+      fs.length = ctors.length ∧ ∀ (i : Nat) f, fs[i]? = some f → ∃ sig mk, ctors[i]? = some (f.name, sig) ∧
+        f.forced = force sc.sigs sc.Γ t sig mk ∧ (∀ msg, f.forced ≠ .stuck msg) ∧
+        f.pat = pats.find? (·.ctor.name == f.name) := by
+  unfold forcings at h
+  obtain ⟨ctors, hc, h⟩ := bind_eq_ok.1 h
+  obtain ⟨seen, hseen, h⟩ := bind_eq_ok.1 h
+  obtain ⟨hl, hi⟩ := mapM_ok h
+  refine ⟨ctors, hc, fun p hp => ?_, hl, fun i f hf => ?_⟩
+  · obtain ⟨s, r', hs⟩ := foldlM_ok hseen p hp
+    simp only at hs
+    split at hs
+    · rename_i n0 sig hfind
+      split at hs
+      · simp [failAt_eq, bind, Except.bind] at hs
+      split at hs
+      · simp [failAt_eq, bind, Except.bind] at hs
+      rename_i hne
+      refine ⟨sig, ?_, by simpa using hne⟩
+      have := List.find?_some hfind
+      have hm := List.mem_of_find?_eq_some hfind
+      simp only [beq_iff_eq] at this
+      rw [this] at hm
+      exact hm
+    · simp [failAt_eq] at hs
+  · obtain ⟨⟨n, sig⟩, hp⟩ : ∃ p, ctors[i]? = some p := by
+      have : i < ctors.length := by rw [← hl]; exact (List.getElem?_eq_some_iff.1 hf).1
+      exact ⟨_, List.getElem?_eq_getElem this⟩
+    have := hi i _ f hp hf
+    simp only at this
+    split at this
+    · simp [internal, failAt_eq] at this
+    · rename_i hns
+      simp only [pure, Except.pure, Except.ok.injEq] at this
+      subst this
+      exact ⟨sig, _, hp, rfl, fun msg hm => hns msg hm, rfl⟩
+
+
+theorem GlobalsOk.fn {n0 : Nat} {gs : List Global} {fn : Option FnCtx} {S : Sigs} {W : World} {act : Act}
+    {n m : String} {sig : FnSig} (h : GlobalsOk n0 gs fn S W act)
+    (hg : gs.find? (·.name == n) = some (.fn m (some sig))) :
+    FnOk n0 W fn act n sig := h n _ hg
+
+theorem GlobalsOk.type {n0 : Nat} {gs : List Global} {fn : Option FnCtx} {S : Sigs} {W : World} {act : Act}
+    {n T : String} {cs : Option (List String)} {done : Bool} (h : GlobalsOk n0 gs fn S W act)
+    (hg : gs.find? (·.name == n) = some (.type T cs done)) :
+    HeadOk S W .type n ∧ ∀ cs', cs = some cs' → done = true →
+      n ≠ "Type" ∧ (∃ s, W.Sc.find ⟨.type, n⟩ = some s) ∧ Complete W n cs' ∧
+      ∀ c ∈ cs', gs.find? (·.name == c) = some (.ctor c) := h n _ hg
+
+theorem GlobalsOk.ctor {n0 : Nat} {gs : List Global} {fn : Option FnCtx} {S : Sigs} {W : World} {act : Act}
+    {n m : String} (h : GlobalsOk n0 gs fn S W act) (hg : gs.find? (·.name == n) = some (.ctor m)) :
+    HeadOk S W .ctor n := h n _ hg
+
+theorem Ctx.global_name {C : Ctx} {n : String} {g : Global} (h : C.global n = some g) : g.name = n := by
+  simpa using List.find?_some h
+
+/-- At a `match` or pattern `let` whose scrutinee has a typed value, that value is an application of a value
+constructor of the scrutinee's data type, whose forcing survived, and the scope it gave is satisfied by the
+valuation extended by the value's arguments. -/
+theorem forcings_value {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {env : Env} {act : Act}
+    {t : Term} {sp at_ : Pos} {pats : List Pattern} {erased : Bool} {fs : List Forcing} {v V : Value}
+    (hI : Inv C sc n0 W ρ env act) (h : forcings C sc t sp pats at_ erased = .ok fs)
+    (ht : t.eval ρ [] = some v) (hv : HasType W.Sc v V) :
+    ∃ c ws sig Γ' ids pat, v = .app ⟨.ctor, c⟩ ws ∧ fs.find? (·.name == c) = some ⟨c, .ok Γ' ids, pat⟩ ∧
+      sc.sigs.find ⟨.ctor, c⟩ = some sig ∧ TeleSat W.Sc ρ sig.params [] ws ∧ Sat W.Sc Γ' (ρ ++ ws) ∧
+      Γ'.length = sc.Γ.length + ws.length ∧ ids = List.range' sc.Γ.length ws.length ∧
+      pat = pats.find? (·.ctor.name == c) := by
+  obtain ⟨ctors, hc, -, hl, hfs⟩ := forcings_spec h
+  obtain ⟨ty, hd, args, T, cs, hty, hcanon, hg, hcs, hsigs⟩ := dataCtors_spec hc
+  have hS := hI.sigs ρ hI.agree
+  have hV := typeOf_sound hI.sat hS ht hv hty
+  rw [← hI.sat.eval_canon, hcanon] at hV
+  obtain ⟨us, -, rfl⟩ := Term.eval_app.1 hV
+  obtain ⟨-, -, hcomp, -⟩ := (hI.globals.type hg).2 cs rfl rfl
+  obtain ⟨h', ws, sig', rfl, hfind, -, hret⟩ := hv.inv
+  obtain ⟨hk, hmem⟩ := hcomp h' sig' ws hd us hfind hret rfl
+  obtain ⟨k, c⟩ := h'
+  simp only at hk hmem
+  subst hk
+  rw [← hcs] at hmem
+  obtain ⟨⟨c', sig⟩, hmem', hcc⟩ := List.mem_map.1 hmem
+  simp only at hcc
+  subst c'
+  have hsig := hsigs _ _ hmem'
+  obtain ⟨i, hi, hci⟩ := List.getElem_of_mem hmem'
+  obtain ⟨f, hf⟩ : ∃ f, fs[i]? = some f := ⟨fs[i]'(hl ▸ hi), by simp⟩
+  obtain ⟨sig₁, mk₁, hc₁, -, -, -⟩ := hfs i f hf
+  rw [List.getElem?_eq_getElem hi, hci] at hc₁
+  have hfc : f.name = c := (congrArg Prod.fst (Option.some.inj hc₁)).symm
+  obtain ⟨f₀, hf₀⟩ : ∃ f₀, fs.find? (·.name == c) = some f₀ :=
+    Option.isSome_iff_exists.1 (List.find?_isSome.2 ⟨f, List.mem_of_getElem? hf, by simp [hfc]⟩)
+  have hn₀ : f₀.name = c := by simpa using List.find?_some hf₀
+  obtain ⟨j, hj, hj'⟩ := List.getElem_of_mem (List.mem_of_find?_eq_some hf₀)
+  obtain ⟨sig₀, mk₀, hc₀, hforce, hstuck, hpat⟩ := hfs j f₀ (by rw [List.getElem?_eq_getElem hj, hj'])
+  have hsig₀ := hsigs _ _ (List.mem_of_getElem? hc₀)
+  rw [hn₀, hsig] at hsig₀
+  obtain rfl := Option.some.inj hsig₀
+  have hhead : sig.head = ⟨.ctor, c⟩ := Sigs.find_head hsig
+  have hgood := force_good mk₀ hI.sat hS (hI.sigsClose ws) (scrut := t) (ctor := sig) (by rw [hhead]; exact ht)
+    (by rw [hhead]; exact hsig) (by rw [hhead]; exact hv)
+  obtain ⟨n₀, forced, pat⟩ := f₀
+  simp only at hn₀ hforce hstuck hpat
+  subst hn₀
+  rw [← hforce] at hgood
+  cases forced with
+  | ok Γ' ids =>
+    obtain ⟨hsat, -, hlen, hids, -⟩ := hgood
+    exact ⟨n₀, ws, sig, Γ', ids, pat, rfl, hf₀, hsig, ((hS.hasType_app_iff hsig).1 hv).1, hsat, hlen, hids, hpat⟩
+  | refuted => exact hgood.elim
+  | stuck msg => exact (hstuck msg rfl).elim
+
+
+theorem survivor_spec {sc : Scope} {fs : List Forcing} {n : String} {pos : Pos} {cons : String} {Γ : Entries}
+    {ids : List Nat} (h : survivor sc fs n pos cons = .ok (Γ, ids)) :
+    ∃ f, fs.find? (·.name == n) = some f ∧ f.forced = .ok Γ ids := by
+  unfold survivor at h
+  split at h
+  · rename_i n' Γ' ids' pat hf
+    cases h
+    exact ⟨_, hf, rfl⟩
+  all_goals simp [failAt_eq, internal] at h
+
+/-- What a pattern `let` checks: its value constructor survives forcing, and, unless `comptime`, no other does. -/
+theorem patBind_spec {sc sc' : Scope} {r : Res} {rhsPos : Pos} {comptime : Bool} {pat : Pattern}
+    {fs : List Forcing} (h : patBind sc r rhsPos comptime pat fs = .ok sc') :
+    ∃ Γ ids, (∃ f, fs.find? (·.name == pat.ctor.name) = some f ∧ f.forced = .ok Γ ids) ∧
+      (comptime = false → ∀ f ∈ fs, f.name ≠ pat.ctor.name → ∀ Γ' ids', f.forced ≠ .ok Γ' ids') ∧
+      sc' = Scope.bind { sc with Γ, taintedBy := reach sc r rhsPos } pat.fields (fieldRes ids) := by
+  unfold patBind at h
+  obtain ⟨⟨Γ, ids⟩, hs, h⟩ := bind_eq_ok.1 h
+  refine ⟨Γ, ids, survivor_spec hs, fun hc f hf hne Γ' ids' hfo => ?_, ?_⟩
+  · subst hc
+    simp only [Bool.false_eq_true, ↓reduceIte] at h
+    split at h
+    · simp [failAt_eq, bind, Except.bind] at h
+    · rename_i hnone
+      have : (fs.find? fun f : Forcing => f.name != pat.ctor.name && f.forced matches .ok ..).isSome :=
+        List.find?_isSome.2 ⟨f, hf, by simp [hne, hfo]⟩
+      obtain ⟨o, ho⟩ := Option.isSome_iff_exists.1 this
+      exact hnone o ho
+  · cases comptime
+    · simp only [Bool.false_eq_true, ↓reduceIte] at h
+      split at h
+      · simp [failAt_eq, bind, Except.bind] at h
+      · simp only [pure, Except.pure, Except.ok.injEq] at h
+        exact h.symm
+    · simp only [↓reduceIte, pure, Except.pure, Except.ok.injEq] at h
+      exact h.symm
+
+theorem HeadOk.mono {S : Sigs} {W W' : World} {k : HeadKind} {n : String} (hW : W.Le W') (h : HeadOk S W k n) :
+    HeadOk S W' k n :=
+  let ⟨h1, h2⟩ := hW.prog.kind n k h.fns h.kind
+  ⟨h1, h2, h.sig⟩
+
+/-- Later worlds add no value constructor to a data type of `W`. -/
+theorem Complete.mono {W W' : World} {T : String} {cs : List String} (hW : W.Le W') (hT : T ≠ "Type")
+    (hs : ∃ s, W.Sc.find ⟨.type, T⟩ = some s) (h : Complete W T cs) : Complete W' T cs := by
+  intro h' sig' ws hd us hf hr hn
+  cases hm : W.Sc.find h' with
+  | some s =>
+    obtain rfl := Option.some.inj ((hW.sigs _ _ hm).symm.trans hf)
+    exact h h' s ws hd us hm hr hn
+  | none =>
+    obtain ⟨hk, hd'⟩ := hW.fresh h' sig' ws hd us hm hf hr
+    obtain ⟨k, n⟩ := hd
+    simp only at hk hn
+    subst hk hn
+    rcases hd' with hd' | hd'
+    · exact absurd (congrArg Head.name hd') hT
+    · obtain ⟨s, hs⟩ := hs
+      rw [hs] at hd'; cases hd'
+
+theorem FnSpec.callSpec {W : World} {d : FnDef} {sig : FnSig} (h : FnSpec W d sig) (act : Act) :
+    CallSpec W d sig act := fun vs hvs _ => h vs hvs
+
+
+/-- The invariant depends on the context only through its phase, erasure, globals and enclosing function. -/
+theorem Inv.congr_ctx {C C' : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {env : Env} {act : Act}
+    (hI : Inv C sc n0 W ρ env act) (hph : C'.phase = C.phase) (her : C'.erased = C.erased)
+    (hgl : C'.globals = C.globals) (hfn : C'.fn = C.fn) : Inv C' sc n0 W ρ env act :=
+  ⟨hph ▸ hI.phase, her ▸ hI.erased, hI.sat, hI.n0_world, hI.agree, hI.sigs, hI.sigsOk, hI.names,
+    hgl ▸ hfn ▸ hI.globals, hfn ▸ hI.act, hI.inert⟩
+
+theorem arity_ok {pos : Pos} {name : String} {params args : Nat} {u : Unit} (h : arity pos name params args = .ok u) :
+    params = args := by
+  unfold arity at h
+  split at h
+  · simp [failAt_eq] at h
+  · omega
+
+theorem WantSat.binderSat {S : Sigs} {ρ env : List Value} {b : TBinder} {m : Mult} {v : Value}
+    (h : WantSat S ρ { Want.of b with mult := m } env v) : BinderSat S ρ b env v := by
+  obtain ⟨A, hA, hv⟩ := h.1 b.type rfl
+  exact ⟨A, hA, hv, h.2⟩
+
+theorem lookup_mem {α : Type} {n : String} {r : α} : ∀ {l : List (String × α)}, l.lookup n = some r → (n, r) ∈ l
+  | [], h => by simp at h
+  | (k, b) :: l, h => by
+    simp only [List.lookup] at h
+    split at h
+    · rename_i hk; cases h; simp at hk; subst hk; exact List.mem_cons_self
+    · exact List.mem_cons_of_mem _ (lookup_mem h)
+
+end Pledge

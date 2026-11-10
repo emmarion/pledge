@@ -390,30 +390,21 @@ theorem Sig.agree_close {ρ : List Value} (hρ : ∀ v ∈ ρ, v.noRemoved = tru
     refine ⟨⟨fun env => (Term.eval_close hρ env b.type).symm, fun env => ?_⟩, ih⟩
     cases h : b.is <;> simp [TBinder.close, h, Term.eval_close hρ env]
 
+theorem Sigs.find_map_close (S : Sigs) (ρ : List Value) (h : Head) :
+    Sigs.find (S.map (Sig.close ρ)) h = (S.find h).map (Sig.close ρ) := by
+  simp only [Sigs.find, List.find?_map]
+  rfl
+
+theorem Sigs.find_head {S : Sigs} {h : Head} {sig : Sig} (hs : S.find h = some sig) : sig.head = h := by
+  simpa using List.find?_some hs
+
 /-- Closing every signature under `ρ` gives closed signatures that `SigsClose` relates to them. -/
 theorem SigsClose.close {S : Sigs} {ρ : List Value} (hρ : ∀ v ∈ ρ, v.noRemoved = true) :
-    SigsClose S ρ (S.map (Sig.close ρ)) := fun h => by
-  simp only [Sigs.find, List.find?_map]
-  change Option.Rel _ _ (Option.map _ (List.find? (fun s => s.head == h) S))
-  cases List.find? (fun s => s.head == h) S with
-  | none => exact .none
-  | some sig => exact .some (Sig.agree_close hρ sig)
+    SigsClose S ρ (S.map (Sig.close ρ)) := fun h sig hs =>
+  ⟨sig.close ρ, by rw [Sigs.find_map_close, hs]; rfl, Sig.agree_close hρ sig⟩
 
 theorem SigsClose.find {S Sc : Sigs} {ρ : List Value} (hS : SigsClose S ρ Sc) {h : Head} {sig : Sig}
-    (hs : S.find h = some sig) : ∃ sig', Sc.find h = some sig' ∧ Sig.Agree ρ [] sig sig' := by
-  have := hS h
-  rw [hs] at this
-  cases hc : Sc.find h with
-  | none => rw [hc] at this; cases this
-  | some sig' => rw [hc] at this; exact ⟨sig', rfl, Option.rel_some_some.1 this⟩
-
-theorem SigsClose.find_closed {S Sc : Sigs} {ρ : List Value} (hS : SigsClose S ρ Sc) {h : Head} {sig' : Sig}
-    (hs : Sc.find h = some sig') : ∃ sig, S.find h = some sig ∧ Sig.Agree ρ [] sig sig' := by
-  have := hS h
-  rw [hs] at this
-  cases hc : S.find h with
-  | none => rw [hc] at this; cases this
-  | some sig => rw [hc] at this; exact ⟨sig, rfl, Option.rel_some_some.1 this⟩
+    (hs : S.find h = some sig) : ∃ sig', Sc.find h = some sig' ∧ Sig.Agree ρ [] sig sig' := hS h sig hs
 
 theorem SigsClose.agree {S Sc : Sigs} {ρ : List Value} (hS : SigsClose S ρ Sc) {h : Head} {sig sig' : Sig}
     (hs : S.find h = some sig) (hc : Sc.find h = some sig') : Sig.Agree ρ [] sig sig' := by
@@ -431,73 +422,67 @@ theorem SigsClose.ret_eval {S Sc : Sigs} {ρ : List Value} (hS : SigsClose S ρ 
     sig'.ret.eval [] env = sig.ret.eval ρ env :=
   ((hS.agree hs hc).ret env).symm
 
-/-- Typing an application by closed signatures, read through the bridge as the checker's signatures under `ρ`. -/
-theorem SigsClose.hasType_app_iff {S Sc : Sigs} {ρ : List Value} (hS : SigsClose S ρ Sc) {h : Head}
-    {vs : List Value} {V : Value} : HasType Sc (.app h vs) V ↔
-      ∃ sig, S.find h = some sig ∧ TeleSat Sc ρ sig.params [] vs ∧ sig.ret.eval ρ vs = some V := by
+/-- Typing an application of a head the checker has a signature for, by closed signatures, read through the
+bridge as the checker's signature under `ρ`. -/
+theorem SigsClose.hasType_app_iff {S Sc : Sigs} {ρ : List Value} (hS : SigsClose S ρ Sc) {h : Head} {sig : Sig}
+    (hs : S.find h = some sig) {vs : List Value} {V : Value} :
+    HasType Sc (.app h vs) V ↔ TeleSat Sc ρ sig.params [] vs ∧ sig.ret.eval ρ vs = some V := by
+  obtain ⟨sig', hc, -⟩ := hS.find hs
   rw [HasType.app_iff]
   constructor
-  · rintro ⟨sig', hc, ht, hr⟩
-    obtain ⟨sig, hs, -⟩ := hS.find_closed hc
-    exact ⟨sig, hs, (hS.teleSat_iff hs hc).1 ht, by rw [← hS.ret_eval hs hc]; exact hr⟩
-  · rintro ⟨sig, hs, ht, hr⟩
-    obtain ⟨sig', hc, -⟩ := hS.find hs
+  · rintro ⟨sig'', hc', ht, hr⟩
+    obtain rfl := Option.some.inj (hc.symm.trans hc')
+    exact ⟨(hS.teleSat_iff hs hc).1 ht, by rw [← hS.ret_eval hs hc]; exact hr⟩
+  · rintro ⟨ht, hr⟩
     exact ⟨sig', hc, (hS.teleSat_iff hs hc).2 ht, by rw [hS.ret_eval hs hc]; exact hr⟩
 
 /-- The bridge carries over between valuations that agree on the entries the signatures mention. -/
 theorem SigsClose.of_entriesBelow {S Sc : Sigs} {n : Nat} {ρ ρ' : List Value} (hρ : ρ.take n = ρ'.take n)
-    (hn : ∀ sig ∈ S, sig.entriesBelow n = true) (hS : SigsClose S ρ Sc) : SigsClose S ρ' Sc := fun h => by
-  have := hS h
-  revert this
-  cases hs : S.find h with
-  | none =>
-    intro hr
-    cases hc : Sc.find h with
-    | none => exact .none
-    | some _ => rw [hc] at hr; cases hr
-  | some sig =>
-    intro hr
-    cases hc : Sc.find h with
-    | none => rw [hc] at hr; cases hr
-    | some sig' =>
-      rw [hc, Option.rel_some_some] at hr
-      exact .some ((Sig.agree_of_entriesBelow hρ.symm (hn sig (List.mem_of_find?_eq_some hs))).trans hr)
+    (hn : ∀ sig ∈ S, sig.entriesBelow n = true) (hS : SigsClose S ρ Sc) : SigsClose S ρ' Sc := fun h sig hs => by
+  obtain ⟨sig', hc, ha⟩ := hS h sig hs
+  exact ⟨sig', hc, (Sig.agree_of_entriesBelow hρ.symm (hn sig (List.mem_of_find?_eq_some hs))).trans ha⟩
 
 theorem SigsClose.frame {S Sc : Sigs} {ρ : List Value} (ρ' : List Value)
     (hn : ∀ sig ∈ S, sig.entriesBelow ρ.length = true) (hS : SigsClose S ρ Sc) : SigsClose S (ρ ++ ρ') Sc :=
   hS.of_entriesBelow (by simp) hn
 
-/-- The bridge extends by a signature and a closed signature for the same head that agrees with it. -/
-theorem SigsClose.push {S Sc : Sigs} {ρ : List Value} {sig sig' : Sig} (hS : SigsClose S ρ Sc)
-    (hh : sig'.head = sig.head) (ha : Sig.Agree ρ [] sig sig') : SigsClose (S ++ [sig]) ρ (Sc ++ [sig']) := fun h => by
-  have := hS h
-  simp only [Sigs.find, List.find?_append] at *
-  cases hs : List.find? (fun s => s.head == h) S with
-  | some _ =>
-    cases hc : List.find? (fun s => s.head == h) Sc with
-    | none => rw [hs, hc] at this; cases this
-    | some _ => rw [hs, hc] at this; simpa using this
-  | none =>
-    cases hc : List.find? (fun s => s.head == h) Sc with
-    | some _ => rw [hs, hc] at this; cases this
-    | none =>
-      by_cases hsh : sig.head = h
-      · subst hsh; simpa [List.find?, hh] using ha
-      · have h₁ : (sig.head == h) = false := by simpa using hsh
-        have h₂ : (sig'.head == h) = false := by simpa [hh] using hsh
-        simp only [List.find?, h₁, h₂]
-        exact .none
+/-- The bridge carries over to more closed signatures. -/
+theorem SigsClose.mono {S Sc Sc' : Sigs} {ρ : List Value} (hS : SigsClose S ρ Sc) (hSc : Sc.Sub Sc') :
+    SigsClose S ρ Sc' := fun h sig hs =>
+  let ⟨sig', hc, ha⟩ := hS h sig hs
+  ⟨sig', hSc _ _ hc, ha⟩
 
-/-- No value has a type whose head none of the checker's signatures returns (SOUNDNESS.md Corollary 2.3). -/
-theorem HasType.empty {S Sc : Sigs} {ρ : List Value} {H : Head} {us : List Value} (hS : SigsClose S ρ Sc)
-    (hH : ∀ sig ∈ S, ∃ h' args, sig.ret = .app h' args ∧ h' ≠ H) {v : Value} : ¬ HasType Sc v (.app H us) :=
+/-- The bridge extends by a signature and a closed signature for the same head that agrees with it, when `Sc` has
+no signature for that head. -/
+theorem SigsClose.push {S Sc : Sigs} {ρ : List Value} {sig sig' : Sig} (hS : SigsClose S ρ Sc)
+    (hh : sig'.head = sig.head) (hn : Sc.find sig.head = none) (ha : Sig.Agree ρ [] sig sig') :
+    SigsClose (S ++ [sig]) ρ (Sc ++ [sig']) := fun h s hs => by
+  simp only [Sigs.find, List.find?_append] at hs ⊢
+  cases hs₀ : List.find? (fun s => s.head == h) S with
+  | some s₀ =>
+    rw [hs₀] at hs
+    obtain ⟨s', hc, ha'⟩ := hS h s₀ hs₀
+    simp only [Sigs.find] at hc
+    refine ⟨s', by rw [hc]; rfl, ?_⟩
+    cases hs; exact ha'
+  | none =>
+    rw [hs₀] at hs
+    simp only [Option.none_or, List.find?_cons, List.find?_nil] at hs
+    split at hs
+    · rename_i hsh
+      cases hs
+      have hsh : sig.head = h := by simpa using hsh
+      subst hsh
+      have hn' : List.find? (fun s => s.head == sig.head) Sc = none := hn
+      simp [hn', hh, ha]
+    · cases hs
+
+/-- No value has a type that no closed signature's return gives (cf. SOUNDNESS.md Corollary 2.3). -/
+theorem HasType.empty {Sc : Sigs} {V : Value}
+    (hV : ∀ h sig' ws, Sc.find h = some sig' → sig'.ret.eval [] ws ≠ some V) {v : Value} : ¬ HasType Sc v V :=
   fun h => by
-    obtain ⟨hd, ws, sig', -, hc, -, hr⟩ := h.inv
-    obtain ⟨sig, hs, ha⟩ := hS.find_closed hc
-    obtain ⟨h', args, hret, hne⟩ := hH sig (List.mem_of_find?_eq_some hs)
-    rw [← ha.ret, hret] at hr
-    obtain ⟨_, -, he⟩ := Term.eval_app.1 hr
-    exact hne (Value.app.inj he).1.symm
+    obtain ⟨_, ws, _, -, hc, -, hr⟩ := h.inv
+    exact hV _ _ ws hc hr
 
 theorem Sat.rulesHold {S : Sigs} {Γ : Entries} {ρ : List Value} (h : Sat S Γ ρ) : RulesHold Γ ρ :=
   fun i en r hen hr =>
@@ -590,28 +575,10 @@ theorem typeOf_sound {S Sc : Sigs} {Γ : Entries} {ρ : List Value} {t T : Term}
   | bound => simp [Term.eval] at ht
   | app h as =>
     obtain ⟨vs, hvs, rfl⟩ := Term.eval_app.1 ht
-    obtain ⟨sig, hs, -, hr⟩ := hS.hasType_app_iff.1 hv
-    simp only [typeOf, hs, Option.map_some, Option.some.injEq] at hT
-    subst hT
+    simp only [typeOf, Option.map_eq_some_iff] at hT
+    obtain ⟨sig, hs, rfl⟩ := hT
+    obtain ⟨-, hr⟩ := (hS.hasType_app_iff hs).1 hv
     rw [Term.eval_subst hvs]
     exact hr
-
-theorem typeOf_isSome {S Sc : Sigs} {Γ : Entries} {ρ : List Value} {t : Term} {v V : Value} (hΓ : Sat Sc Γ ρ)
-    (hS : SigsClose S ρ Sc) (ht : t.eval ρ [] = some v) (hv : HasType Sc v V) : ∃ T, typeOf S Γ t = some T := by
-  cases t with
-  | entry i =>
-    have hi : i < Γ.length := hΓ.1 ▸ (List.getElem?_eq_some_iff.1 ht).1
-    exact ⟨Γ[i].type, by simp [typeOf, List.getElem?_eq_getElem hi]⟩
-  | bound => simp [Term.eval] at ht
-  | app h as =>
-    obtain ⟨vs, -, rfl⟩ := Term.eval_app.1 ht
-    obtain ⟨sig, hs, -⟩ := hS.hasType_app_iff.1 hv
-    exact ⟨sig.ret.subst as, by simp [typeOf, hs]⟩
-
-theorem typeOf_sound' {S Sc : Sigs} {Γ : Entries} {ρ : List Value} {t : Term} {v V : Value} (hΓ : Sat Sc Γ ρ)
-    (hS : SigsClose S ρ Sc) (ht : t.eval ρ [] = some v) (hv : HasType Sc v V) :
-    ∃ T, typeOf S Γ t = some T ∧ T.eval ρ [] = some V :=
-  let ⟨T, hT⟩ := typeOf_isSome hΓ hS ht hv
-  ⟨T, hT, typeOf_sound hΓ hS ht hv hT⟩
 
 end Pledge

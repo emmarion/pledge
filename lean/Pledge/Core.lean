@@ -288,11 +288,11 @@ structure Sig.Agree (ρ ρ' : List Value) (sig sig' : Sig) : Prop where
   params : Telescope.Agree ρ ρ' sig.params sig'.params
   ret : ∀ env, sig.ret.eval ρ env = sig'.ret.eval ρ' env
 
-/-- `Sc` closes the signatures `S` under the valuation `ρ` of the entries they mention: the two
-have signatures for the same heads, and each closed signature, evaluated with no entries,
-agrees with the original evaluated under `ρ`. -/
+/-- `Sc` closes the signatures `S` under the valuation `ρ` of the entries they mention: every head
+with a signature in `S` has one in `Sc`, which, evaluated with no entries, agrees with the original
+evaluated under `ρ`. `Sc` may have more signatures, such as those declared later. -/
 def SigsClose (S : Sigs) (ρ : List Value) (Sc : Sigs) : Prop :=
-  ∀ h, Option.Rel (Sig.Agree ρ []) (S.find h) (Sc.find h)
+  ∀ h sig, S.find h = some sig → ∃ sig', Sc.find h = some sig' ∧ Sig.Agree ρ [] sig sig'
 
 /-- The evaluator's environment: the values of the names in scope, newest first. -/
 abbrev Env := List (String × Value)

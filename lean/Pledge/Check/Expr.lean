@@ -135,6 +135,8 @@ mutual
         let label := match ann with
           | .binders _ => some fun i => labelled "annotation entry" ((tele[i]?).bind (·.name)) i
           | .hole _ => g.bind (·.label)
+        ensure (tele.all (·.entriesBelow inner.Γ.length) && env.all (·.entriesBelow inner.Γ.length)) p
+          "an annotation mentions an entry created after the scrutinee"
         let bo ← checkBranches C inner r s.pos fs { wants, env, whole := true, label } bs
         let taint (i : Nat) := r.tainted || bo.outs.any fun o => ((o.res[i]?).map (·.tainted)).getD false
         let (sc', rs) := opened inner tele env "match" p taint
@@ -194,6 +196,7 @@ mutual
       let erased := m == some .erased
       if ct && erased then failAt p fun _ =>
         "a `comptime` pattern `let` evaluates its right-hand side (§11), so it cannot be erased (§16)"
+      ensure (!ct) p "a `comptime` pattern `let` below the top level"
       freshAll C sc pat.fields
       let place := if erased then C.place else "the right-hand side of a `many` pattern `let`"
       let o ← checkExpr { C with erased := C.erased || erased, place } sc none rhs
