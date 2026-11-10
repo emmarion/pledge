@@ -81,6 +81,10 @@ states.
 - [compiler.pledge](examples/compiler.pledge): a compiler from
   expressions of literals and addition to a stack machine, with
   evidence that running the compiled code pushes the expression's value.
+- [prime.pledge](examples/prime.pledge): a definition of primality,
+  checked by a proof that a prime's only factorizations involve one,
+  and a decision procedure on binary numbers that `comptime` uses to
+  prove 999983 prime.
 - [sort.pledge](examples/sort.pledge): insertion sort returning
   evidence that its result is sorted and a permutation of its input.
 - [tree23.pledge](examples/tree23.pledge): 2-3 trees whose height is
