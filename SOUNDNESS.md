@@ -8,17 +8,18 @@ of DESIGN.md.
 values, states its lemmas precisely, and proves each by a written
 induction. The note itself is not machine-checked, and part 9 lists
 what it takes on trust: chiefly that the checker implements §3 to §12
-as the declarative rules of part 4 describe them. It follows the shape
-of Sleight's
+as the declarative rules of parts 4 and 12 describe them. It follows
+the shape of Sleight's
 [SOUNDNESS.md](https://github.com/emmarion/sleight/blob/main/SOUNDNESS.md),
 which argues the same points for a larger language. A second
 implementation of the checker and evaluator, in Lean under `lean/`,
 comes with Lean-checked counterparts of most of the lemmas below, for
 programs without `_` arguments (§16) under phase 1 or 2, `sorry`
-included, so their statements take in taint (§12) and erasure (§16),
-which this note leaves outside its claims or argues only in outline.
-Part 11 lists them. Those results are about the Lean implementation and about the
-definitions as formalized there, not about the TypeScript code.
+included, so their statements take in taint (§12), which part 12
+argues, and erasure (§16), which part 9 argues only in outline.
+Parts 11 and 12 list them. Those results are about the Lean
+implementation and about the definitions as formalized there, not
+about the TypeScript code.
 
 ## In short
 
@@ -39,19 +40,28 @@ paradoxes seem not to reach it:
    decided by recursion on the value's tree (part 2), so `Type() : Type()`
    creates no circularity in what a type means.
 
+In a program that contains `sorry`, the claims are about what taint
+(§12) leaves untainted, and taint keeps `sorry` away from them (part
+12).
+
 ## 1. What is claimed
 
-For every phase 1 program the checker accepts that contains no `sorry`:
+For every phase 1 program the checker accepts:
 
 - **(C)** Checking terminates (part 7).
 - **(T)** Every evaluation terminates (part 6).
 - **(P)** Every evaluation produces values of the types, and satisfying
   the `is` rules, that the checker assigned (part 5).
-- **(K)** If the program has `goal T;` and `qed e;`, then `T` has a
-  value. In particular, no `qed` proves a type whose data type
-  constructor declares no value constructors, such as `False()` (part 8).
+- **(K)** If the program has `goal T;` and a `qed` that proves the goal
+  (§12), then `T` has a value. In particular, no `qed` proves a type
+  whose data type constructor declares no value constructors, such as
+  `False()` (part 8).
 
-A program that contains `sorry` anywhere is outside the claims. Since
+Parts 2 to 8 argue these for a program that contains no `sorry`. In a
+program that contains `sorry`, evaluation is of what taint leaves
+(§12), (P) is claimed for untainted results only, and in (K) `T` has a
+value under a valuation of the top-level entries that satisfies the
+top-level scope as it is at the `qed`; part 12 argues these. Since
 nothing runs at compile time that the program's text does not ask for
 (§11), the presence of `sorry` is a property of the text alone, which is
 why reporting it for the whole program suffices (§12).
@@ -300,19 +310,24 @@ value `v` with `|- v : T rho`. If `T` is a data type whose data type
 constructor declares no value constructors, Corollary 2.3 rules this
 out. ∎
 
+In a program that contains `sorry`, the statements before the `qed`
+need not evaluate to such a valuation; Theorem 12.4 takes their place.
+
 ## 9. What is taken on trust
 
-- **The checker implements part 4.** The note proves the declarative
-  rules sound, not the TypeScript code. In particular it assumes that
-  entries are distinct however they are named, that
+- **The checker implements parts 4 and 12.** The note proves the
+  declarative rules sound, not the TypeScript code. In particular it
+  assumes that entries are distinct however they are named, that
   forcing and canonicalization follow part 3, that a match branch's
-  rules leave the scope with the branch, and that a pattern `let`'s
+  rules leave the scope with the branch, that a pattern `let`'s
   rules, which Lemma 3.3 makes consequences of the typing, last to the
   end of the enclosing match branch or function body, or of the program
-  (§7, §10). For the Lean implementation, part 11's theorems are about
-  its code instead.
-- **The evaluator** computes the semantics of part 5. The facts a
-  `comptime` pattern `let` adds depend on it.
+  (§7, §10), and that taint is computed, and code removed, as part 12
+  reads §12. For the Lean implementation, the theorems of parts 11 and
+  12 are about its code instead.
+- **The evaluator** computes the semantics of part 5, on what taint
+  leaves (part 12). The facts a `comptime` pattern `let` adds depend on
+  it.
 - **Phase 2.** Erasure is argued only in outline: evaluation that skips
   an erased computation uses its declared results, which by Theorems 5.1
   and 6.2 would have been produced and would have satisfied them. An
@@ -337,7 +352,10 @@ If any of these changed, the argument would need revisiting:
 - recursion by any route other than a call under §9's rule;
 - a way to build a telescope by evaluation, which would remove the
   bound k;
-- matching on a value of type `Type()`.
+- matching on a value of type `Type()`;
+- an untainted result computed from the value of a tainted one other
+  than through a type or an `is` rule, or code that taint removes
+  being evaluated (part 12).
 
 ## 11. The Lean counterparts
 
@@ -366,7 +384,8 @@ by `Rel`, or by `Approx` at an erased position (`Core.lean`).
   declares no value constructors; **Lemma 2.4:** `Term.strictSub_eval`
   (`UnifySound.lean`).
 - **Part 3.** `Sat` (`Core.lean`) is `rho |= Gamma`, except that a
-  tainted entry's value need only have its type by its head (`WType`).
+  tainted entry's value need only have its type by its head (`WType`):
+  it is part 12's `rho |=~ Gamma`.
   **Lemma 3.1:** `Term.eval_canon` (`CoreLemmas.lean`); **Corollary
   3.2:** `Sat.eval_eq_of_identical` (`CoreLemmas.lean`) and
   `isStrictSubterm_sound` (`UnifySound.lean`); **Lemma 3.3:**
@@ -391,24 +410,21 @@ by `Rel`, or by `Approx` at an erased position (`Core.lean`).
   not that the executable evaluator, a `partial` function, finds it.
 - **(K):** `type_goal_inhabited`, `fn_goal_holds` and `no_empty_goal`
   (`Sound/Top.lean`), and `run_sound` and `run_no_empty_goal` for source
-  text whose parsed program is hole-free. `lean/README.md` lists ways
-  in which these statements are weaker than they may first read.
+  text whose parsed program is hole-free; with `sorry`, the valuation
+  they give satisfies the top-level scope at the `qed` (`ProvedAt`,
+  Theorem 12.4). `lean/README.md` lists ways in which these statements
+  are weaker than they may first read.
 - **(C)** has no theorem. Every definition of the Lean implementation
   other than the executable evaluator is total, by structural or
   well-founded recursion, with no fuel. The evaluator is `partial`: each
   result it returns carries a derivation of `Eval`, but nothing
   establishes that it returns, so the Lean implementation does not
   show that compile-time evaluation ends.
-- **Taint (§12)**, outside this note's claims, enters the statements
-  above: an untainted entry or result is typed and a tainted one need
-  not be; the invariant and the main lemma assert nothing once a scope
-  is tainted; a tainted function has no specification (`FnOk`,
-  `Sound/Defs.lean`); and a goal the checker reports proved holds, in
-  the sense of `GoalHolds`, by `runProgram_sound`, whether or not the
-  program contains `sorry`.
-  `sorry_sound` (`Sound/Expr.lean`)
-  covers `sorry`, `checkExpr_removed` (`Sound/Shape.lean`) what taint
-  removes, and `fixTaint_spec` (`Sound/Fn.lean`) a group's fixed point.
+- **Taint (§12)** enters the statements above: an untainted entry or
+  result is typed and a tainted one need not be; the invariant and the
+  main lemma assert nothing once a scope is tainted; and a tainted
+  function has no specification. Part 12 names the Lean counterpart of
+  each of its steps beside it.
 - **Part 9's outline for phase 2:** `matchErased_sound` and
   `patletErased_sound` (`Sound/Expr.lean`) for an erased `match` and
   pattern `let`, with `ExprSound` (`Sound/Defs.lean`) stating that an
@@ -423,3 +439,261 @@ which no theorem says anything. That the Lean checker implements
 DESIGN.md is not proved either; it is supported only by comparing its
 verdicts with the TypeScript checker's on a corpus of programs
 (`lean/tests/README.md`).
+
+## 12. Programs that contain `sorry`
+
+This part extends parts 3 to 8 to a phase 1 program that contains
+`sorry`. Beside each step it names the Lean theorem or definition that
+checks its counterpart in the Lean implementation, for programs
+without `_` arguments in phases 1 and 2 (part 11); file names are
+under `lean/Pledge/`, and the correspondence is a Claude session's
+reading.
+
+**The idea.** `sorry(x : False())` has no value, so a program with
+`sorry` can have no valuation satisfying part 3. The argument gives
+each entry an ideal value all the same, which for a tainted entry may
+be junk: a tree `junk(A)` that records the type `A` the entry is meant
+to have, and that no clause of part 2 types. Every value still has its
+type by its head, so forcing and the `is` rules work as before; only
+untainted results are claimed to have their types. A tainted scope,
+one in force after a pattern `let` or in a branch on a tainted
+scrutinee, carries no claim at all, and everything checked in it is
+removed. What remains to check is that taint misses nothing: that no
+untainted result is computed from the value of a tainted one, and that
+nothing taint leaves needs a value it removed.
+
+### Junk and satisfaction
+
+Add to the values of part 2 a tree `junk(A)` for every value `A`.
+Write `|-h v : V`, `v` has type `V` by its head, when `v = junk(V)`, or
+`v = F(v1..vn)` and `V` is `F`'s declared return with its parameters or
+fields replaced by `v1..vn` (`Type()` for a type constructor). It looks
+at `v`'s head and arguments, not at their types. If `|- v : V` then
+`|-h v : V`, and `|-h` determines `V` from `v` as in Lemma 2.2. No
+clause of `|-` applies to `junk`, so Lemma 2.1 and Corollary 2.3 hold
+as before. (`WType`, `Value.junk`, `HasType.wtype`, `WType.unique` and
+`HasType.empty`, in `Core.lean` and `CoreLemmas.lean`.)
+
+`rho |=~ Gamma` when, for every entry `x`:
+
+- `|-h rho(x) : A_x rho`;
+- if `x` has a rule, `rho(x) = e_x rho`;
+- if `x` is untainted, `|- rho(x) : A_x rho`.
+
+(`Sat`, with `WSat` for the first two, in `Core.lean`.) Without
+`sorry`, every entry is untainted and `|=~` is part 3's `|=`.
+
+**Lemma 12.1.** Lemma 3.1 and Corollary 3.2 hold for `|=~`, and so
+does Lemma 3.3 when the scrutinee is untainted, its fields being
+untainted. *Proof:* Lemma 3.1 and Corollary 3.2 use only the rules.
+In Lemma 3.3, the scrutinee's value is typed, so Lemma 2.1 gives its
+head and the fields' values are typed; each equation between types is
+between types by head, which `|-h` determines as Lemma 2.2 does. ∎
+(`Term.eval_canon`, `Sat.eval_eq_of_identical`, `force_good`,
+`force_refuted`.)
+
+**Lemma 12.2 (opening).** Whatever values the outer entries have, a
+telescope the checker accepted can be opened to values that meet it by
+their heads: an entry `x : A` takes `junk(A s)`, and an entry `x is e`
+takes `e s`, which has by its head the type of `e` (§6), `s` being the
+values of the outer and earlier entries. `A s` and `e s` are values
+whatever `s` is, since a type and an `is` clause are skeleton terms,
+with no call (§3). ∎ (`WantsCons`, `telescope_cons`,
+`annotation_cons`, and `FnOk.cons` for a function's returns.)
+
+### The taint rules
+
+The note reads §12 as follows. Beside each rule is the Lean lemma for
+its construct, about the Lean checker's implementation of it
+(`Sound/Expr.lean`, `Sound/Fn.lean`):
+
+- every result of `sorry` is tainted (`sorry_sound`);
+- an application's result is tainted when an argument's is
+  (`ctorApp_sound`); a tuple's or a block's result when the matching
+  result of its element or final expression is (`tuple_sound`,
+  `block_sound`); a match's result when the scrutinee's result or the
+  matching result of any branch is (`matchMany_sound`);
+- every result of a call is tainted when the function or an argument's
+  result is (`call_sound`);
+- a group's bodies are checked with the taint of its fixed point (§12),
+  and no function untainted there has a tainted result
+  (`FnGroup.fixTaint_spec`); a tainted function has no specification
+  (`FnOk.defn`, `Sound/Defs.lean`);
+- a tuple `let` binder has the taint of the result it binds, and so
+  does every use of it (`let_sound`, `var_sound`);
+- a pattern `let` on a tainted scrutinee taints the scope after it,
+  and every branch of a match on one is checked in a tainted scope
+  (`patletMany_sound`, `matchMany_sound`, `comptimeLet_sound`); every
+  result produced in a tainted scope is tainted (`checkExpr_removed`,
+  `Sound/Shape.lean`).
+
+### What taint removes
+
+An expression whose results are all tainted is removed, with
+everything in it; in a tainted scope every result is tainted, so
+everything checked there is removed (`checkExpr_removed`). At the top
+level, a statement checked in a tainted scope runs nothing, a `print`
+of a tainted result shows `sorry`, a `comptime` pattern `let` on a
+tainted scrutinee evaluates nothing, and after a top-level pattern
+`let` on a tainted scrutinee no `qed` proves the goal. The top level's
+invariant is kept through these items by `topStmt_sound`,
+`print_sound`, `comptimeLet_sound` and `qed_sound`, with
+`TopStmt.tainted` once the scope is tainted (`Sound/Stmt.lean`).
+
+### Preservation and totality with taint
+
+Evaluation is now of the tree taint leaves, from a run-time
+environment that gives each name a value; a removed expression
+evaluates to a placeholder, `removed`. Say that such an environment
+**agrees with** `rho` in a scope when it gives each untainted name its
+entry's value under `rho`; a tainted name may have any value, or
+`removed` (`EnvRel`, `Sound/Defs.lean`).
+
+**Theorem 12.3.** Let `rho |=~ Gamma` for an untainted scope `Gamma`,
+and let `e` check in `Gamma`, given what its position gives it (§8),
+with results `r1..rk`. If the scope after `e` is untainted, then:
+
+- (a) there are values `v1..vk`, and values for the entries `e`'s
+  statements add, that extend `rho` to a valuation satisfying (`|=~`)
+  the scope after `e`; each `vi` has a type by its head, and, when
+  `ri` is untainted, `|- vi : B rho` for the type `B` the checker gave
+  `ri`; and `v1..vk` meet what `e` is given: each entry's `is` rule,
+  and its type, by `|-` for an untainted result and by its head for a
+  tainted one;
+- (b) from every run-time environment that agrees with `rho`, the tree
+  taint leaves of `e` evaluates, and the run-time value of each
+  untainted `ri` is `vi`.
+
+If the scope after `e` is tainted, every result of `e` is tainted and
+`e` is removed, and nothing is claimed. The same holds of a statement,
+with no results. (`ExprPost`, `StmtPost`, `Expr.sound` and
+`Stmt.sound`, `Sound/Defs.lean` and `Sound/Expr.lean`. `ExprPost`
+states of an untainted result's value that it has some type by `|-`,
+not which, besides that the values meet what `e` is given; and it
+relates run-time values to ideal ones by `Rel`, which is equality in
+phase 1.)
+
+*Proof,* by the induction of Theorems 5.1 and 6.2, now on the measure
+of activations of untainted functions only. The cases:
+
+- **`sorry`.** Every result is tainted; Lemma 12.2 gives its values
+  from the telescope. It is removed and evaluates to `removed`.
+- **A name.** Its entry's value. The environment gives an untainted
+  name that value.
+- **Application, tuple, block.** As in part 5. A tainted application
+  still has the value `F(v1..vn)`, which has its type by its head. A
+  block whose statements taint its scope has only tainted results, and
+  is removed; its values come from Lemma 12.2 (`block_sound`).
+- **Call.** If the function or an argument is tainted, every result is
+  tainted, its values come from Lemma 12.2 on the returns, and the
+  call is removed. Otherwise the arguments are untainted, so typed, and
+  meet the parameters by (a) for each; the callee's measure is below
+  the caller's by Lemma 6.1, which uses only Corollary 3.2 and so holds
+  by Lemma 12.1 (`call_lt`); and the callee is untainted, so its body's
+  results are all untainted, the scope after the body is untainted,
+  and the induction hypothesis on the body gives results meeting the
+  returns and a run (`FnGroup.GroupOk.fnSpec`, `Sound/Fn.lean`). The
+  fixed point is what keeps the induction to untainted functions:
+  within the group, a call to a function it leaves tainted has only
+  tainted results.
+- **Where results are checked (§8).** An expression's results are
+  checked against what its position gives it: a body's against its
+  returns, a branch body's against the annotation, a `qed`'s against
+  the goal, a tuple `let`'s right-hand side against its binders and an
+  argument against its parameter. By Corollary 3.2 under Lemma 12.1,
+  the values then meet what is given: by `|-` for an untainted result,
+  by their heads for a tainted one, and every `is` rule
+  (`against_sound`, `Sound/Basic.lean`).
+- **Tuple `let`.** Its binders name the right-hand side's results,
+  with their values and taints.
+- **`match`.** If the scrutinee is tainted, every branch is checked in
+  a tainted scope, every result is tainted, the match is removed, and
+  Lemma 12.2 on the annotation gives its values. Otherwise the
+  scrutinee's value is typed, headed by a value constructor `C` by
+  Lemma 2.1, and by Lemma 12.1 `C` is not refuted and the branch for
+  `C` has a scope satisfied by `rho` extended by the fields. The
+  match's results take the values of that branch's results, which meet
+  the annotation as checked there. A result of the match is untainted
+  only when the matching result of every branch is, that branch's
+  among them, so it has the annotation's type, which mentions only
+  entries outside the branch. If that branch's scope ends tainted, all
+  its results are tainted, so all the match's are, and Lemma 12.2
+  gives their values instead.
+  For (b): a match with an untainted result is not removed. Its
+  scrutinee is untainted, so its run-time value is its ideal one,
+  headed by `C`; the evaluator takes the branch for `C` and binds the
+  fields to their values (`EnvRel.pattern`, `Sound/Match.lean`), and
+  the branch's untainted results evaluate to their values by the
+  induction hypothesis. Its tainted results evaluate to whatever their
+  trees give, `removed` for a removed one, which the match passes on
+  without inspecting; only the untainted results are claimed
+  (`matchMany_sound`, `ResRel`).
+- **Pattern `let`.** On an untainted scrutinee, as `match` with the
+  rest of the body as the branch; on a tainted one, the scope after it
+  is tainted and nothing is claimed (`patletMany_sound`).
+
+In every case, the typing of an untainted result rests only on the
+typing of untainted results and on the rules; this is where the
+argument needs taint to miss nothing. ∎
+
+**Nothing left needs a removed value.** Part (b) says that the tree
+taint leaves has an evaluation by the big-step relation (`Eval`,
+`Eval.lean`). That relation has no rule for `sorry`, and none for a
+`match` or pattern `let` whose scrutinee's value is `removed`, so the
+evaluation of what taint leaves never reaches a `sorry` and never
+inspects a removed value. A removed value may still be passed along
+unexamined, as the value of a tainted name, a tuple's element or a
+match's result. At the top level, `reached_eval_ok` and
+`reached_run_ok` (`Sound/Top.lean`) state this for the evaluations a
+top-level item performs while the scope is untainted.
+
+### The top level and the goal
+
+While the top-level scope is untainted, there is a valuation `rho`
+satisfying (`|=~`) the top-level scope, the top-level run-time
+environment agrees with it, and every untainted function meets its
+specification; each item keeps this, by Theorem 12.3 for a statement
+(`TopInv` and `TopLive`, `Sound/Defs.lean`; `topItems_sound`,
+`Sound/Top.lean`). Once the top-level scope is tainted, nothing about
+the valuation is kept, and nothing is evaluated (see "What taint
+removes").
+
+**Theorem 12.4 (K with `sorry`).** If a `qed` proves the goal `T`, then
+`T` has a value under a valuation of the top-level entries that
+satisfies (`|=~`) the top-level scope as it is just after the `qed`.
+*Proof.* The goal is proved only when the `qed`'s results and `T`'s
+are untainted and no top-level pattern `let` on a tainted scrutinee
+comes before the `qed` (§12), so the scope at the `qed` is untainted
+and the valuation above satisfies it. By Theorem 12.3 (a) and the
+check against the goal, the `qed`'s untainted result has a value `v`
+with `|- v : T rho`. `T`'s result is untainted too, so
+`|- T rho : Type()`, and `T rho` is a type of part 2, not built from
+junk. Later items only extend the valuation, the signatures and the
+functions, which keeps `|- v : T rho`. ∎
+
+For a function goal, the function the `qed` names is untainted, so it
+meets its specification, and its telescopes are canonically identical
+to the goal's, so by Corollary 3.2 it meets the goal's (`fnGoal_holds`,
+`Sound/Stmt.lean`). Lean checks both cases as `runProgram_sound`, with
+`ProvedAt` for the scope at the `qed` and `GoalHolds` for what the goal
+states, from `typeQed_sound` and `qed_sound`; its statement does not
+include `|- T rho : Type()`.
+
+Since `junk` has no type, Corollary 2.3 still holds, so no `qed` proves
+a type whose data type constructor declares no value constructors, in
+a program with `sorry` or without (`no_empty_goal`).
+
+### What this part does not cover
+
+- `_` arguments (§16), and so taint through a solved `_` (§12): neither
+  this part nor any Lean theorem covers them.
+- Erasure: part 9 argues it only in outline; the Lean theorems cover
+  phase 2 (`matchErased_sound`, `patletErased_sound`, `Approx`).
+- The TypeScript code: this part is about the taint rules as it reads
+  them, and the Lean theorems about the Lean implementation, whose
+  agreement with the TypeScript checker rests only on the comparison
+  of part 11.
+- Tainted results: nothing is claimed of their run-time values, which
+  need be neither their ideal values nor of their types.
+- A function goal holds vacuously when no values satisfy its
+  parameters.

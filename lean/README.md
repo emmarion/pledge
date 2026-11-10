@@ -97,7 +97,8 @@ same way, except an erased argument, which only approximates
 At an erased position the relation is `Approx` (`MultRel`).
 
 A tainted entry (§12) need not have a value of its type. `Sat`, the
-counterpart of SOUNDNESS.md's `rho |= Gamma`, asks every entry for a
+counterpart of SOUNDNESS.md's `rho |=~ Gamma` (part 12), which is its
+`rho |= Gamma` (part 3) when nothing is tainted, asks every entry for a
 value without `removed` that agrees with its rule and has its type by
 its head (`WType`), and asks only the untainted entries for a value of
 their type (`HasType`). The proofs give a result of `sorry` its `is`

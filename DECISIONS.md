@@ -35,9 +35,4 @@ None at present.
 
 ## Pending edits
 
-To SOUNDNESS.md: what §8 and §12 require there: what taint removes,
-the taint rules, where results are checked, a match only some of whose
-results are tainted, and that a goal proved in a program containing
-`sorry` is proved. This includes checking that nothing left after
-taint's removal needs a removed value; nothing beyond one review has
-checked it.
+None at present.
