@@ -566,8 +566,8 @@ At any position in a program, the interface shows:
   names (§8) is shown once, with all of them. An entry with no name is
   listed under its marker, like any other entry. An entry is global
   when a top-level statement created it, named or not; the global
-  entries are among the Globals. At the top level, where every entry in
-  scope is global, Local entries lists none and points to the Globals instead. It can be
+  entries are listed under Global entries. At the top level, where every entry in
+  scope is global, Local entries lists none and points to Global entries instead. It can be
   hidden, and starts open.
 - **Refutations**, at a `match` or pattern `let`: the refuted value
   constructors, and, at an erased match (§16), the absurd branches.
@@ -582,12 +582,19 @@ At any position in a program, the interface shows:
   pattern written for the value constructor, if any; otherwise it is
   shown as `@` and the field's declared name.
 
-The **Globals** come in two parts, each hidden until the learner opens
-it. One lists the global entries in scope at that position, each shown
-as under Local entries. The other lists the functions and type constructors in
-scope there: each function, with its parameters and returns; and each
-type constructor, with its parameters and its value constructors, each
-with its fields and return.
+Three more panels, each hidden until the learner opens it, list what is
+global at that position:
+
+- **Global entries**: the global entries in scope there, each shown as
+  under Local entries.
+- **Data declarations**: the type constructors in scope there, each with
+  its parameters, and each can be opened to list its value constructors,
+  each with its fields and return.
+- **Functions**: the functions in scope there, each with its parameters
+  and returns.
+
+Clicking the name of a type constructor, value constructor or function,
+in these panels or in a term a panel shows, goes to where it is declared.
 
 Types and skeleton terms are shown canonicalized, except where this
 section says otherwise. An anonymous entry is
@@ -657,7 +664,7 @@ In the interface's interactive mode, a type or an expression typed in is
 checked in the scope at the selected position, and its type and `is`
 rule are shown, both as inferred and canonicalized.
 
-Functions appear under Termination and among the Globals, never under
+Functions appear under Termination and Functions, never under
 Local entries, because they are not first class (§4); they are still in the one
 namespace (§2).
 

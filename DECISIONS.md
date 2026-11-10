@@ -22,11 +22,8 @@ D35. For D16's "may": DESIGN.md says "is allowed to" for permission and
      applied to each section as the section-by-section pass reaches it.
 D45. Some open questions will probably go into DESIGN.md as explicit
      TBDs; which ones is decided item by item.
-D59. Tentatively: the two parts are called "Global entries" and
-     "Declarations", and Local entries' message at the top level (§13) points
-     to "Global entries".
 D60. Tentatively: the global entries come right after Local entries, and the
-     functions and type constructors last, where the Globals were.
+     Data declarations and Functions last.
 D61. Tentatively: the global entries are in creation order.
 
 ## Approved rules awaiting wording
@@ -46,7 +43,7 @@ D51. Should clicking a skeleton term, and the interactive mode, refer to
 D53. Should hovering over a `by (n)` line in the dialog show the rule
      with its arrow, as the code now does?
 D65. §13 says types and skeleton terms are shown canonicalized, but the
-     declarations part of the Globals shows signatures as written.
+     Data declarations and Functions show signatures as written.
      Should §13 say so?
 
 ## Pending edits
