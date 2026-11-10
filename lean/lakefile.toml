@@ -1,0 +1,9 @@
+name = "pledge"
+defaultTargets = ["Pledge", "pledge"]
+
+[[lean_lib]]
+name = "Pledge"
+
+[[lean_exe]]
+name = "pledge"
+root = "Main"
