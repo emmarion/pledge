@@ -55,8 +55,8 @@ theorem GoalBelow.mono {n m : Nat} {g : CheckedGoal} (hnm : n ≤ m) (h : GoalBe
   · exact fun b hb => TBinder.entriesBelow_mono hnm (h b hb)
 
 theorem World.Le.extend (W : World) (ρ' : List Value) : W.Le { W with ρ := W.ρ ++ ρ' } :=
-  ⟨Prog.Ext.refl _, Sigs.Sub.refl _, List.prefix_append _ _, fun _ _ _ _ _ h h' => by
-    simp only at h'; rw [h] at h'; cases h'⟩
+  ⟨Prog.Ext.refl _, Sigs.Sub.refl _, List.prefix_append _ _, fun _ _ _ _ _ h h' => (by
+    simp only at h'; rw [h] at h'; cases h'), id⟩
 
 theorem TopState.world_extend {st st' : TopState} {ρ : List Value} (ρ' : List Value)
     (hok : SigsOk ρ.length st.sc.sigs) (hs : st'.sc.sigs = st.sc.sigs) (hf : st'.fns = st.fns)

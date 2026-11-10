@@ -45,7 +45,8 @@ theorem dataGroup_sound {st st' : TopState} {ρ : List Value} {ds : List Data} (
     (hp : ds.all Data.holeFree = true) (h : dataGroup st ds = .ok st') :
     (st.world ρ).Le (st'.world ρ) ∧ TopInv st' ρ := by
   obtain ⟨_, hg⟩ := dataGroup_group h
-  refine ⟨hg.le hI, hg.topInv hI fun n hn hj => ?_⟩
+  suffices hj : ∀ n ∈ _ ++ _, n ≠ junkHead.name from ⟨hg.le hI hj, hg.topInv hI hj⟩
+  intro n hn hj
   rcases List.mem_append.1 hn with hn | hn
   · obtain ⟨d, hd, rfl⟩ := List.mem_map.1 hn
     have := List.all_eq_true.1 hp d hd

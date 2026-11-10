@@ -443,11 +443,28 @@ theorem Group.world_Sc (hg : Group st ts cs new done st') :
     (st'.world ρ).Sc = (st.sc.sigs ++ new).map (Sig.close ρ) := by
   simp only [TopState.world, hg.sigs_eq]
 
-theorem Group.le (hI : TopInv st ρ) (hg : Group st ts cs new true st') : (st.world ρ).Le (st'.world ρ) := by
+namespace DataTop
+
+theorem Group.noJunk (hI : TopInv st ρ) (hg : Group st ts cs new done st')
+    (hj : ∀ n ∈ ts ++ cs.map (·.2), n ≠ junkHead.name) : (st.sc.sigs ++ new).find junkHead = none := by
+  cases hf : (st.sc.sigs ++ new).find junkHead with
+  | none => rfl
+  | some s =>
+    have hm := Sigs.find_append_new hI.noJunk hf
+    have hh := Sigs.find_head hf
+    rcases hg.sigs s hm with ⟨T, hT, h1, -⟩ | ⟨p, hp, h1, -⟩
+    · rw [hh] at h1; cases h1
+    · rw [hh] at h1
+      exact absurd (congrArg Head.name h1).symm (hj _ (List.mem_append_right _ (List.mem_map_of_mem hp)))
+
+end DataTop
+
+theorem Group.le (hI : TopInv st ρ) (hg : Group st ts cs new true st')
+    (hj : ∀ n ∈ ts ++ cs.map (·.2), n ≠ junkHead.name) : (st.world ρ).Le (st'.world ρ) := by
   have hfns : st'.fns = st.fns := by rw [hg.eq]
   refine ⟨⟨fun n d h => by simpa [TopState.world, TopState.prog, hfns] using h,
     fun n k hf hk => ⟨by simpa [TopState.world, TopState.prog, hfns] using hf, hg.kindOf_old hk⟩⟩, ?_,
-    List.prefix_refl _, ?_⟩
+    List.prefix_refl _, ?_, fun _ => by rw [hg.world_Sc, Sigs.find_map_close, DataTop.Group.noJunk hI hg hj]; rfl⟩
   · rw [hg.world_Sc]; exact Sigs.sub_append_close _ _ _
   · intro h sig' ws hd us hn hs hr
     rw [hg.world_Sc, List.map_append] at hs
@@ -494,25 +511,13 @@ namespace DataTop
 theorem ResOk.mono_sigs {S S' : Sigs} (hS : S.Sub S') {r : Res} {v : Value} (h : ResOk S r v) : ResOk S' r v :=
   ⟨h.1, let ⟨A, hA⟩ := h.2.1; ⟨A, hA.mono_sigs hS⟩, fun ht => let ⟨V, hV⟩ := h.2.2 ht; ⟨V, hV.mono_sigs hS⟩⟩
 
-theorem Group.noJunk (hI : TopInv st ρ) (hg : Group st ts cs new done st')
-    (hj : ∀ n ∈ ts ++ cs.map (·.2), n ≠ junkHead.name) : (st.sc.sigs ++ new).find junkHead = none := by
-  cases hf : (st.sc.sigs ++ new).find junkHead with
-  | none => rfl
-  | some s =>
-    have hm := Sigs.find_append_new hI.noJunk hf
-    have hh := Sigs.find_head hf
-    rcases hg.sigs s hm with ⟨T, hT, h1, -⟩ | ⟨p, hp, h1, -⟩
-    · rw [hh] at h1; cases h1
-    · rw [hh] at h1
-      exact absurd (congrArg Head.name h1).symm (hj _ (List.mem_append_right _ (List.mem_map_of_mem hp)))
-
 end DataTop
 
 /-- A group of `data` declarations, none named `sorry`, keeps the top level's invariant: the world extends by the
 new signatures, closed under the same ideal values, which add no value constructor to an earlier data type. -/
 theorem Group.topInv (hI : TopInv st ρ) (hg : Group st ts cs new true st')
     (hj : ∀ n ∈ ts ++ cs.map (·.2), n ≠ junkHead.name) : TopInv st' ρ := by
-  have hle := hg.le hI
+  have hle := hg.le hI hj
   have hsub := Sigs.sub_append_close st.sc.sigs new ρ
   have hwSc := hg.world_Sc (ρ := ρ)
   have hJ := DataTop.Group.noJunk hI hg hj

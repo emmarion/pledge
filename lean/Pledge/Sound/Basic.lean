@@ -13,10 +13,10 @@ theorem Sigs.Sub.trans {S₁ S₂ S₃ : Sigs} (h₁ : S₁.Sub S₂) (h₂ : S�
   fun h sig hs => h₂ h sig (h₁ h sig hs)
 
 theorem World.Le.refl (W : World) : W.Le W :=
-  ⟨Prog.Ext.refl _, Sigs.Sub.refl _, List.prefix_refl _, fun _ _ _ _ _ h h' => by rw [h] at h'; cases h'⟩
+  ⟨Prog.Ext.refl _, Sigs.Sub.refl _, List.prefix_refl _, fun _ _ _ _ _ h h' => (by rw [h] at h'; cases h'), id⟩
 
 theorem World.Le.trans {W₁ W₂ W₃ : World} (h₁ : W₁.Le W₂) (h₂ : W₂.Le W₃) : W₁.Le W₃ := by
-  refine ⟨h₁.prog.trans h₂.prog, h₁.sigs.trans h₂.sigs, h₁.val.trans h₂.val, ?_⟩
+  refine ⟨h₁.prog.trans h₂.prog, h₁.sigs.trans h₂.sigs, h₁.val.trans h₂.val, ?_, fun h => h₂.noJunk (h₁.noJunk h)⟩
   intro h sig' ws hd us hn hs hr
   cases hm : W₂.Sc.find h with
   | none =>

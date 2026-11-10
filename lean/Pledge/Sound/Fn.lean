@@ -623,7 +623,8 @@ theorem topTermInv {st : TopState} {ρ : List Value} (hI : TopInv st ρ) (hL : T
     (hW : (st.world ρ).Le W) (hJ : W.Sc.find junkHead = none) : TermInv st.sc st.sc.Γ.length W.Sc ρ :=
   ⟨hL.sat.mono_sigs hW.sigs, Nat.le_of_eq hI.len.symm, (SigsClose.close hI.noRemoved).mono hW.sigs, hI.sigsOk, hJ,
     fun n r hl => let ⟨v, hv, hr⟩ := hL.names n r hl
-      ⟨v, hv, fun ht => let ⟨V, hV⟩ := hr.2.2 ht; ⟨V, hV.mono_sigs hW.sigs⟩⟩⟩
+      ⟨v, hv, let ⟨A, hA⟩ := hr.2.1; ⟨A, hA.mono_sigs hW.sigs⟩,
+        fun ht => let ⟨V, hV⟩ := hr.2.2 ht; ⟨V, hV.mono_sigs hW.sigs⟩⟩⟩
 
 /-- One activation of an untainted function of a group (SOUNDNESS.md Lemma 6.1 and Theorem 6.2, parts 5 and 9):
 given that every untainted function of the group meets its specification from this activation, the body's ideal
@@ -850,11 +851,10 @@ theorem fns_find_group {st : TopState} {ρ : List Value} {heads : List FnHead} {
     this]
   rfl
 
-/-- The gap this file leaves open: `World.Le` does not say that a later world adds no signature for `junkHead`,
-which the main lemma's invariant asks of the world a function body is checked against. -/
+/-- A later world than the top level's has no signature for `junkHead`. -/
 theorem later_noJunk {st : TopState} {ρ : List Value} (hI : TopInv st ρ) {W : World} (hW : (st.world ρ).Le W) :
-    W.Sc.find junkHead = none := by
-  sorry
+    W.Sc.find junkHead = none :=
+  hW.noJunk (by simp [TopState.world, Sigs.find_map_close, hI.noJunk])
 
 /-- The state after a checked group of functions extends the world and keeps the top level's invariant; in an
 untainted scope, every untainted function meets its specification. -/
@@ -877,7 +877,7 @@ theorem group_post {st : TopState} {ρ : List Value} {heads : List FnHead} {bodi
     exact ⟨p, hp, rfl⟩
   have hle : (st.world ρ).Le (st'.world ρ) := by
     refine ⟨⟨fun n d hd => ?_, fun n k hd hk => ⟨?_, by simp only [TopState.world, TopState.prog, hkind]; exact hk⟩⟩,
-      by rw [hSc]; exact Sigs.Sub.refl _, List.prefix_refl _, fun h' sig' ws hd us hn hs => ?_⟩
+      by rw [hSc]; exact Sigs.Sub.refl _, List.prefix_refl _, fun h' sig' ws hd us hn hs => ?_, fun h => hSc ▸ h⟩
     · simp only [TopState.world, TopState.prog, hfns, Fns.find, List.find?_append] at hd ⊢
       rw [hd]; rfl
     · simp only [TopState.world, TopState.prog, hfns, Fns.find, List.find?_append] at hd ⊢

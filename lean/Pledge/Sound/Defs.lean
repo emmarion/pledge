@@ -13,13 +13,14 @@ structure World where
 
 /-- `W'` is meant to be a later world than `W`: it keeps `W`'s functions, kinds, closed signatures and values,
 and a signature it adds never returns a data type of `W` (its return is headed by a type constructor that is
-`Type` or new). -/
+`Type` or new) nor is one for `junkHead`, if `W` has none. -/
 structure World.Le (W W' : World) : Prop where
   prog : W.P.Ext W'.P
   sigs : W.Sc.Sub W'.Sc
   val : W.ρ <+: W'.ρ
   fresh : ∀ h sig' ws hd us, W.Sc.find h = none → W'.Sc.find h = some sig' →
     sig'.ret.eval [] ws = some (.app hd us) → hd.kind = .type ∧ (hd = Head.Type ∨ W.Sc.find hd = none)
+  noJunk : W.Sc.find junkHead = none → W'.Sc.find junkHead = none
 
 /-- The value `v` meets the entry `w` of what a position is given, `env` holding the values of its bound
 variables: it has the wanted type by its head, and, if `typed`, has it; an entry with no type imposes nothing but
