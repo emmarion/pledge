@@ -489,11 +489,104 @@ theorem HeadOk.append {S S' : Sigs} {W : World} {k : HeadKind} {n : String} (h :
     HeadOk (S ++ S') W k n :=
   ⟨h.fns, h.kind, let ⟨_, hs⟩ := h.sig; ⟨_, Sigs.find_append_old hs⟩⟩
 
+namespace DataTop
+
+theorem ResOk.mono_sigs {S S' : Sigs} (hS : S.Sub S') {r : Res} {v : Value} (h : ResOk S r v) : ResOk S' r v :=
+  ⟨h.1, let ⟨A, hA⟩ := h.2.1; ⟨A, hA.mono_sigs hS⟩, fun ht => let ⟨V, hV⟩ := h.2.2 ht; ⟨V, hV.mono_sigs hS⟩⟩
+
+theorem Group.noJunk (hI : TopInv st ρ) (hg : Group st ts cs new done st')
+    (hj : ∀ n ∈ ts ++ cs.map (·.2), n ≠ junkHead.name) : (st.sc.sigs ++ new).find junkHead = none := by
+  cases hf : (st.sc.sigs ++ new).find junkHead with
+  | none => rfl
+  | some s =>
+    have hm := Sigs.find_append_new hI.noJunk hf
+    have hh := Sigs.find_head hf
+    rcases hg.sigs s hm with ⟨T, hT, h1, -⟩ | ⟨p, hp, h1, -⟩
+    · rw [hh] at h1; cases h1
+    · rw [hh] at h1
+      exact absurd (congrArg Head.name h1).symm (hj _ (List.mem_append_right _ (List.mem_map_of_mem hp)))
+
+end DataTop
+
 /-- A group of `data` declarations, none named `sorry`, keeps the top level's invariant: the world extends by the
 new signatures, closed under the same ideal values, which add no value constructor to an earlier data type. -/
 theorem Group.topInv (hI : TopInv st ρ) (hg : Group st ts cs new true st')
     (hj : ∀ n ∈ ts ++ cs.map (·.2), n ≠ junkHead.name) : TopInv st' ρ := by
-  sorry
+  have hle := hg.le hI
+  have hsub := Sigs.sub_append_close st.sc.sigs new ρ
+  have hwSc := hg.world_Sc (ρ := ρ)
+  have hJ := DataTop.Group.noJunk hI hg hj
+  obtain ⟨heq, -, -, hown, hok, hsigs, htypes, hctors⟩ := id hg
+  subst heq
+  refine ⟨hI.len, hI.noRemoved, hI.holes, fun sig hs => ?_, hJ, fun sig hs => ?_, fun h sig hs => ?_,
+    fun d hd => ?_, hI.groups, let ⟨_, hs⟩ := hI.typeSig; ⟨_, Sigs.find_append_old hs⟩, hI.goal, fun hp => ?_,
+    fun ht => ?_⟩
+  · rcases List.mem_append.1 hs with hs | hs
+    · exact hI.sigsOk sig hs
+    · exact hok sig hs
+  · rcases List.mem_append.1 hs with hs | hs
+    · obtain ⟨hd, args, h1, h2, s, h3⟩ := hI.rets sig hs
+      exact ⟨hd, args, h1, h2, s, Sigs.find_append_old h3⟩
+    · rcases hsigs sig hs with ⟨T, -, -, hret⟩ | ⟨p, hp, -, args, hret⟩
+      · obtain ⟨s, h3⟩ := hI.typeSig
+        exact ⟨_, _, hret, rfl, s, Sigs.find_append_old h3⟩
+      · obtain ⟨s, hs', hh⟩ := htypes p.1 (hown p hp)
+        exact ⟨_, _, hret, rfl, Sigs.find_of_mem (List.mem_append_right _ hs') hh⟩
+  · cases ho : st.sc.sigs.find h with
+    | some s0 => exact hg.kindOf_old (hI.sigNames h s0 ho)
+    | none =>
+      have hh := Sigs.find_head hs
+      subst hh
+      rcases hsigs sig (Sigs.find_append_new ho hs) with ⟨T, hT, h1, -⟩ | ⟨p, hp, h1, -⟩
+      · rw [h1]; simp [kindOf, hg.find?_type hT]
+      · rw [h1]; simp [kindOf, hg.find?_ctor hp]
+  · obtain ⟨sig, hs⟩ := hI.fnNames d hd
+    exact ⟨sig, hg.find?_old hs⟩
+  · obtain ⟨g, h1, h2⟩ := hI.proved hp
+    exact ⟨g, h1, fun W' hW' => h2 W' (hle.trans hW')⟩
+  have L := hI.live ht
+  refine ⟨hwSc ▸ L.sat.mono_sigs hsub, fun n r h => ?_, hwSc ▸ L.env.mono_sigs hsub, ?_⟩
+  · obtain ⟨v, h1, h2⟩ := L.names n r h
+    exact ⟨v, h1, hwSc ▸ DataTop.ResOk.mono_sigs hsub h2⟩
+  intro W' hW' act hact n g hfind
+  have hle' := hle.trans hW'
+  cases h0 : st.globals.find? (·.name == n) with
+  | some g0 =>
+    rw [hg.find?_old h0] at hfind
+    cases hfind
+    have hold := L.globals W' hle' act hact n g h0
+    cases g with
+    | fn _ s => cases s <;> exact hold
+    | type T cs0 dn =>
+      exact ⟨hold.1.append, fun cs' h1 h2 =>
+        let ⟨a, b, c, d⟩ := hold.2 cs' h1 h2
+        ⟨a, b, c, fun c hc => hg.find?_old (d c hc)⟩⟩
+    | ctor _ => exact HeadOk.append hold
+  | none =>
+    have hfr : ∀ g ∈ st.globals, g.name ≠ n := fun g hg' hn => by
+      have := List.find?_eq_none.1 h0 g hg'
+      simp [hn] at this
+    rw [find?_fresh hfr] at hfind
+    rcases groupGlobals_find? hfind with ⟨hT, rfl⟩ | ⟨p, hp, rfl, rfl⟩
+    · have hn' := List.mem_append_left (cs.map (·.2)) hT
+      have hS : ∃ s, (st.sc.sigs ++ new).find ⟨.type, n⟩ = some s :=
+        let ⟨_, hs, hh⟩ := htypes n hT
+        Sigs.find_of_mem (List.mem_append_right _ hs) hh
+      have hSc : ∃ s, Sigs.find ((st.sc.sigs ++ new).map (Sig.close ρ)) ⟨.type, n⟩ = some s := by
+        rw [Sigs.find_map_close]
+        obtain ⟨s, hs⟩ := hS
+        exact ⟨_, by rw [hs]; rfl⟩
+      have hne := hg.ne_Type hI hn'
+      refine ⟨HeadOk.mono hW' ⟨hg.fns_none hI hn',
+        by simp [TopState.world, TopState.prog, kindOf, hg.find?_type hT], hS⟩, ?_⟩
+      rintro cs' ⟨⟩ -
+      refine ⟨hne, let ⟨s, hs⟩ := hSc; ⟨s, hW'.sigs _ _ hs⟩, Complete.mono hW' hne hSc (hg.complete hI hT),
+        fun c hc => ?_⟩
+      obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hc
+      exact hg.find?_ctor (List.mem_filter.1 hp).1
+    · have hn' := List.mem_append_right ts (List.mem_map_of_mem (f := (·.2)) hp)
+      exact HeadOk.mono hW' ⟨hg.fns_none hI hn', by simp [TopState.world, TopState.prog, kindOf, hg.find?_ctor hp],
+        let ⟨_, hs, hh⟩ := hctors p hp; Sigs.find_of_mem (List.mem_append_right _ hs) hh⟩
 
 end
 
@@ -525,7 +618,21 @@ theorem goal_spec {st st' : TopState} {p : Pos} {g : Goal} (h : topItem st (.goa
 /-- A `goal` statement keeps the top level's invariant: the goal it sets mentions only top-level entries (§12). -/
 theorem goalItem_sound {st st' : TopState} {ρ : List Value} {p : Pos} {g : Goal} (hI : TopInv st ρ)
     (h : topItem st (.goal p g) = .ok st') : (st.world ρ).Le (st'.world ρ) ∧ TopInv st' ρ := by
-  sorry
+  obtain ⟨hnone, goal, rfl, hgoal⟩ := goal_spec h
+  refine ⟨World.Le.refl _, ⟨hI.len, hI.noRemoved, hI.holes, hI.sigsOk, hI.noJunk, hI.rets, hI.sigNames, hI.fnNames,
+    hI.groups, hI.typeSig, fun g' hg' => ?_, fun hpr => ?_, fun ht =>
+      let L := hI.live ht; ⟨L.sat, L.names, L.env, L.globals⟩⟩⟩
+  · cases hg'
+    cases g with
+    | fn hdr =>
+      obtain ⟨ps, rs, u, -, h2, rfl⟩ := hgoal
+      exact topLevel_ok h2
+    | type t =>
+      obtain ⟨ty, is, tainted, -, h2, rfl⟩ := hgoal
+      exact h2
+  · obtain ⟨g', hg', -⟩ := hI.proved hpr
+    rw [hnone] at hg'
+    cases hg'
 
 theorem fnGroup_goal {st st' : TopState} {fs : List Fn} (h : fnGroup st fs = .ok st') : st'.goal = st.goal := by
   unfold fnGroup at h

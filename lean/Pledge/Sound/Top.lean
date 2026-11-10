@@ -5,7 +5,39 @@ import Pledge.Sound.Data
 namespace Pledge
 
 theorem TopInv.init (phase : Nat) : TopInv (TopState.init phase) [] := by
-  sorry
+  have hTy : Sigs.find [⟨Head.Type, [], Term.TYPE⟩] Head.Type = some ⟨Head.Type, [], Term.TYPE⟩ := by
+    simp [Sigs.find]
+  refine ⟨rfl, by simp, rfl, ?_, by simp [TopState.init, Sigs.find, junkHead, Head.Type], ?_, ?_,
+    by simp [TopState.init], by simp [TopState.init], ⟨_, hTy⟩, by simp [TopState.init],
+    by simp [TopState.init], fun _ => ⟨⟨⟨rfl, fun i en h => by simp [TopState.init] at h⟩,
+      fun i en v A h => by simp [TopState.init] at h⟩, fun n r h => by simp [TopState.init, Scope.lookup] at h,
+      fun n r h => by simp [TopState.init, Scope.lookup] at h, ?_⟩⟩
+  · intro sig hs
+    simp only [TopState.init, List.mem_singleton] at hs
+    subst hs
+    simp [Sig.entriesBelow, Term.TYPE, Term.entriesBelow, Term.entriesBelowList, Term.boundsBelow,
+      Term.boundsBelowList]
+  · intro sig hs
+    simp only [TopState.init, List.mem_singleton] at hs
+    subst hs
+    exact ⟨Head.Type, [], rfl, rfl, _, hTy⟩
+  · intro h sig hs
+    have hm := List.mem_of_find?_eq_some hs
+    simp only [TopState.init, List.mem_singleton] at hm
+    subst hm
+    have := Sigs.find_head hs
+    subst this
+    simp [kindOf, TopState.init, Head.Type, Global.name]
+  · intro W' hW act _ n g hg
+    simp only [TopState.init, List.find?_cons, List.find?_nil] at hg
+    split at hg
+    · rename_i hn
+      cases hg
+      simp only [Global.name, beq_iff_eq] at hn
+      subst hn
+      exact ⟨HeadOk.mono hW ⟨by simp [TopState.world, TopState.prog, Fns.find, TopState.init],
+        by simp [TopState.world, TopState.prog, kindOf, TopState.init, Global.name], _, hTy⟩, by simp⟩
+    · cases hg
 
 /-- A group of `data` declarations, none named `sorry`, adds closed signatures that keep the top level's
 invariant. -/
@@ -83,9 +115,73 @@ theorem topItems_sound {ρ : List Value} : ∀ {st : TopState} {prog : Program},
       exact ⟨ρ₁ ++ ρ₂, by simpa using hle.trans hle', by simpa using hI''⟩
     · exact ⟨[], by simpa [TopState.world_snaps] using World.Le.refl _, by simpa using hI.snaps _⟩
 
+namespace DataTop
+
+theorem fnGroup_phase {st st' : TopState} {fs : List Fn} (h : fnGroup st fs = .ok st') : st'.phase = st.phase := by
+  unfold fnGroup at h
+  obtain ⟨st0, h0, h⟩ := bind_eq_ok.1 h
+  obtain ⟨⟨st1, heads⟩, h1, h⟩ := bind_eq_ok.1 h
+  obtain ⟨⟨taint, bodies⟩, -, h⟩ := bind_eq_ok.1 h
+  simp only [pure, Except.pure, Except.ok.injEq] at h
+  subst h
+  have e0 := foldlM_induct (fun _ s => s.phase = st.phase) fs [] (fun q x b b' _ hb hf => by
+    obtain ⟨_, -, hf⟩ := bind_eq_ok.1 hf
+    simp only [pure, Except.pure, Except.ok.injEq] at hf
+    rw [← hf]; exact hb) rfl h0
+  exact foldlM_induct (fun _ p => p.1.phase = st.phase) fs [] (fun q x b b' _ hb hf => by
+    obtain ⟨⟨s, hd⟩, hh, hf⟩ := bind_eq_ok.1 hf
+    simp only [pure, Except.pure, Except.ok.injEq] at hf
+    rw [← hf]
+    unfold fnHead at hh
+    obtain ⟨_, -, hh⟩ := bind_eq_ok.1 hh
+    obtain ⟨_, -, hh⟩ := bind_eq_ok.1 hh
+    simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at hh
+    rw [← hh.1]; exact hb) e0 h1
+
+theorem qedFnGoal_phase {st st' : TopState} {ps rs : Telescope} {e : Expr} (h : qedFnGoal st ps rs e = .ok st') :
+    st'.phase = st.phase := by
+  obtain ⟨_, _, _, -, -, -, -, rfl⟩ := qedFnGoal_spec h
+  rfl
+
+theorem topItem_phase {st st' : TopState} {t : Top} (h : topItem st t = .ok st') : st'.phase = st.phase := by
+  unfold topItem at h
+  split at h
+  · obtain ⟨_, hgr⟩ := dataGroup_group h
+    rw [hgr.eq]
+  · obtain ⟨_, hgr⟩ := dataGroup_group h
+    rw [hgr.eq]
+  · exact fnGroup_phase h
+  · exact fnGroup_phase h
+  · unfold comptimeLet at h
+    unwind_ok h
+    all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h])
+  · unwind_ok h
+    all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h])
+  · unwind_ok h
+    all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h])
+  · obtain ⟨-, goal, rfl, -⟩ := goal_spec (by unfold topItem; exact h)
+    rfl
+  · unwind_ok h
+    all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h])
+    all_goals dsimp only
+    all_goals first
+      | exact qedFnGoal_phase (by assumption)
+      | (simp only [pure, Except.pure, Except.ok.injEq] at *; subst_vars; rfl)
+
+theorem topItems_phase : ∀ (st : TopState) (prog : Program), (topItems st prog).1.phase = st.phase
+  | st, [] => rfl
+  | st, t :: ts => by
+    simp only [topItems]
+    split
+    · rename_i st' h
+      rw [topItems_phase st' ts, topItem_phase h]
+    · rfl
+
+end DataTop
+
 /-- Checking keeps the phase. -/
-theorem topItems_phase (phase : Nat) (prog : Program) : (topItems (.init phase) prog).1.phase = phase := by
-  sorry
+theorem topItems_phase (phase : Nat) (prog : Program) : (topItems (.init phase) prog).1.phase = phase :=
+  DataTop.topItems_phase _ prog
 
 /-- Soundness of the checker and evaluator, for programs with `sorry` and multiplicities but no `_` argument
 (§12, §16), under any phase: there is an ideal valuation `W.ρ` of the final top-level entries, the program's
@@ -167,7 +263,57 @@ theorem no_empty_goal (phase : Nat) (prog : Program) (has : String → Bool) (er
     (hd : Top.data d ∈ prog ∨ ∃ p ds, Top.mutualData p ds ∈ prog ∧ d ∈ ds)
     (hc : d.ctors = []) (p : Pos) (hn : Name) (args : List WTerm) (hg : Top.goal p (.type (.app hn args)) ∈ prog)
     (hname : hn.name = d.name.name) : (runProgram phase prog has err).goalProved ≠ some true := by
-  sorry
+  intro hgp
+  obtain ⟨hnone, hpr⟩ : (topItems (.init phase) prog).2 = none ∧ (topItems (.init phase) prog).1.proved = true := by
+    simp only [runProgram] at hgp
+    split at hgp
+    · simp only [Option.some.injEq, Bool.and_eq_true] at hgp
+      refine ⟨?_, hgp.2⟩
+      cases hf : (topItems (TopState.init phase) prog).2 with
+      | none => rfl
+      | some _ => simp [hf] at hgp
+    · cases hgp
+  have hsplitp : ∀ {pre post : List Top} {t : Top}, prog = pre ++ t :: post →
+      Program.holeFree pre = true ∧ t.holeFree = true ∧ Program.holeFree post = true := fun he => by
+    rw [he] at hp
+    simpa [Program.holeFree] using hp
+  obtain ⟨t, ds, ht, hdds, htop, htp⟩ : ∃ t ds, t ∈ prog ∧ d ∈ ds ∧ (∀ s, topItem s t = dataGroup s ds) ∧
+      (t.holeFree = true → ds.all Data.holeFree = true) := by
+    rcases hd with hd | ⟨p', ds, hd, hdds⟩
+    · exact ⟨_, [d], hd, List.mem_singleton_self _, fun _ => rfl, fun h => by simpa [Top.holeFree] using h⟩
+    · exact ⟨_, ds, hd, hdds, fun _ => rfl, fun h => by simpa [Top.holeFree] using h⟩
+  obtain ⟨pre, post, hsplit⟩ := List.append_of_mem ht
+  obtain ⟨s', -, hs', hpost⟩ := topItems_split (hsplit ▸ hnone)
+  obtain ⟨hp1, hp2, hp3⟩ := hsplitp hsplit
+  obtain ⟨ρ₁, -, hI₁⟩ := topItems_sound (ρ := []) (prog := pre) (TopInv.init phase) hp1
+  rw [htop] at hs'
+  obtain ⟨new, hgr⟩ := dataGroup_group hs'
+  have hI' := (dataGroup_sound hI₁ (htp hp2) hs').2
+  obtain ⟨ρ₂, hle, hIF⟩ := topItems_sound (prog := post) hI' hp3
+  rw [hpost, ← hsplit] at hle hIF
+  obtain ⟨g, hgF, hgoal⟩ := hIF.proved hpr
+  have hT := List.mem_map_of_mem (f := (·.name.name)) hdds
+  have hSc : ∃ s, ((s'.world ([] ++ ρ₁)).Sc).find ⟨.type, d.name.name⟩ = some s := by
+    obtain ⟨s0, hs0, hh⟩ := hgr.types _ hT
+    obtain ⟨s, hs⟩ := Sigs.find_of_mem (List.mem_append_right _ hs0) hh
+    rw [hgr.world_Sc, Sigs.find_map_close, hs]
+    exact ⟨_, rfl⟩
+  have hcomp := Complete.mono hle (hgr.ne_Type hI₁ (List.mem_append_left _ hT)) hSc (hgr.complete hI₁ hT)
+  rw [ownedBy_empty (List.nodup_append.1 hgr.nodup).1 hdds hc] at hcomp
+  obtain ⟨preg, postg, hsplitg⟩ := List.append_of_mem hg
+  obtain ⟨sg, -, hsg, hpostg⟩ := topItems_split (hsplitg ▸ hnone)
+  obtain ⟨-, goal, rfl, ty, is, tn, hann, -, rfl⟩ := goal_spec hsg
+  have hgF' := topItems_goal (hpostg ▸ hsplitg ▸ hnone) rfl
+  rw [hpostg, ← hsplitg, hgF] at hgF'
+  cases hgF'
+  obtain ⟨r, hr, rfl⟩ := annotate_type hann
+  obtain ⟨k, ts, hrt⟩ := checkTerm_app_head hr
+  obtain ⟨v, V, hV, hv⟩ := hgoal _ (World.Le.refl _)
+  simp only [hrt, Term.eval_app] at hV
+  obtain ⟨us, -, rfl⟩ := hV
+  obtain rfl : k = .type := hIF.hasType_kind hv
+  obtain ⟨h', ws, sig, -, hf, hret⟩ := hv.inv_type
+  exact List.not_mem_nil (hcomp h' sig ws _ us hf hret hname).2
 
 /-- `no_empty_goal` for source text whose parsed program has no `_` argument. -/
 theorem run_no_empty_goal (source : String) (phase : Nat) (hp : Program.holeFree (parse source phase).1 = true)
@@ -177,20 +323,105 @@ theorem run_no_empty_goal (source : String) (phase : Nat) (hp : Program.holeFree
     (run source phase).goalProved ≠ some true :=
   no_empty_goal phase _ _ _ hp d hd hc p hn args hg hname
 
+namespace DataTop
+
+mutual
+theorem Term.eval_noRemoved {ρ env : List Value} (hρ : ∀ v ∈ ρ, v.noRemoved = true)
+    (henv : ∀ v ∈ env, v.noRemoved = true) : ∀ (t : Term) {v : Value}, t.eval ρ env = some v → v.noRemoved = true
+  | .entry i, _, h => hρ _ (List.mem_of_getElem? h)
+  | .bound i, _, h => henv _ (List.mem_of_getElem? h)
+  | .app _ as, _, h => by
+    obtain ⟨vs, hvs, rfl⟩ := Term.eval_app.1 h
+    exact Term.evalList_noRemoved hρ henv as hvs
+theorem Term.evalList_noRemoved {ρ env : List Value} (hρ : ∀ v ∈ ρ, v.noRemoved = true)
+    (henv : ∀ v ∈ env, v.noRemoved = true) :
+    ∀ (as : List Term) {vs : List Value}, Term.evalList ρ env as = some vs → Value.noRemovedList vs = true
+  | [], _, h => by cases h; rfl
+  | a :: as, _, h => by
+    obtain ⟨v, vs, hv, hvs, rfl⟩ := Term.evalList_cons_eq_some.1 h
+    simp only [Value.noRemovedList, Term.eval_noRemoved hρ henv a hv, Term.evalList_noRemoved hρ henv as hvs,
+      Bool.and_self]
+end
+
+/-- Wants without `is` clauses whose types have values whatever their bound variables are can be opened. -/
+theorem wantsCons_closed {S : Sigs} {ρ : List Value} :
+    ∀ (ws : List Want) (env : List Value), (∀ w ∈ ws, w.is = none ∧
+      ∀ t, w.type = some t → ∃ A, (∀ env, t.eval ρ env = some A) ∧ A.noRemoved = true) → WantsCons S ρ ws env
+  | [], _, _ => trivial
+  | w :: ws, env, h => by
+    refine ⟨fun T hT => ?_, fun e he => ?_, fun v _ => wantsCons_closed ws _ fun w' hw' =>
+      h w' (List.mem_cons_of_mem _ hw')⟩
+    · obtain ⟨A, hA, hn⟩ := (h w List.mem_cons_self).2 T hT
+      exact ⟨A, hA env, hn⟩
+    · rw [(h w List.mem_cons_self).1] at he; cases he
+
+end DataTop
+
 /-- Evaluation at a state `st` the checker reaches on a program without `_` arguments, while its scope is untainted
-(§12): an expression checked there at the top level with an untainted result, as `print`, `qed` against a type goal
-and a `comptime` pattern `let` check theirs, has an evaluation (`Eval`) to one run-time value related (`Rel`) to a
-typed ideal value; any value `TopState.eval` returns for it is that one. `TopState.eval` runs the `partial`
-evaluator, so this does not establish that it returns a value rather than an error, or that it returns at all. -/
+(§12): an expression checked there at the top level with an untainted result, given closed types of multiplicity
+`many`, as `print`, `qed` against a type goal and a `comptime` pattern `let` check theirs, has an evaluation (`Eval`)
+to one run-time value related (`Rel`) to a typed ideal value, under an ideal valuation `ρ` satisfying the scope; any
+value `TopState.eval` returns for it is that one. `TopState.eval` runs the `partial` evaluator, so this does not
+establish that it returns a value rather than an error, or that it returns at all. -/
 theorem reached_eval_ok (phase : Nat) {pre : Program} (hp : Program.holeFree pre = true) {st : TopState}
     (hst : st = (topItems (.init phase) pre).1) (ht : st.sc.taintedBy = none) {C : Ctx} {g : Option Given} {e : Expr}
     {o : Out} {r : Res} (hph : C.phase = phase) (her : C.erased = false) (hgl : C.globals = st.globals)
     (hfn : C.fn = none) (hg : ∀ g', g = some g' → g'.env = [] ∧ ∀ w ∈ g'.wants, w.mult = .many ∧ w.is = none ∧
-      ∀ t, w.type = some t → t.entriesBelow st.sc.Γ.length = true)
+      ∀ t, w.type = some t → t.entriesBelow st.sc.Γ.length = true ∧ t.closed = true)
     (he : e.holeFree = true) (h : checkExpr C st.sc g e = .ok o) (hr : single e.pos o.res = .ok r)
     (hrt : r.tainted = false) :
-    ∃ ρ a v V, Eval st.prog st.env o.tree [a] ∧ Rel (st.world ρ).Sc phase a v ∧ HasType (st.world ρ).Sc v V := by
-  sorry
+    ∃ ρ a v V, Sat (st.world ρ).Sc st.sc.Γ ρ ∧ Eval st.prog st.env o.tree [a] ∧ Rel (st.world ρ).Sc phase a v ∧
+      HasType (st.world ρ).Sc v V ∧ ∀ pos w, st.eval pos o.tree r.tainted = .ok (some w) → w = a := by
+  subst hst
+  obtain ⟨ρ, -, hI⟩ := topItems_sound (ρ := []) (prog := pre) (TopInv.init phase) hp
+  simp only [List.nil_append] at hI
+  have hph' : C.phase = (topItems (.init phase) pre).1.phase := by rw [topItems_phase]; exact hph
+  have hL := hI.live ht
+  have hInv := hI.inv ht hph' hgl hfn
+  have hgok : ∀ g', g = some g' → g'.Ok (TopState.world (topItems (.init phase) pre).1 ρ).Sc ρ := by
+    intro g' hg'
+    obtain ⟨henv, hw⟩ := hg g' hg'
+    refine ⟨⟨[], by rw [henv]; rfl⟩, fun _ envv _ => DataTop.wantsCons_closed _ _ fun w hw' => ⟨(hw w hw').2.1,
+      fun t ht' => ?_⟩⟩
+    obtain ⟨hb, hc⟩ := (hw w hw').2.2 t ht'
+    obtain ⟨A, hA⟩ := Term.eval_isSome (ρ := ρ) (env := []) t (by rw [hI.len]; exact hb) hc
+    exact ⟨A, fun env => by rw [Term.eval_closed env hc, hA],
+      DataTop.Term.eval_noRemoved hI.noRemoved (by simp) t hA⟩
+  have hres := single_ok hr
+  have ho : o.sc.taintedBy = none := by
+    cases hs : o.sc.taintedBy with
+    | none => rfl
+    | some _ =>
+      have := ((checkExpr_removed h).2.1 (by simp [hs])).2 r (by simp [hres])
+      rw [hrt] at this; cases this
+  obtain ⟨ρ', vs, -, hvs, hok, -, hrun⟩ := (Expr.sound e he C _ g _ _ ρ _ o hInv hgok h).1 ho
+  rw [hres] at hvs hok
+  obtain ⟨v, -, rfl⟩ := Term.evalList_singleton.1 (by simpa using hvs)
+  obtain ⟨V, hV⟩ := (hok 0 r v rfl rfl).2.2 hrt
+  obtain ⟨us, hev, us', htk, hrel⟩ := hrun _ (hph' ▸ hL.env)
+  rw [hres] at htk hrel
+  obtain ⟨a, -, rfl⟩ := one_of_take htk
+  have hmult : C.posMult g 0 = .many := by
+    cases g with
+    | none => simp [Ctx.posMult, her]
+    | some g' =>
+      cases hw : g'.wants[0]? with
+      | none => simp [Ctx.posMult, her, Given.erasedAt, hw]
+      | some w => simp [Ctx.posMult, her, Given.erasedAt, hw, ((hg g' rfl).2 w (List.mem_of_getElem? hw)).1]
+  have hR : Rel (TopState.world (topItems (.init phase) pre).1 ρ).Sc phase a v := by
+    have := hrel 0 r a v (by simp) rfl rfl hrt
+    rw [hmult, hph] at this
+    exact this
+  have hus : us = [a] := by
+    rcases (take_ok htk).2 with h' | ⟨rfl, h'⟩
+    · exact h'.symm
+    · cases h'; cases hR
+  subst hus
+  refine ⟨ρ, a, v, V, hL.sat, hev, hR, hV, fun pos w hw => ?_⟩
+  rw [hrt] at hw
+  obtain ⟨w', hw', hcert⟩ := TopState.eval_cert hw
+  obtain rfl := Option.some.inj hw'
+  simpa using (Eval.det hev hcert).symm
 
 /-- At a state `st` the checker reaches on a program without `_` arguments, while its scope is untainted, a
 statement checked there at the top level that leaves the scope untainted has a run (`EvalStmt`). -/
@@ -199,7 +430,13 @@ theorem reached_run_ok (phase : Nat) {pre : Program} (hp : Program.holeFree pre 
     (hph : C.phase = phase) (her : C.erased = false) (hgl : C.globals = st.globals) (hfn : C.fn = none)
     (hs : s.holeFree = true) (h : checkStmt C st.sc s = .ok o) (ht' : o.sc.taintedBy = none) :
     ∃ env, EvalStmt st.prog st.env o.tree env := by
-  sorry
+  subst hst
+  obtain ⟨ρ, -, hI⟩ := topItems_sound (ρ := []) (prog := pre) (TopInv.init phase) hp
+  simp only [List.nil_append] at hI
+  have hph' : C.phase = (topItems (.init phase) pre).1.phase := by rw [topItems_phase]; exact hph
+  obtain ⟨ρ', -, hrun⟩ := Stmt.sound s hs C _ _ _ ρ _ o (hI.inv ht hph' hgl hfn) h ht'
+  obtain ⟨env, hev, -⟩ := hrun her _ (hph' ▸ (hI.live ht).env)
+  exact ⟨env, hev⟩
 
 /-- `data Unit() : Type() { tt() : Unit(); } goal Unit(); qed tt();`, which the checker accepts with its goal
 proved, so the goal clause of `runProgram_sound` is not vacuous. The evaluator is `partial`, which kernel reduction
@@ -255,5 +492,40 @@ def sorrySource : String :=
   (run emptyGoalSource 1).goalProved == some false
 
 #guard Program.holeFree (parse sorrySource 1).1 && (run sorrySource 1).goalProved == some true
+
+/-- A phase 2 program with `sorry` and erased fields whose goal is proved. -/
+def erasedSource : String :=
+  "data Nat() : Type() { Zero() : Nat(); Succ(p : Nat()) : Nat(); }
+  data Le(m : Nat(), n : Nat()) : Type() {
+    LeZero(erased n : Nat()) : Le(Zero(), n);
+    LeSucc(erased m : Nat(), erased n : Nat(), p : Le(m, n)) : Le(Succ(m), Succ(n));
+  }
+  let s = sorry(s : Nat());
+  goal Le(Succ(Zero()), Succ(Succ(Zero())));
+  qed LeSucc(Zero(), Succ(Zero()), LeZero(Succ(Zero())));"
+
+/-- A goal tainted through its type, and a goal after a pattern `let` on `sorry`: neither is proved. -/
+def taintedGoalSource : String :=
+  "data Unit() : Type() { tt() : Unit(); }
+  let e = sorry(e : Unit());
+  data Box(x : Unit()) : Type() { MkBox(x : Unit()) : Box(x); }
+  goal Box(e);
+  qed MkBox(e);"
+
+def taintedScopeSource : String :=
+  "data Unit() : Type() { tt() : Unit(); }
+  let tt() = sorry(u : Unit());
+  goal Unit();
+  qed tt();"
+
+#guard Program.holeFree (parse erasedSource 2).1 && (run erasedSource 2).error.isNone &&
+  (run erasedSource 2).goalProved == some true
+
+#guard [taintedGoalSource, taintedScopeSource].all fun s => [1, 2].all fun ph =>
+  Program.holeFree (parse s ph).1 && (run s ph).error.isNone && (run s ph).qed == "checks" &&
+    (run s ph).goalProved == some false
+
+#guard Program.holeFree (parse emptyGoalSource 2).1 && (run emptyGoalSource 2).error.isNone &&
+  (run emptyGoalSource 2).goalProved == some false
 
 end Pledge
