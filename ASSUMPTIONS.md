@@ -323,66 +323,8 @@ and never renumbered (rule 15); a removed item leaves a gap.
     `many` annotation entry, even when the whole match is in an erased
     position and never runs. `comptime let erased C(...) = e;` is
     rejected, since the run needs the value.
-49. **No type is evaluated** (DECISIONS.md D37). An application of a
-    type constructor written in an expression is left out of what is
-    evaluated, with everything inside it, in every phase, as an erased
-    position is; so every value of type `Type()` is the same
-    placeholder at run time, and `print` shows it as `_`. A call
-    written inside a type therefore never runs.
 50. **`sorry`'s telescope** takes no multiplicities; `sorry(_)` takes
     those of the telescope it stands for.
-51. **`_` for an argument or inside a type** (DECISIONS.md D36). The
-    code reads the allowed positions, and "solved by rules along the
-    lines of Sleight's", as follows. Each point is this log's choice
-    and may be narrower or wider than intended.
-    - *Positions.* An argument counts as erased when its parameter or
-      field is erased, when it is a type constructor's argument in
-      phase 2, or when the application is in an erased position. Its
-      type is `Type()` when its parameter's type, instantiated by the
-      earlier arguments, canonicalizes to `Type()` where the `_` is
-      written. Inside a type means at any depth among the arguments of
-      an application of a type constructor, whether written as a type
-      or as an expression, and a whole binder type or annotation entry
-      (`x : _`). A `_` is not a tuple element and not a whole `is`
-      term.
-    - *Entry.* A `_` gets a fresh entry typed by its parameter.
-      Wherever a result is checked against what its position is given,
-      the two sides are first unified by forcing's equation engine,
-      which here gives a rule only to the entry of a `_` still being
-      solved.
-    - *Where a `_` must be solved.* By the end of the innermost of:
-      the call it is in, after the call's results are checked against
-      what the call is given; a function body, a branch body, a
-      scrutinee, a pattern `let`'s right-hand side, a `print`'s or
-      `qed`'s expression; a tuple `let`; and, for a `_` in a type or
-      `is` term written in a telescope, that term. An application of a
-      value constructor or a type constructor is not such an end: its
-      `_` waits for what surrounds it. A `_` is not solved from inside
-      a branch body or a block's statements that it is not written in.
-    - *Solution.* It must have the parameter's type and satisfy its
-      `is` clause, as a written argument would, and must mention only
-      entries created before the `_`, and no `_` still unsolved. The
-      first of these last two keeps a `_` from being solved to a
-      result of the very call it is an argument of; it also rejects a
-      `_` determined only by a later argument's call result.
-    - *Evaluation.* No `_` is evaluated: `print` shows each as `_`,
-      as it shows an erased field (§16), whatever the `_` is solved
-      to. So a `_` that is not in an erased position is allowed to be
-      solved to a term that mentions erased values. This relies on a
-      value of type `Type()` never being a scrutinee (§4), and on no
-      type being evaluated (item 49).
-    - *Taint* (§12). A `_` solved to a term that mentions a tainted
-      entry taints every result of the call it closes with, and
-      otherwise each result, where it closes, built from it by
-      applications.
-    - *Tuple `let`.* The binders are checked first, the `_` in their
-      annotations left unsolved, and what they give the right-hand
-      side mentions those `_`, which checking its results against them
-      solves, as in Sleight. `_` in place of an annotation (§10) is not
-      allowed on the right-hand side of a `let` with a `_` in a
-      binder's annotation. The solution of a `_` in a binder's
-      annotation is allowed to mention what the right-hand side
-      produces.
 53. **Scope and Expected panels** mark an entry erased when it was
     opened erased or every one of its names was bound erased.
     Interactive mode checks typed text as in an erased position, since
