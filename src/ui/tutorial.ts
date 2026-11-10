@@ -1,4 +1,4 @@
-import { disclaimer, pages } from "../tutorial/pages.ts";
+import { pages } from "../tutorial/pages.ts";
 import { glossary } from "../tutorial/glossary.ts";
 import { h } from "./dom.ts";
 import { linked, marked, repository } from "./links.ts";
@@ -38,7 +38,6 @@ workspace.mount(
   h("button", { type: "button", onclick: () => workspace.replace(
     "Replace your text with the starting text? This cannot be undone.") && workspace.run() }, "Reset your box"),
   [h("div", { class: "about" },
-    h("details", { class: "disclaimer" }, h("summary", {}, "Disclaimer"), h("p", {}, linked(disclaimer))),
     h("details", { class: "glossary" }, h("summary", {}, "Glossary"), h("dl", {}, glossary.map(g => [
       h("dt", {}, marked(g.term)),
       h("dd", {}, marked(g.means), " ", g.elsewhere && ["Elsewhere: ", marked(g.elsewhere), ". "],
