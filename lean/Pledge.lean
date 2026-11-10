@@ -8,3 +8,6 @@ import Pledge.Eval
 import Pledge.EvalTest
 import Pledge.Lexer
 import Pledge.Parser
+import Pledge.Check.Basic
+import Pledge.Check.Expr
+import Pledge.Check.Top
