@@ -17,9 +17,10 @@ def CheckedGoal.given (g : CheckedGoal) : Given := match g.kind with
   | .type t => { wants := [⟨none, some t, none, .many⟩], whole := true, label := some fun _ => "the goal's proof" }
   | .fn ps rs => { wants := (ps ++ rs).map Want.of, whole := true, params := some ps.length }
 
-/-- The state of the top level: the scope, the globals, the functions and the values of the top-level names
-(§11), the number of function groups, the goal and what the `qed` did, and the output so far. -/
+/-- The state of the top level: the phase, the scope, the globals, the functions and the values of the
+top-level names (§11), the number of function groups, the goal and what the `qed` did, and the output so far. -/
 structure TopState where
+  phase : Nat := 1
   sc : Scope
   globals : List Global
   fns : Fns := []
@@ -32,11 +33,12 @@ structure TopState where
   prints : List (Pos × String) := []
   snaps : List Snapshot := []
 
-def TopState.init : TopState := ⟨⟨[⟨.Type, [], .TYPE⟩], [], [], none⟩, [.type "Type" none true], [], [], 0, none,
-  false, false, none, [], []⟩
+def TopState.init (phase : Nat) : TopState :=
+  { phase, sc := { sigs := [⟨.Type, [], .TYPE⟩], Γ := [] }, globals := [.type "Type" none true] }
 
 def TopState.ctx (st : TopState) (inDecl : Bool := false) : Ctx :=
-  { globals := st.globals, decl := if inDecl then some (st.sc.Γ.length, st.sc.names.length) else none }
+  { phase := st.phase, globals := st.globals,
+    decl := if inDecl then some (st.sc.Γ.length, st.sc.names.length) else none }
 
 /-- Evaluates a checked tree at the top level (§11); nothing for a tainted result (§12). -/
 def TopState.eval (st : TopState) (pos : Pos) (tree : Expr) (tainted : Bool) : CheckM (Option Value) :=
@@ -107,6 +109,13 @@ theorem untainted_spread_lt : ∀ ts ns, grows ts ns = true → untainted (sprea
       first | omega | (have := untainted_spread_lt ts ns h; omega)
   | [], _, h | _ :: _, [], h => by simp [grows] at h
 
+/-- Checks each item, keeping the snapshots of those checked before an error. -/
+def checkAll (step : α → CheckM Out) : List α → CheckM (List Out)
+  | [] => pure []
+  | a :: as => do
+    let o ← step a
+    pure (o :: (← keep o.snaps (checkAll step as)))
+
 /-- Re-checks a group's bodies until no further function becomes tainted (§12); the number of untainted
 functions decreases at each round. -/
 def fixTaint (step : List Bool → CheckM (List Out)) (taint : List Bool) : CheckM (List Bool × List Out) := do
@@ -154,9 +163,10 @@ def fnGroup (st : TopState) (fs : List Fn) : CheckM TopState := do
   let (st1, heads) ← fs.foldlM (fun (st, hs) f => do
     let (st, h) ← fnHead names st f
     pure (st, hs ++ [h])) (st0, [])
-  let step (taint : List Bool) : CheckM (List Out) := heads.mapM fun h =>
+  let body (taint : List Bool) (h : FnHead) : CheckM Out :=
     checkExpr { C with globals := setSigs st1.globals heads taint, fn := some h.fn } h.sc
       (some (returnsGiven h)) h.f.body
+  let step (taint : List Bool) : CheckM (List Out) := checkAll (body taint) heads
   let (taint, bodies) ← fixTaint step (heads.map fun _ => false)
   let pad := (heads.map fun h => h.fn.subterms.length).foldr max 0
   let defs := (heads.zip bodies).map fun (h, o) =>
@@ -172,10 +182,13 @@ def Value.headName : Value → String
 /-- A `comptime` pattern `let` (§11): checked as a pattern `let`, its right-hand side evaluated in between. -/
 def comptimeLet (st : TopState) (p : Pos) (m : Option Mult) (pat : Pattern) (rhs : Expr) : CheckM TopState := do
   let C := st.ctx
+  if m == some .erased then failAt p fun _ =>
+    "a `comptime` pattern `let` evaluates its right-hand side (§11), so it cannot be erased (§16)"
   freshAll C st.sc pat.fields
   let o ← checkExpr C st.sc none rhs
+  keep o.snaps do
   let r ← single rhs.pos o.res
-  let fs ← forcings C o.sc r.term rhs.pos [pat] p
+  let fs ← forcings C o.sc r.term rhs.pos [pat] p false
   let v ← st.eval rhs.pos o.tree r.tainted
   if let some v := v then
     if v.headName != pat.ctor.name then failAt rhs.pos fun _ =>
@@ -202,7 +215,8 @@ def qedFnGoal (st : TopState) (ps rs : Telescope) (e : Expr) : CheckM TopState :
       let names := (ps ++ rs).map (·.name.getD "_")
       let shown (tele : Telescope) := match tele[i]? with
         | some b =>
-          code s!"{names.getD i "_"} {if b.is.isSome then "is" else ":"} {st.sc.text (b.is.getD b.type) names}"
+          let m := if b.mult == Mult.erased then "erased " else ""
+          code s!"{m}{names.getD i "_"} {if b.is.isSome then "is" else ":"} {st.sc.text (b.is.getD b.type) names}"
         | none => "missing"
       s!"{code n}'s {if i < k then s!"parameter {i + 1}" else s!"return {i - k + 1}"} is " ++
       s!"{shown (sig.params ++ sig.returns)}, and the goal's is {shown (ps ++ rs)} (binders named as in the goal); " ++
@@ -219,12 +233,11 @@ def topItem (st : TopState) : Top → CheckM TopState
   | .stmt (.patlet p true m pat rhs) => comptimeLet st p m pat rhs
   | .stmt s => do
     let o ← checkStmt st.ctx st.sc s
-    let env ← if o.sc.taintedBy.isSome then pure st.env else st.run o.tree
+    let env ← keep o.snaps (if o.sc.taintedBy.isSome then pure st.env else st.run o.tree)
     pure { st with sc := o.sc, env := env, snaps := st.snaps ++ o.snaps }
   | .print p e => do
-    let o ← checkExpr st.ctx st.sc none e
-    let r ← single e.pos o.res
-    let v ← st.eval p o.tree r.tainted
+    let o ← checkExpr { st.ctx with place := "the expression of a `print`" } st.sc none e
+    let v ← keep o.snaps do st.eval p o.tree (← single e.pos o.res).tainted
     let prints := st.prints ++ [(p, (v.map showValue).getD "sorry")]
     pure { st with sc := o.sc, prints := prints, snaps := st.snaps ++ o.snaps }
   | .goal p g => do
@@ -250,7 +263,7 @@ def topItem (st : TopState) : Top → CheckM TopState
             "`goal fn (...) -> (...);`; this goal is a type"
         let o ← checkExpr st.ctx st.sc (some goal.given) e
         let tainted := o.res.any (·.tainted)
-        let _ ← st.eval p o.tree tainted
+        let _ ← keep o.snaps (st.eval p o.tree tainted)
         pure { st with sc := o.sc, proved := !tainted, snaps := st.snaps ++ o.snaps }
     pure { st with qedChecks := true, proved := st.proved && st.sc.taintedBy.isNone && !goal.tainted }
 
@@ -259,17 +272,7 @@ def topItems (st : TopState) : List Top → TopState × Option (CheckError × To
   | [] => (st, none)
   | t :: ts => match topItem st t with
     | .ok st => topItems st ts
-    | .error e => (st, some (e, t))
-
-mutual
-  def Term.entries : Term → List Nat
-    | .entry i => [i]
-    | .bound _ => []
-    | .app _ as => Term.entriesList as
-  def Term.entriesList : List Term → List Nat
-    | [] => []
-    | a :: as => a.entries ++ Term.entriesList as
-end
+    | .error e => ({ st with snaps := st.snaps ++ e.snaps }, some (e, t))
 
 /-- The `inspect;` text (§13): Expected, Termination and Scope. -/
 def Snapshot.render (s : Snapshot) : String :=
@@ -325,9 +328,9 @@ structure Outcome where
 
 /-- Checks and evaluates a parsed program; `has` says whether the source contains a keyword, and `syntaxError`
 is the parser's error, if any. -/
-def runProgram (prog : Program) (has : String → Bool := fun _ => false)
+def runProgram (phase : Nat) (prog : Program) (has : String → Bool := fun _ => false)
     (syntaxError : Option (Pos × String) := none) : Outcome :=
-  let (st, failed) := topItems .init prog
+  let (st, failed) := topItems (.init phase) prog
   let error := (failed.map fun (e, _) => (e.pos, e.msg ())).orElse fun _ => syntaxError
   let qed := if !has "qed" then "none"
     else if failed.any fun (_, t) => t matches .qed .. then "fails"
@@ -336,11 +339,9 @@ def runProgram (prog : Program) (has : String → Bool := fun _ => false)
     goalProved := if has "goal" then some (error.isNone && st.proved) else none, containsSorry := has "sorry",
     sigs := st.sc.sigs, entries := st.sc.Γ, fns := st.fns, env := st.env, goal := st.goal, qedFn := st.qedFn }
 
-/-- Parses, checks and evaluates a program under a phase; phase 2 is not supported yet. -/
+/-- Parses, checks and evaluates a program under a phase. -/
 def run (source : String) (phase : Nat) : Outcome :=
-  if phase ≠ 1 then { runProgram [] with error := some (0, "phase 2 is not supported yet by this checker") }
-  else
-    let (prog, err) := parse source phase
-    runProgram prog (hasKeyword source phase) err
+  let (prog, err) := parse source phase
+  runProgram phase prog (hasKeyword source phase) err
 
 end Pledge

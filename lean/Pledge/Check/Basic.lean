@@ -3,19 +3,6 @@ import Pledge.Eval
 
 namespace Pledge
 
-/-- A checking error: where it is, and its message, built only when it is reported. -/
-structure CheckError where
-  pos : Pos
-  msg : Unit → String
-
-abbrev CheckM := Except CheckError
-
-def failAt (pos : Pos) (msg : Unit → String) : CheckM α := throw ⟨pos, msg⟩
-
-/-- An error that is meant to be unreachable; the program is rejected. -/
-def internal (pos : Pos) (what : String) : CheckM α :=
-  failAt pos fun _ => s!"internal: {what}; the checker rejects the program"
-
 def code (s : String) : String := "`" ++ s ++ "`"
 
 def plural (n : Nat) (what : String) : String := s!"{n} {what}{if n = 1 then "" else "s"}"
@@ -24,9 +11,6 @@ def are (n : Nat) (what : String) : String := s!"{plural n what} {if n = 1 then 
 
 def labelled (role : String) (name : Option String) (i : Nat) (owner : Option String := none) : String :=
   s!"{role} {(name.map code).getD (toString (i + 1))}" ++ owner.elim "" (s!" of {code ·}")
-
-def miscount (pos : Pos) (want : Nat) (got : String) : CheckM α :=
-  failAt pos fun _ => s!"{are want "value"} expected here, and this {got} (§8)"
 
 def Stmt.pos : Stmt → Pos
   | .let p .. | .patlet p .. | .inspect p => p
@@ -39,26 +23,50 @@ def Expr.pos : Expr → Pos
   | .block [] f => f.pos
   | .removed => 0
 
+/-- A match with no branches, possibly the final expression of a block (§16). -/
+def Expr.absurd : Expr → Bool
+  | .match _ _ _ _ [] => true
+  | .block _ f => f.absurd
+  | _ => false
+
 def WTerm.pos : WTerm → Pos
   | .var n | .app n _ => n.pos
 
 def Arg.mark : Arg → Option Mark
   | .mk m _ => m
 
-/-- A result of an expression (§8, §12): its term, and whether it is tainted or erased. -/
+mutual
+  def Term.entries : Term → List Nat
+    | .entry i => [i]
+    | .bound _ => []
+    | .app _ as => Term.entriesList as
+  def Term.entriesList : List Term → List Nat
+    | [] => []
+    | a :: as => a.entries ++ Term.entriesList as
+end
+
+/-- A result of an expression (§8, §12, §16): its term, and whether it is tainted or erased. -/
 structure Res where
   term : Term
   tainted : Bool := false
   erased : Bool := false
   deriving Inhabited
 
+/-- A `_` argument still being solved (§16): its entry, where it is written, and its parameter's `is` term. -/
+structure Hole where
+  id : Nat
+  pos : Pos
+  is : Option Term
+
 /-- What the checker knows at a position (§7): signatures, entries with their rules, the names in scope (newest
-first, each bound to a result), and the scrutinee position whose taint reached this scope, if any (§12). -/
+first, each bound to a result whose `erased` says whether the name was bound erased), the scrutinee position whose
+taint reached this scope, if any (§12), and the `_` arguments of the enclosing applications still being solved. -/
 structure Scope where
   sigs : Sigs
   Γ : Entries
   names : List (String × Res) := []
   taintedBy : Option Pos := none
+  holes : List Hole := []
 
 def Scope.lookup (sc : Scope) (n : String) : Option Res := List.lookup n sc.names
 
@@ -68,6 +76,10 @@ def Scope.bind (sc : Scope) : List Id → List Res → Scope
 
 def Scope.nameOf (sc : Scope) (i : Nat) : Option String :=
   (sc.names.reverse.find? (·.2.term == .entry i)).map (·.1)
+
+def Scope.erasedEntry (sc : Scope) : Term → Bool
+  | .entry i => (sc.Γ[i]?).any (·.erased)
+  | _ => false
 
 /-- Entries labelled for display: by name where they have one, otherwise by their origin. -/
 def Scope.labels (sc : Scope) (Γ : Entries) : Entries :=
@@ -90,15 +102,13 @@ def Scope.text (sc : Scope) (t : Term) (bound : List String := []) : String :=
 
 def Scope.disp (sc : Scope) (t : Term) (bound : List String := []) : String := code (sc.text t bound)
 
-def Scope.typeOf (sc : Scope) (pos : Pos) (t : Term) : CheckM Term :=
-  match Pledge.typeOf sc.sigs sc.Γ t with
-  | some ty => pure ty
-  | none => internal pos "a term has no type"
+/-- Appends the fresh erased entry of a `_` argument (§16) and records it as a hole. -/
+def Scope.addHole (sc : Scope) (type : Term) (is : Option Term) (pos : Pos) : Scope × Nat :=
+  let en : Entry := { type, origin := s!"_@{pos}", erased := true }
+  ({ sc with Γ := sc.Γ ++ [en], holes := sc.holes ++ [⟨sc.Γ.length, pos, is⟩] }, sc.Γ.length)
 
-def Scope.sig (sc : Scope) (pos : Pos) (h : Head) : CheckM Sig :=
-  match sc.sigs.find h with
-  | some s => pure s
-  | none => internal pos s!"{h.name} has no signature"
+def markTainted (Γ : Entries) (rs : List Res) : Entries :=
+  Γ.mapIdx fun i en => if rs.any (·.term == .entry i) then { en with tainted := true } else en
 
 structure FnSig where
   params : Telescope
@@ -135,12 +145,16 @@ structure FnCtx where
   subterms : List Term
   subtermNames : List String
 
-/-- What an expression is checked under: the globals declared so far, the enclosing function, and, inside a
-declaration, the numbers of entries and names at its start (§13). -/
+/-- What an expression is checked under: the phase, the globals declared so far, the enclosing function,
+whether the position is erased (§16), inside a declaration the numbers of entries and names at its start (§13),
+and how messages name a position given nothing. -/
 structure Ctx where
+  phase : Nat := 1
   globals : List Global
   fn : Option FnCtx := none
+  erased : Bool := false
   decl : Option (Nat × Nat) := none
+  place : String := "this position"
 
 def Ctx.global (C : Ctx) (n : String) : Option Global := C.globals.find? (·.name == n)
 
@@ -163,12 +177,58 @@ structure Given where
   params : Option Nat := none
   label : Option (Nat → String) := none
 
+def Given.erase (g : Given) : Given := { g with wants := g.wants.map ({ · with mult := .erased }) }
+
+def Given.erasedAt (g : Given) (i : Nat) : Bool := (g.wants[i]?).any (·.mult == .erased)
+
+/-- Every entry is erased, and there is one (§16). -/
+def Given.allErased (g : Given) : Bool := g.wants.any (·.mult == .erased) && g.wants.all (·.mult == .erased)
+
+/-- The type and `is` terms of each entry, instantiated by the results before it. -/
+def Given.terms (g : Given) (rs : List Res) : List Term :=
+  (List.range g.wants.length).flatMap fun i =>
+    let env := g.env ++ (rs.take i).map (·.term)
+    ((g.wants[i]?).map fun w => (w.type.toList ++ w.is.toList).map (·.subst env)).getD []
+
 structure Snapshot where
   pos : Pos
   sc : Scope
   given : Option Given
   fn : Option FnCtx
   decl : Option (Nat × Nat)
+
+/-- A checking error: where it is, its message, built only when it is reported, and the `inspect;` snapshots
+met before it in the statement where it occurs. -/
+structure CheckError where
+  pos : Pos
+  msg : Unit → String
+  snaps : List Snapshot := []
+
+abbrev CheckM := Except CheckError
+
+def failAt (pos : Pos) (msg : Unit → String) : CheckM α := throw { pos, msg }
+
+/-- An error that is meant to be unreachable; the program is rejected. -/
+def internal (pos : Pos) (what : String) : CheckM α :=
+  failAt pos fun _ => s!"internal: {what}; the checker rejects the program"
+
+/-- Keeps the snapshots met so far on an error. -/
+def keep (snaps : List Snapshot) : CheckM α → CheckM α
+  | .ok a => .ok a
+  | .error e => .error { e with snaps := snaps ++ e.snaps }
+
+def miscount (pos : Pos) (want : Nat) (got : String) : CheckM α :=
+  failAt pos fun _ => s!"{are want "value"} expected here, and this {got} (§8)"
+
+def Scope.typeOf (sc : Scope) (pos : Pos) (t : Term) : CheckM Term :=
+  match Pledge.typeOf sc.sigs sc.Γ t with
+  | some ty => pure ty
+  | none => internal pos "a term has no type"
+
+def Scope.sig (sc : Scope) (pos : Pos) (h : Head) : CheckM Sig :=
+  match sc.sigs.find h with
+  | some s => pure s
+  | none => internal pos s!"{h.name} has no signature"
 
 /-- What checking an expression produces: the scope after it, its results, the tree to evaluate (§14) and the
 `inspect;` snapshots met. -/
@@ -182,38 +242,112 @@ def single (pos : Pos) : List Res → CheckM Res
   | [r] => pure r
   | rs => miscount pos 1 s!"produces {rs.length}"
 
-/-- Taint from a tainted scope, and removal of an expression whose results are all tainted (§12). -/
-def wrap (o : Out) : Out :=
+/-- After an expression is checked (§12, §16): taint from a tainted scope, the rule that an erased result is
+only in an erased position, and removal of an expression that is wholly erased or whose results are all tainted. -/
+def finish (C : Ctx) (whole : Bool) (g : Option Given) (e : Expr) (o : Out) : CheckM Out := do
   let res := if o.sc.taintedBy.isSome then o.res.map ({ · with tainted := true }) else o.res
-  { o with res, tree := if res.all (·.tainted) then .removed else o.tree }
+  unless whole do
+    if let some i := (List.range res.length).find? fun i => (res[i]?).any (·.erased) && !g.any (·.erasedAt i) then
+      failAt e.pos fun _ =>
+        let what := match e with
+          | .var ⟨some n, _⟩ => code n
+          | _ => if res.length = 1 then "this value" else s!"value {i + 1} of this"
+        let place : String := match g.map Given.label with
+          | some (some l) => l i
+          | some none => "this position"
+          | none => C.place
+        s!"{what} is erased, and {place} is not; an erased value " ++
+        "is allowed only in an erased position: a type, an argument for an erased parameter or field, " ++
+        "or the result for an erased return or binder (§16)"
+  pure { o with res, tree := if whole || res.all (·.tainted) then .removed else o.tree }
+
+/-- Solves `_` arguments from an equation (§16), only their entries taking rules; nothing when there are none. -/
+def solveHoles (sc : Scope) (lhs rhs : Term) (pos : Pos) : CheckM Scope :=
+  match sc.holes with
+  | [] => pure sc
+  | holes =>
+    match unify sc.sigs sc.Γ lhs rhs (fun i => holes.any (·.id == i)) with
+    | .error msg => internal pos msg
+    | .ok (Γ, stuck) =>
+      let now := { sc with Γ }
+      match stuck.bind fun (a, b) => (holes.find? fun h => a.occurs h.id || b.occurs h.id).map (a, b, ·) with
+      | some (a, b, h) => failAt h.pos fun _ =>
+        s!"this `_` cannot be inferred: it would need {now.disp a} and {now.disp b} to be equal, " ++
+        "and this checker solves a `_` only by giving a rule to its own entry"
+      | none => pure now
 
 /-- Checks results against what the position is given (§8): each entry is instantiated to its result's term. -/
-def against (sc : Scope) (g : Given) (pos : Pos) (rs : List Res) : CheckM Unit := do
+def against (sc : Scope) (g : Given) (pos : Pos) (rs : List Res) : CheckM Scope := do
   if rs.length ≠ g.wants.length then miscount pos g.wants.length s!"produces {rs.length}"
-  go [] g.wants rs
+  go sc [] g.wants rs
 where
-  go (prev : List Term) : List Want → List Res → CheckM Unit
+  go (sc : Scope) (prev : List Term) : List Want → List Res → CheckM Scope
     | w :: ws, r :: rs => do
       let i := prev.length
       let env := g.env ++ prev
       let what (_ : Unit) := (g.label.map (· i)).getD <| match w.name with
         | some x => code x
         | none => if g.wants.length = 1 then "the value expected here" else s!"value {i + 1}"
-      if let some ty := w.type then
-        let ty := ty.subst env
-        let has ← sc.typeOf pos r.term
+      let has ← sc.typeOf pos r.term
+      let ty := w.type.map (·.subst env)
+      let is := w.is.map (·.subst env)
+      let sc ← match ty with
+        | some ty => solveHoles sc ty has pos
+        | none => pure sc
+      let sc ← match is with
+        | some e => solveHoles sc e r.term pos
+        | none => pure sc
+      if let some ty := ty then
         unless identical sc.Γ ty has do
           failAt pos fun _ => s!"{what ()} must have type {sc.disp ty}, and this has type {sc.disp has}"
-      if let some e := w.is then
-        let e := e.subst env
+      if let some e := is then
         unless identical sc.Γ e r.term do
           failAt pos fun _ => s!"{what ()} must be {sc.disp e}, and this is {sc.disp r.term}"
-      go (prev ++ [r.term]) ws rs
-    | _, _ => pure ()
+      go sc (prev ++ [r.term]) ws rs
+    | _, _ => pure sc
 
 def produced (sc : Scope) (g : Option Given) (pos : Pos) (rs : List Res) (tree : Expr) : CheckM Out := do
-  if let some g := g then against sc g pos rs
+  let sc ← match g with
+    | some g => against sc g pos rs
+    | none => pure sc
   pure ⟨sc, rs, tree, []⟩
+
+/-- At the end of an application, checks the `_` arguments created since `since` (§16), unless what the position
+is given mentions an enclosing application's `_`, which then solves them; says whether a solution mentions a
+tainted entry (§12). Nothing happens when there are none. -/
+def settle (sc : Scope) (g : Option Given) (rs : List Res) (since : Nat) : CheckM (Scope × Bool) :=
+  match sc.holes.drop since with
+  | [] => pure (sc, false)
+  | mine => do
+    let outer := sc.holes.take since
+    let among (hs : List Hole) (t : Term) : Bool := (t.canon sc.Γ).entries.any fun x => hs.any (·.id == x)
+    if !outer.isEmpty && ((g.map (·.terms rs)).getD []).any (among outer) then return (sc, false)
+    let values ← mine.mapM fun h => do
+      let value := (Term.entry h.id).canon sc.Γ
+      if among sc.holes value then failAt h.pos fun _ =>
+        "this `_` cannot be inferred: this checker solves a `_` only from the other arguments " ++
+        "and what the position is given, and these do not determine it"
+      if value.entries.any (· > h.id) then failAt h.pos fun _ =>
+        s!"this `_` would be {sc.disp value}, which mentions what is produced only after it, " ++
+        "such as a result of the call it is an argument of, and this checker solves a `_` only to what exists before it"
+      let some en := sc.Γ[h.id]? | internal h.pos "a `_` has no entry"
+      let has ← sc.typeOf h.pos value
+      unless identical sc.Γ en.type has do failAt h.pos fun _ =>
+        s!"this `_` would be {sc.disp value}, of type {sc.disp has}, and it must have type {sc.disp en.type}"
+      if let some e := h.is then
+        unless identical sc.Γ e value do failAt h.pos fun _ =>
+          s!"this `_` must be {sc.disp e}, and it would be {sc.disp value}"
+      pure value
+    pure ({ sc with holes := outer }, values.any fun v => v.entries.any fun x => (sc.Γ[x]?).any (·.tainted))
+
+/-- Results of an application (§8): checked against what the position is given, then its `_` arguments settled;
+a `_` solved to a term that mentions a tainted entry taints the results (§12). -/
+def applied (sc : Scope) (g : Option Given) (pos : Pos) (rs : List Res) (tree : Expr) (since : Nat)
+    (snaps : List Snapshot) : CheckM Out := keep snaps do
+  let o ← produced sc g pos rs tree
+  let (sc, tainted) ← settle o.sc g rs since
+  if tainted then pure ⟨{ sc with Γ := markTainted sc.Γ rs }, rs.map ({ · with tainted := true }), tree, snaps⟩
+  else pure ⟨sc, rs, tree, snaps⟩
 
 /-- Opens a telescope to fresh entries, each a result (§3). -/
 def opened (sc : Scope) (tele : Telescope) (env : List Term) (kind : String) (pos : Pos) (tainted : Nat → Bool) :
@@ -267,6 +401,7 @@ def notApplied (sc : Scope) (h : Name) : CheckM α := failAt h.pos fun _ => if (
   else s!"{code h.name} is not in scope"
 
 mutual
+  /-- A skeleton term (§3), checked with no `_` argument to solve. -/
   def checkTerm (C : Ctx) (sc : Scope) : WTerm → CheckM Res
     | .var x => match sc.lookup x.name with
       | some r => pure { r with tainted := r.tainted || sc.taintedBy.isSome }
@@ -290,7 +425,7 @@ mutual
         let r ← checkTerm C sc a
         let i := prev.length
         let label := some fun _ => labelled role p.name i owner
-        against sc { wants := [Want.of p], env := prev.map (·.term), label } a.pos [r]
+        let _ ← against { sc with holes := [] } { wants := [Want.of p], env := prev.map (·.term), label } a.pos [r]
         return r :: (← checkTerms C sc owner role ps (prev ++ [r]) as)
       | [] => internal a.pos "an argument has no parameter"
 end
@@ -324,7 +459,7 @@ def opening (C : Ctx) (sc : Scope) (name : Id) (ann : Ann) (mult : Option Mult) 
   let o := openTele sc.Γ [⟨name.name, type, is, mult.getD .many⟩] [] fun _ _ en =>
     { en with origin := s!"{kind}@{name.pos}" }
   let id := sc.Γ.length
-  pure ⟨Scope.bind { sc with Γ := o.Γ } [name] [⟨.entry id, false, mult == some Mult.erased⟩], id, type, is, tainted⟩
+  pure ⟨Scope.bind { sc with Γ := o.Γ } [name] [⟨.entry id, false, false⟩], id, type, is, tainted⟩
 
 def abstracted (Γ : Entries) (name : Option String) (mult : Option Mult) (pos : Pos) (type : Term)
     (is : Option Term) (ids : List Nat) : CheckM TBinder := do
@@ -359,7 +494,8 @@ def header (C : Ctx) (sc : Scope) (h : Header) : CheckM (Checked × Checked) := 
   let ps ← telescope C sc (h.params.map (·.binder)) "param"
   pure (ps, ← telescope C ps.sc h.returns "binder" ps.ids)
 
-/-- The telescope a `match` annotation or `sorry` stands for, and its outer environment (§10, §12). -/
+/-- The telescope a `match` annotation or `sorry` stands for, and its outer environment (§10, §12); `_` takes
+the given telescope with its multiplicities (§16). -/
 def annotation (C : Ctx) (sc : Scope) (g : Option Given) : Tele → CheckM (Telescope × List Term)
   | .binders bs => do pure ((← telescope C sc bs "binder").tele, [])
   | .hole p => match g with
@@ -473,8 +609,9 @@ def dataCtors (C : Ctx) (sc : Scope) (t : Term) (pos : Pos) : CheckM (List (Stri
     | _ => failAt pos notData
   | _ => failAt pos notData
 
-/-- Forces every value constructor of the scrutinee's data type (§7, §10), after checking the patterns. -/
-def forcings (C : Ctx) (sc : Scope) (t : Term) (scrutPos : Pos) (pats : List Pattern) (at_ : Pos) :
+/-- Forces every value constructor of the scrutinee's data type (§7, §10), after checking the patterns; under an
+erased match or pattern `let`, every field's entry is erased (§16). -/
+def forcings (C : Ctx) (sc : Scope) (t : Term) (scrutPos : Pos) (pats : List Pattern) (at_ : Pos) (erased : Bool) :
     CheckM (List Forcing) := do
   let ctors ← dataCtors C sc t scrutPos
   let _ ← pats.foldlM (init := ([] : List String)) fun seen p => do
@@ -489,7 +626,7 @@ def forcings (C : Ctx) (sc : Scope) (t : Term) (scrutPos : Pos) (pats : List Pat
     let pat := pats.find? (·.ctor.name == n)
     let forced := force sc.sigs sc.Γ t sig fun b i en =>
       let pos := ((pat.bind (·.fields[i]?)).map (·.pos)).getD at_
-      { en with origin := s!"{n}.{b.name.getD (toString (i + 1))}@{pos}" }
+      { en with origin := s!"{n}.{b.name.getD (toString (i + 1))}@{pos}", erased := en.erased || erased }
     match forced with
     | .stuck msg => internal scrutPos msg
     | _ => pure ⟨n, forced, pat⟩
@@ -505,8 +642,7 @@ def survivor (sc : Scope) (fs : List Forcing) (n : String) (pos : Pos) (conseque
   | some ⟨_, .stuck msg, _⟩ => internal pos msg
   | none => internal pos s!"{n} was not forced"
 
-def fieldRes (Γ : Entries) (ids : List Nat) : List Res :=
-  ids.map fun id => ⟨.entry id, false, ((Γ[id]?).map (·.erased)).getD false⟩
+def fieldRes (ids : List Nat) : List Res := ids.map fun id => ⟨.entry id, false, false⟩
 
 def reach (sc : Scope) (r : Res) (pos : Pos) : Option Pos :=
   sc.taintedBy.orElse fun _ => if r.tainted then some pos else none
@@ -519,6 +655,6 @@ def patBind (sc : Scope) (r : Res) (rhsPos : Pos) (comptime : Bool) (pat : Patte
     if let some other := fs.find? fun f => f.name != pat.ctor.name && f.forced matches .ok .. then
       failAt pat.ctor.pos fun _ => s!"{code other.name} is not refuted here, " ++
         "and exactly one value constructor must survive forcing at a pattern `let` (§10)"
-  pure (Scope.bind { sc with Γ, taintedBy := reach sc r rhsPos } pat.fields (fieldRes Γ ids))
+  pure (Scope.bind { sc with Γ, taintedBy := reach sc r rhsPos } pat.fields (fieldRes ids))
 
 end Pledge
