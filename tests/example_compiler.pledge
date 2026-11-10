@@ -1,0 +1,114 @@
+data Nat() : Type() {
+  Zero() : Nat();
+  Succ(pred : Nat()) : Nat();
+}
+
+data Plus(m : Nat(), n : Nat(), r : Nat()) : Type() {
+  PlusZero(erased n : Nat()) : Plus(Zero(), n, n);
+  PlusSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(), p : Plus(m, n, r)) : Plus(Succ(m), n, Succ(r));
+}
+
+fn plus(subterm m : Nat(), n : Nat()) -> (r : Nat(), erased p : Plus(m, n, r)) {
+  match m : _ {
+    Zero() => (n, PlusZero(_));
+    Succ(k) => {
+      let (r, erased p) = plus(subterm k, n);
+      (Succ(r), PlusSucc(_, _, _, p))
+    };
+  }
+}
+
+data Expr() : Type() {
+  Lit(n : Nat()) : Expr();
+  Add(a : Expr(), b : Expr()) : Expr();
+}
+
+data Eval(e : Expr(), n : Nat()) : Type() {
+  EvalLit(erased n : Nat()) : Eval(Lit(n), n);
+  EvalAdd(erased a : Expr(), erased b : Expr(), erased m : Nat(), erased n : Nat(), erased r : Nat(),
+      pa : Eval(a, m), pb : Eval(b, n), p : Plus(m, n, r)) : Eval(Add(a, b), r);
+}
+
+fn eval(subterm e : Expr()) -> (n : Nat(), erased p : Eval(e, n)) {
+  match e : _ {
+    Lit(n) => (n, EvalLit(_));
+    Add(a, b) => {
+      let (m, erased pa) = eval(subterm a);
+      let (n, erased pb) = eval(subterm b);
+      let (r, erased p) = plus(m, n);
+      (r, EvalAdd(_, _, _, _, _, pa, pb, p))
+    };
+  }
+}
+
+data Stack(d : Nat()) : Type() {
+  SNil() : Stack(Zero());
+  SCons(erased d : Nat(), x : Nat(), rest : Stack(d)) : Stack(Succ(d));
+}
+
+data Code(i : Nat(), j : Nat()) : Type() {
+  HALT(erased d : Nat()) : Code(d, d);
+  PUSH(erased d : Nat(), erased j : Nat(), n : Nat(), c : Code(Succ(d), j)) : Code(d, j);
+  ADD(erased d : Nat(), erased j : Nat(), c : Code(Succ(d), j)) : Code(Succ(Succ(d)), j);
+}
+
+data Exec(i : Nat(), j : Nat(), c : Code(i, j), s : Stack(i), t : Stack(j)) : Type() {
+  ExecHalt(erased d : Nat(), erased s : Stack(d)) : Exec(d, d, HALT(d), s, s);
+  ExecPush(erased d : Nat(), erased j : Nat(), erased n : Nat(), erased c : Code(Succ(d), j), erased s : Stack(d),
+      erased t : Stack(j), x : Exec(Succ(d), j, c, SCons(d, n, s), t)) : Exec(d, j, PUSH(d, j, n, c), s, t);
+  ExecAdd(erased d : Nat(), erased j : Nat(), erased c : Code(Succ(d), j), erased m : Nat(), erased n : Nat(),
+      erased r : Nat(), erased s : Stack(d), erased t : Stack(j), p : Plus(m, n, r),
+      x : Exec(Succ(d), j, c, SCons(d, r, s), t))
+    : Exec(Succ(Succ(d)), j, ADD(d, j, c), SCons(Succ(d), n, SCons(d, m, s)), t);
+}
+
+fn exec(erased i : Nat(), erased j : Nat(), subterm c : Code(i, j), s : Stack(i))
+    -> (t : Stack(j), erased x : Exec(i, j, c, s, t)) {
+  match c : _ {
+    HALT(_) => (s, ExecHalt(_, _));
+    PUSH(_, _, n, c1) => {
+      let (t, erased x) = exec(_, _, subterm c1, SCons(_, n, s));
+      (t, ExecPush(_, _, _, _, _, _, x))
+    };
+    ADD(_, _, c1) => {
+      let SCons(_, n, s1) = s;
+      let SCons(_, m, s2) = s1;
+      let (r, erased p) = plus(m, n);
+      let (t, erased x) = exec(_, _, subterm c1, SCons(_, r, s2));
+      (t, ExecAdd(_, _, _, _, _, _, _, _, p, x))
+    };
+  }
+}
+
+fn compile(subterm e : Expr(), erased n : Nat(), erased pe : Eval(e, n), erased d : Nat(), erased j : Nat(),
+    c : Code(Succ(d), j), erased s : Stack(d), erased t : Stack(j), erased x : Exec(Succ(d), j, c, SCons(d, n, s), t))
+    -> (k : Code(d, j), erased y : Exec(d, j, k, s, t)) {
+  match e : _ {
+    Lit(v) => match erased pe : _ {
+      EvalLit(_) => (PUSH(_, _, v, c), ExecPush(_, _, _, _, _, _, x));
+    };
+    Add(a, b) => {
+      let erased EvalAdd(_, _, m, n2, _, pa, pb, p) = pe;
+      let (kb, erased yb) = compile(subterm b, _, pb, _, _, ADD(_, _, c), SCons(_, m, s), _,
+        ExecAdd(_, _, _, _, _, _, _, _, p, x));
+      compile(subterm a, _, pa, _, _, kb, _, _, yb)
+    };
+  }
+}
+
+fn compileTop(e : Expr(), erased n : Nat(), erased pe : Eval(e, n), erased d : Nat(), erased s : Stack(d))
+    -> (k : Code(d, Succ(d)), erased y : Exec(d, Succ(d), k, s, SCons(d, n, s))) {
+  compile(e, _, pe, _, _, HALT(_), _, _, ExecHalt(_, _))
+}
+
+goal fn (e : Expr(), erased n : Nat(), erased pe : Eval(e, n), erased d : Nat(), erased s : Stack(d))
+    -> (k : Code(d, Succ(d)), erased y : Exec(d, Succ(d), k, s, SCons(d, n, s)));
+qed compileTop;
+
+let e = Add(Lit(Succ(Succ(Zero()))), Add(Lit(Succ(Zero())), Lit(Succ(Succ(Succ(Zero()))))));
+let (n, erased pe) = eval(e);
+print n;
+let (k, erased y) = compileTop(e, _, pe, _, SNil());
+print k;
+let (t, erased x) = exec(_, _, k, SNil());
+print t;
