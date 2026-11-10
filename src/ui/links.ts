@@ -9,7 +9,7 @@ export const sections = [
   "16-later-phases", "17-review-status", "18-keywords", "19-grammar",
 ];
 
-export const cited = /(§\d+|\b(?:DESIGN|SOUNDNESS)\.md)/;
+export const cited = /(§\d+|\b(?:DESIGN|SOUNDNESS|ASSUMPTIONS)\.md)/;
 
 export const citationUrl = (citation: string): string | null => {
   if (!citation.startsWith("§")) return repo + citation;

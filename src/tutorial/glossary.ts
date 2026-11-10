@@ -26,7 +26,7 @@ export const glossary: Term[] = [
   { term: "goal, `qed`", at: "equality", means: "`goal T;` states the type the program sets out to give a value of. `qed e;` offers `e` as that value." },
   { term: "`sorry`", at: "sorry", means: "A stand-in for something not written yet. It produces values of whatever types you write, with nothing behind them." },
   { term: "taint", at: "sorry", means: "The checker's record of what relies on a `sorry`. A tainted result is not evaluated and proves no goal." },
-  { term: "function goal", at: "plus-zero", means: "A goal that is a function's parameters and returns. This tutorial reads it as \"for every such input there are such outputs\". `qed f;` names a function whose parameters and returns match it." },
+  { term: "function goal", at: "plus-zero", means: "A goal that is a function's parameters and returns. Read it as \"for every such input there are such outputs\". `qed f;` names a function whose parameters and returns match it." },
   { term: "skeleton term", at: "plus-zero", means: "DESIGN.md's word for a term with no function call in it: names, and applications of type constructors and value constructors. Every type is one." },
   { term: "`comptime`", at: "comptime", means: "Written on a top-level pattern `let`: the right-hand side is evaluated during checking, and the run, not forcing, rules out the other value constructors." },
   { term: "phase", at: "erased", means: "Pledge's features come in phases, each adding to the one before. Phase 2 adds erasure." },

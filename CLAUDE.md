@@ -14,6 +14,12 @@ by the owner and apply to every session.
    wrong, and unhedged claims compound when read by future Claude sessions.
    Confident prose is fine in chat with the owner if it helps move things
    along, but even there, defaulting to the same hedging habit is safest.
+   The tutorial's pages and glossary are exempt: they are written for
+   learners, and their prose is confident, about soundness too. Every
+   hedge they would need goes in the tutorial's disclaimer instead,
+   which the reader can leave closed; if one page needs a hedge of its
+   own, the disclaimer shows it on that page. A claim there is still
+   checked first where it can be (rule 2, DESIGN.md).
 
 2. **Compile a claim rather than arguing it, when reasonable.** Prefer
    `npm run typecheck`, `npm test`, or running Pledge's checker on a

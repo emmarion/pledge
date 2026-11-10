@@ -211,7 +211,7 @@ and never renumbered (rule 15); a removed item leaves a gap.
     returns the result's length and a `Plus` value with the vector.
 29. **Names.** `Bool`'s value constructors are `True` and `False`, and
     the empty type on a later page is also `False`; they never share a
-    program. The solution of the page "Why Pledge appears sound" uses
+    program. The solution of the page "Soundness" uses
     `sorry` deliberately, so its goal stays unproved.
 59. **The arithmetic pages** state everything relationally: `Plus(m,
     n, r)` as on the proof-by-recursion page, and `Times(m, n, r)`

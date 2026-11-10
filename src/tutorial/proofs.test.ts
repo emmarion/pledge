@@ -96,7 +96,8 @@ test("equality: two in the goal canonicalizes to Succ(Succ(Zero())) in two rewri
   assert.equal(explained?.rewrites.length, 2);
 });
 
-test("soundness: marking n subterm does not help loop, and sorry leaves the goal unproved", () => {
+test("soundness: marking n subterm does not help loop, a match with no branches is rejected, and sorry leaves the goal unproved", () => {
+  assert.match(run("soundness", page("soundness").initial.replace("loop(n)", "match n : _ {}")).r.error?.message() ?? "", /no branch for `Zero`, `Succ`/);
   const marked = page("soundness").initial.replace("loop(n : Nat())", "loop(subterm n : Nat())").replace("loop(n)", "loop(subterm n)");
   assert.match(run("soundness", marked).r.error?.message() ?? "", /not a strict subterm/);
   assert.deepEqual(verdicts(run("soundness", page("soundness").solution).r), [true, true, false]);
