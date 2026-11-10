@@ -37,8 +37,8 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
 - `src/position.ts`: line and column of an offset, and the box, line
   and column of an offset into several texts joined by newlines.
 - `src/context.ts`: shared checker state, the first-error exception,
-  the snapshots behind §13 and the record of what each name occurrence
-  refers to.
+  the snapshots behind §13, the record of what each name occurrence
+  refers to, and the spans of erased code the editor sets in italics.
 - `src/expr.ts`: expressions, statements, telescopes, what a position
   is given (§8), `match` and pattern `let` (§10), the §9 marks,
   per-result taint and erasure (§12, §16), `_` arguments, and the tree

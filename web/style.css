@@ -236,6 +236,7 @@ header.top h1 a { color: inherit; text-decoration: none; }
 .hl-ctor { color: var(--hl-ctor); }
 .hl-fn { color: var(--hl-fn); }
 .hl-punct, .hl-hole, .hl-comment { color: var(--hl-quiet); }
+.hl-erased:not(.hl-comment) { font-style: italic; }
 .hl-lex-error { color: var(--bad); background: var(--mark); border-radius: 2px; }
 .hl-error {
   text-decoration: underline wavy var(--bad);
@@ -369,7 +370,7 @@ ul.entries ul { list-style: none; padding-left: 16px; margin: 2px 0; }
 .binding, .global { padding: 2px 0; overflow-wrap: anywhere; }
 .binding { font-family: var(--mono); font-size: 14px; }
 .binding .name, .global .name { font-weight: 600; }
-.binding .tag { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+.binding .tag, .hover-tip .tag { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .kind { font-size: 12px; color: var(--muted); }
 .tag {
   margin-left: 8px;

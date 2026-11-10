@@ -144,7 +144,8 @@ class Program implements Host {
       editor.show(r.error && local(r.error.span), outputs.flatMap(({ span, node }) => {
         const at = local(span);
         return at ? [{ line: lineCol(editor.text, at.start).line, node }] : [];
-      }));
+      }), { spans: r.erased.flatMap(span => local(span) ?? []),
+        keepFrom: r.error ? r.error.span.start - starts(texts)[index]! : Infinity });
     });
     this.status = statusView(r, error, this.members.some(i => this.ws.boxes[i]!.holdsQed
       && !hasKeyword(this.ws.editors[i]!.text, phase, "qed")), this);

@@ -7,7 +7,7 @@ import { force, open, unify } from "./telescope.ts";
 import type { Forced } from "./telescope.ts";
 import { label, render } from "./render.ts";
 import type { RefutationInfo } from "./api.ts";
-import { APP, HOLE, code, describe, fail, labelled, newName, global, occur, plural, point, record,
+import { APP, HOLE, code, describe, erases, fail, labelled, newName, global, occur, plural, point, record,
   written } from "./context.ts";
 import type { Ctx, FnCtx, FnSig, Given, Global, Hole, Local, Result, Snapshot, Want } from "./context.ts";
 
@@ -41,6 +41,7 @@ const ELSEWHERE = "this position";
 export function expr(ctx: Ctx, local: Local, e: Expr, given: Given | null, where = ELSEWHERE): Out {
   const whole = ctx.erased || (given !== null && given.wants.every(w => w.mult === "erased"));
   const g = ctx.erased && given ? erase(given) : given, c = whole === ctx.erased ? ctx : { ...ctx, erased: whole };
+  if (whole) erases(ctx, e.span);
   const built = build(c, local, e, g, record(c, local, e.span, g), where);
   const out = built.local.taintedBy ? { ...built, results: built.results.map(r => ({ ...r, tainted: true })) } : built;
   const leak = whole ? -1 : out.results.findIndex((r, i) => r.erased && !erasedAt(g, i));
@@ -215,6 +216,7 @@ function args(ctx: Ctx, local: Local, name: string, params: Telescope, e: App, r
     const a = e.args[i]!, env = results.map(r => ref(r.id));
     const label = () => labelled(role, p.name, i, name);
     const given: Given = { wants: [erasedArgs ? { ...p, mult: "erased" } : p], env, whole: false, label };
+    if (erasedAt(given, 0)) erases(ctx, a.span);
     if (a.expr.kind === "var" && a.expr.name.name === null) {
       record(ctx, local, a.span, given);
       if (!erasedAt(given, 0)) fail(a.span, () =>
@@ -323,6 +325,8 @@ function match(ctx: Ctx, local: Local, e: Match, given: Given | null, snap: Snap
     `no branch for ${missing.map(code).join(", ")}, ` +
     `which ${missing.length === 1 ? "is" : "are"} not refuted here (§10)`);
   const live = erased ? e.branches.filter(br => !absurd(br.body)) : e.branches, second = live[1];
+  if (erased) for (const span of [{ start: e.multStart, end: e.scrut.span.end },
+    ...e.branches.map(br => live.includes(br) ? br.pat.span : br.span)]) erases(ctx, span);
   if (erased && second && ann.tele.some(b => b.mult === "many"))
     fail(second.span, () =>
       "an erased match with a `many` annotation entry has at most one branch that is not absurd, " +
@@ -428,9 +432,15 @@ function bind(ctx: Ctx | null, local: Local, ids: readonly Id[], entries: readon
   const out = { ...local, scope, ...sets };
   if (ctx) ids.forEach(({ name, span }, i) => {
     const id = entries[i];
-    if (name !== null && id !== undefined) occur(ctx, span, out, id);
+    if (name === null || id === undefined) return;
+    occur(ctx, span, out, id);
+    if (entry(scope, id).erased || sets.erased.has(name)) erases(ctx, span);
   });
   return { local: out, bound };
+}
+
+function erasedBinder(ctx: Ctx, b: LetBinder): void {
+  if (b.mult === "erased") erases(ctx, { start: b.multStart, end: b.name.span.end });
 }
 
 function letWants(ctx: Ctx, site: Local, binders: readonly LetBinder[]): Want[] {
@@ -440,6 +450,7 @@ function letWants(ctx: Ctx, site: Local, binders: readonly LetBinder[]): Want[] 
     : (t.args ?? []).map(unknown).find(u => u);
   for (const b of binders) {
     record(ctx, local, b.span, null);
+    erasedBinder(ctx, b);
     const u = b.ann && unknown(b.ann.term);
     if (u) fail(u.span, () => `${code(u.head.name)} has no type here: give it one before referring to it`);
     const o = b.ann && opening(ctx, local, { ...b, ann: b.ann }, "binder", false);
@@ -461,6 +472,7 @@ export function stmt(ctx: Ctx, local: Local, s: Stmt, comptime?: Comptime): Stmt
       return { local, tree: s, bound: [] };
     case "let": {
       record(ctx, local, s.span, null);
+      if (s.binders.every(b => b.mult === "erased")) erases(ctx, s.span);
       names(ctx, local, s.binders.map(b => b.name));
       const out = expr(ctx, local, s.rhs, { wants: letWants(ctx, local, s.binders), env: [],
         whole: s.binders.every(b => b.ann), label: i => labelled("binder", s.binders[i]?.name.name ?? null, i) });
@@ -472,6 +484,7 @@ export function stmt(ctx: Ctx, local: Local, s: Stmt, comptime?: Comptime): Stmt
       const snap = record(ctx, local, s.span, null), erased = s.mult === "erased";
       if (s.comptime && erased) fail(s.span, () =>
         "a `comptime` pattern `let` evaluates its right-hand side (§11), so it cannot be erased (§16)");
+      if (erased) erases(ctx, s.span);
       names(ctx, local, s.pat.fields);
       const out = expr(erased ? { ...ctx, erased } : ctx, local, s.rhs, null,
         "the right-hand side of a `many` pattern `let`"), r = single(out, s.rhs.span);
@@ -540,6 +553,7 @@ export function telescope(ctx: Ctx, local: Local, binders: readonly WrittenBinde
   let tainted = false;
   for (const b of binders) {
     record(ctx, local, b.span, null);
+    erasedBinder(ctx, b);
     newName(ctx, local, b.name, seen);
     const o = opening(ctx, local, b, kind);
     local = o.local;

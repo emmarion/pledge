@@ -99,7 +99,7 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
     const begin = start();
     const m = multAllowed ? mult() : null;
     const binderName = id();
-    return { name: binderName, ann: annOpt(), mult: m, span: spanFrom(begin) };
+    return { name: binderName, ann: annOpt(), mult: m, multStart: begin, span: spanFrom(begin) };
   };
   const letBinder = letBinderWith(true);
   const binderWith = (multAllowed: boolean) => (): WrittenBinder => {
@@ -159,7 +159,7 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
     if (at("(")) return { kind: "tuple", elems: parens(expr, true), span: spanFrom(begin) };
     if (at("{")) return block();
     if (eat("match")) {
-      const m = mult();
+      const multStart = start(), m = mult();
       const scrut = expr();
       expect(":");
       const ann = peek().kind === "underscore" ? whole() : tele();
@@ -170,7 +170,7 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
         const body = expr();
         return { pat, body, span: endStatement(branchBegin) };
       });
-      return { kind: "match", mult: m, scrut, ann, branches, span: spanFrom(begin) };
+      return { kind: "match", mult: m, multStart, scrut, ann, branches, span: spanFrom(begin) };
     }
     if (eat("sorry")) {
       expect("(");
@@ -221,7 +221,8 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
       const paramBegin = start();
       const paramName = id();
       expect(":");
-      return { name: paramName, ann: { kind: "type", term: term() }, mult: null, span: spanFrom(paramBegin) };
+      return { name: paramName, ann: { kind: "type", term: term() }, mult: null, multStart: paramBegin,
+        span: spanFrom(paramBegin) };
     }, false);
     expect(":");
     if (peek().kind === "name" && peek().text === "Type") next();

@@ -71,6 +71,7 @@ export interface State {
   snapshots: Snapshot[];
   explains: ExplainPoint[];
   occurrences: Occurrence[];
+  erased: Span[];
   record: boolean;
 }
 
@@ -126,6 +127,10 @@ export function point(ctx: Ctx, scope: Scope, span: Span, of: Term | Given): voi
 
 export function occur(ctx: Ctx, span: Span, local: Local, of: EntryId | Declared): void {
   if (ctx.st.record) ctx.st.occurrences.push({ span, local, of });
+}
+
+export function erases(ctx: Ctx, span: Span): void {
+  if (ctx.st.record && !ctx.erased) ctx.st.erased.push(span);
 }
 
 export const unfolds = (scope: Scope, id: EntryId): boolean => {

@@ -22,12 +22,19 @@ function run<T>(span: Span, f: () => T): T {
   }
 }
 
+const union = (spans: readonly Span[]): Span[] => [...spans].sort((a, b) => a.start - b.start)
+  .reduce<Span[]>((out, s) => {
+    const last = out.at(-1);
+    return last && s.start <= last.end ? [...out.slice(0, -1), { start: last.start, end: Math.max(last.end, s.end) }]
+      : [...out, s];
+  }, []);
+
 export const check: Check = (source, phase, where = position(source)) => {
   const { program: { tops }, error: syntax } = parse(source, phase);
   const has = (word: string): boolean => hasKeyword(source, phase, word);
   let top: Local = { scope: emptyScope(where), tainted: new Set(), erased: new Set(), taintedBy: null };
   const st: State = { phase, globals: [], index: new Map(), snapshots: [], explains: [], occurrences: [],
-    record: true };
+    erased: [], record: true };
   declareGlobal(st, { kind: "type", name: "Type", sig: signature(top.scope, "Type")!, ctors: null, done: true });
   const ctx: Ctx = { st, fn: null, skeleton: false, limit: null, erased: false, holes: [], decl: null };
   const prints: CheckResult["prints"] = [], gaps: Snapshot[] = [];
@@ -97,11 +104,9 @@ export const check: Check = (source, phase, where = position(source)) => {
       globals[i]!.sig = sig;
       return { f, c, sig, local: params.local, env: params.ids.map(ref) };
     });
-    const marks = [st.snapshots.length, st.explains.length, st.occurrences.length] as const;
+    const logs = [st.snapshots, st.explains, st.occurrences, st.erased], marks = logs.map(log => log.length);
     for (;;) {
-      st.snapshots.length = marks[0];
-      st.explains.length = marks[1];
-      st.occurrences.length = marks[2];
+      logs.forEach((log, i) => { log.length = marks[i]!; });
       const bodies = heads.map((h, i) => expr(h.c, h.local, h.f.body, { wants: h.sig.returns, env: h.env, whole: true,
         label: j => labelled("return", h.sig.returns[j]?.name ?? null, j, names[i]) }));
       const now = bodies.map(b => b.results.some(r => r.tainted));
@@ -205,7 +210,7 @@ export const check: Check = (source, phase, where = position(source)) => {
     gaps.filter(g => g.span.start <= offset).at(-1) ?? gaps[0]
       ?? record({ ...ctx, st: { ...st, record: false } }, top, { start: 0, end: 0 }, null);
   return {
-    phase, error, prints, containsSorry: has("sorry"),
+    phase, error, prints, erased: union(st.erased), containsSorry: has("sorry"),
     qed: !has("qed") ? "none" : failed && current?.kind === "qed" ? "fails" : qedChecks ? "checks" : "unreached",
     goalProved: has("goal") ? error === null && proved : null,
     inspects: st.snapshots.filter(s => s.inspect).map(s => ({ span: s.span, info: info(st, s) })),

@@ -39,11 +39,14 @@ const row = (term: string, value: Child): Child => [h("dt", {}, term), h("dd", {
 
 const tag = (text: string, show: boolean): Child => show && h("span", { class: "tag" }, text);
 
-const typed = (name: Child, type: Child, rule: Child): Child =>
-  [h("span", { class: "name" }, name), type && [" : ", type], rule && [" is ", rule]];
+const typed = (name: Child, type: Child, rule: Child, erased: boolean): Child =>
+  [h("span", { class: erased ? "name hl-erased" : "name" }, name), type && [" : ", type], rule && [" is ", rule],
+    tag("erased", erased)];
 
-const binding = (ctx: Host, name: Child, type: Rendered | null, rule: Rendered | null, ...tags: Child[]): HTMLElement =>
-  h("li", { class: "binding" }, typed(name, type && rendered(type, ctx), rule && rendered(rule, ctx)), tags);
+const binding = (ctx: Host, name: Child, e: { type: Rendered | null; rule: Rendered | null; erased: boolean },
+    ...tags: Child[]): HTMLElement =>
+  h("li", { class: "binding" }, typed(name, e.type && rendered(e.type, ctx), e.rule && rendered(e.rule, ctx),
+    ctx.showErased && e.erased), tags);
 
 const signed = (name: string, signature: Child): HTMLElement =>
   h("code", {}, h("span", { class: "name" }, name), signature);
@@ -65,8 +68,7 @@ const entryName = (e: EntryInfo, ctx: Host): Child =>
     h("span", { class: "marker" }, `?${e.origin.kind}@${ctx.spot(e.origin.span.start)}`));
 
 const expectedList = (entries: readonly ExpectedEntry[], ctx: Host): Child =>
-  list(entries.map(e => binding(ctx, e.name ?? "_", e.type, e.rule, tag("erased", ctx.showErased && e.erased),
-    tag("not determined", e.undetermined))), "none");
+  list(entries.map(e => binding(ctx, e.name ?? "_", e, tag("not determined", e.undetermined))), "none");
 
 const derivation = (lines: () => Rendered[], ctx: Host): HTMLElement =>
   h("ol", { class: "derivation" }, lines().map(step => h("li", {}, rendered(step, ctx))));
@@ -90,9 +92,7 @@ export function infoView(info: PositionInfo, ctx: Host): HTMLElement[] {
     section("Scope",
       info.taintedBy && h("p", { class: "muted" }, "This scope is tainted, so every result here is: the scrutinee at ",
         goto(ctx, info.taintedBy.start), " is tainted (", linked("§12"), ")."),
-      list(info.scope.map(e =>
-        binding(ctx, entryName(e, ctx), e.type, e.rule, tag("erased", ctx.showErased && e.erased))),
-        "No local entries.")),
+      list(info.scope.map(e => binding(ctx, entryName(e, ctx), e)), "No local entries.")),
     ...refutations === null ? [] : [section("Refutations", list(refutations.map(r => {
       if (r.kind === "absurd") return h("li", {}, h("code", {}, r.ctor), " ", tag("absurd", true));
       const steps = h("div", {});
@@ -114,14 +114,14 @@ export const globalsView = (info: PositionInfo, ctx: Host): HTMLElement => h("de
 const text = (r: Rendered | null): Child => r && unbroken(r.text);
 
 export const entryTip = (e: EntryInfo, showErased: boolean): Child =>
-  [h("code", {}, typed(names(e), text(e.type), text(e.rule))), tag("erased", showErased && e.erased)];
+  h("code", {}, typed(names(e), text(e.type), text(e.rule), showErased && e.erased));
 
 export const globalTip = (kind: string, name: string, signature: Rendered): Child =>
   globalLine(kind, name, text(signature));
 
 export const explainTip = (r: Explained, showErased: boolean): Child => h("code", {}, "stands" in r
   ? ["(", r.stands.map((e, i) => [i > 0 && ", ", showErased && e.erased && "erased ",
-    typed(e.name ?? "_", text(e.type), text(e.rule))]), ")"]
+    typed(e.name ?? "_", text(e.type), text(e.rule), false)]), ")"]
   : text(r.canonical));
 
 export const inspectView = (info: PositionInfo, ctx: Host): HTMLElement => {

@@ -7,7 +7,7 @@ const span = { start: 0, end: 0 };
 const id = (name: string): Id => ({ name: name === "_" ? null : name, span });
 const nm = (name: string): Name => ({ name, span });
 const term = (name: string): WrittenTerm => ({ head: nm(name), args: [], span });
-const binder = (name: string): WrittenBinder => ({ name: id(name), ann: { kind: "type", term: term("Nat") }, mult: null, span });
+const binder = (name: string): WrittenBinder => ({ name: id(name), ann: { kind: "type", term: term("Nat") }, mult: null, multStart: 0, span });
 const param = (name: string): Param => ({ ...binder(name), subterm: true });
 const v = (name: string): Expr => ({ kind: "var", name: id(name), span });
 const app = (head: string, ...args: Expr[]): Expr => ({ kind: "app", head: nm(head), args: args.map(expr => ({ mark: null, expr, span })), span });
@@ -15,8 +15,8 @@ const tuple = (...elems: Expr[]): Expr => ({ kind: "tuple", elems, span });
 const block = (stmts: Stmt[], final: Expr): Expr & { kind: "block" } => ({ kind: "block", stmts, final, span });
 const pat = (ctor: string, ...fields: string[]): Pattern => ({ ctor: nm(ctor), fields: fields.map(id), span });
 const match = (scrut: Expr, n: number, ...branches: [Pattern, Expr][]): Expr =>
-  ({ kind: "match", mult: null, scrut, ann: Array.from({ length: n }, (_, i) => binder(`r${i}`)), branches: branches.map(([p, body]) => ({ pat: p, body, span })), span });
-const letT = (names: string[], rhs: Expr): Stmt => ({ kind: "let", binders: names.map(n => ({ name: id(n), ann: null, mult: null, span })), rhs, span });
+  ({ kind: "match", mult: null, multStart: 0, scrut, ann: Array.from({ length: n }, (_, i) => binder(`r${i}`)), branches: branches.map(([p, body]) => ({ pat: p, body, span })), span });
+const letT = (names: string[], rhs: Expr): Stmt => ({ kind: "let", binders: names.map(n => ({ name: id(n), ann: null, mult: null, multStart: 0, span })), rhs, span });
 const patlet = (p: Pattern, rhs: Expr): Stmt => ({ kind: "patlet", comptime: false, mult: null, pat: p, rhs, span });
 const rem: Expr = { kind: "removed", span };
 const fn = (name: string, params: string[], returns: number, body: Expr & { kind: "block" }): Fn =>

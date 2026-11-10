@@ -240,3 +240,22 @@ test("taint: a function written after a tainted pattern let in a top-level block
   const scrutinee = source.indexOf("s; n }");
   assert.deepEqual(r.inspects.map(i => i.info.taintedBy), [1, 2].map(() => ({ start: scrutinee, end: scrutinee + 1 })));
 });
+
+test("the erased spans are the code evaluation skips for erasure, and never a type", () => {
+  const marked = (source: string, phase: 1 | 2 = 2): string[] =>
+    ok(source, phase).erased.map(s => source.slice(s.start, s.end));
+  const plus = "data Plus(m : Nat(), n : Nat(), r : Nat()) : Type() {\n  PZ(erased n : Nat()) : Plus(Zero(), n, n);\n"
+    + "  PS(erased m : Nat(), erased n : Nat(), erased r : Nat(), p : Plus(m, n, r)) : Plus(Succ(m), n, Succ(r));\n}\n";
+  assert.deepEqual(marked(`${nat}${vecBy("")}${vheadBy("")}`, 1), []);
+  assert.deepEqual(marked(`${nat}${plus}`), ["erased n", "erased m", "erased n", "erased r"]);
+  assert.deepEqual(marked(`${nat}fn f(subterm erased n : Nat(), m : Nat()) -> (erased r : Nat(), s : Nat()) {\n`
+    + "  let (erased a, b) = (n, m);\n  let erased c = Succ(a);\n  (c, b)\n}\n"),
+    ["erased n", "erased r", "erased a", "n", "let erased c = Succ(a);", "c"]);
+  assert.deepEqual(marked(`${nat}${plus}fn lemma(p : Plus(Zero(), Zero(), Zero())) -> (erased q : Plus(Zero(), Zero(), Zero())) {\n`
+    + "  match p : _ {\n    PZ(_) => p;\n  }\n}\n").slice(4), ["erased q", "{\n  match p : _ {\n    PZ(_) => p;\n  }\n}"]);
+  assert.deepEqual(marked(`${nat}${eq}fn cast(erased e : Eq(Nat(), Zero(), Zero()), x : Nat()) -> (r : Nat()) {\n`
+    + "  match erased e : _ {\n    Refl(_, _) => x;\n  }\n}\nprint cast(Refl(_, _), Zero());\n").slice(2),
+    ["erased e", "erased e", "Refl(_, _)", "Refl(_, _)"]);
+  assert.deepEqual(marked(`${nat}${plus}fn pred(n : Nat(), p : Plus(Succ(Zero()), Zero(), n)) -> (r : Nat()) {\n`
+    + "  let PS(m, _, k, q) = p;\n  n\n}\n").slice(4), ["m", "k"]);
+});

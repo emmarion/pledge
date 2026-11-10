@@ -150,6 +150,11 @@ and never renumbered (rule 15); a removed item leaves a gap.
     answer, in text after the first error or while an edit awaits its
     check, a name keeps the colour it last resolved to rather than
     flickering off; printed values are coloured from the same memory.
+    Among the italics for erased code, a comment stays upright; a
+    `subterm` or `same` mark is italic with its erased argument; and a
+    pattern's field that is bound erased is italic at a `many` match
+    too. While an edit awaits its check the italics move with the
+    text, and after the first error they stay where they last were.
 44. **Beside the editor**, an output wraps onto free lines below its
     own and otherwise ends in an ellipsis, opening in full on hover or
     focus. In a window narrower than 1200 pixels the outputs are listed

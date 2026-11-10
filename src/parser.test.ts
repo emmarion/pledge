@@ -23,7 +23,7 @@ const err = (source: string, phase: Phase = 1): { start: number; message: string
 const strip = (value: unknown): unknown =>
   Array.isArray(value) ? value.map(strip)
   : value !== null && typeof value === "object"
-    ? Object.fromEntries(Object.entries(value).filter(([k]) => k !== "span").map(([k, v]) => [k, strip(v)]))
+    ? Object.fromEntries(Object.entries(value).filter(([k]) => k !== "span" && k !== "multStart").map(([k, v]) => [k, strip(v)]))
     : value;
 const id = (name: string | null) => ({ name });
 const term = (head: string, args: unknown[] | null = []) => ({ head: id(head), args });

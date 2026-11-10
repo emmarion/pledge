@@ -14,11 +14,11 @@ export type Ann =
   | { kind: "type"; term: WrittenTerm }
   | { kind: "is"; term: WrittenTerm };
 
-export interface WrittenBinder { name: Id; ann: Ann; mult: Mult | null; span: Span }
+export interface WrittenBinder { name: Id; ann: Ann; mult: Mult | null; multStart: number; span: Span }
 
 export interface Param extends WrittenBinder { subterm: boolean }
 
-export interface LetBinder { name: Id; ann: Ann | null; mult: Mult | null; span: Span }
+export interface LetBinder { name: Id; ann: Ann | null; mult: Mult | null; multStart: number; span: Span }
 
 export interface Pattern { ctor: Name; fields: Id[]; span: Span }
 
@@ -34,7 +34,7 @@ export type Expr =
   | { kind: "app"; head: Name; args: Arg[]; span: Span }
   | { kind: "tuple"; elems: Expr[]; span: Span }
   | { kind: "block"; stmts: Stmt[]; final: Expr; span: Span }
-  | { kind: "match"; mult: Mult | null; scrut: Expr; ann: Tele; branches: Branch[]; span: Span }
+  | { kind: "match"; mult: Mult | null; multStart: number; scrut: Expr; ann: Tele; branches: Branch[]; span: Span }
   | { kind: "sorry"; tele: Tele; span: Span }
   | { kind: "removed"; span: Span };
 

@@ -35,12 +35,25 @@ const comments = (text: string, tokens: Token[]): Decoration[] =>
       .map(m => ({ start: from + m.index, end: from + m.index + m[0].length, cls: "hl-comment" }));
   });
 
-const errorMarks = (text: string, { start, end }: Span): Decoration[] => {
-  const runs = [...text.slice(start, end).matchAll(/\S(?:[^\n]*\S)?/g)]
-    .map(m => ({ start: start + m.index, end: start + m.index + m[0].length, cls: "hl-error" }));
+const runs = (text: string, { start, end }: Span, cls: string): Decoration[] =>
+  [...text.slice(start, end).matchAll(/\S(?:[^\n]*\S)?/g)]
+    .map(m => ({ start: start + m.index, end: start + m.index + m[0].length, cls }));
+
+const errorMarks = (text: string, span: Span): Decoration[] => {
+  const { start } = span, marks = runs(text, span, "hl-error");
   const atBreak = start >= text.length || text[start] === "\n";
-  return [...atBreak ? [{ start, end: start, cls: "hl-error" }] : runs.length ? []
-    : [{ start, end: start + 1, cls: "hl-error" }], ...runs];
+  return [...atBreak ? [{ start, end: start, cls: "hl-error" }] : marks.length ? []
+    : [{ start, end: start + 1, cls: "hl-error" }], ...marks];
+};
+
+const edited = (spans: Span[], before: string, after: string): Span[] => {
+  const shortest = Math.min(before.length, after.length), grown = after.length - before.length;
+  let head = 0, tail = 0;
+  while (head < shortest && before[head] === after[head]) head++;
+  while (tail < shortest - head && before.at(-1 - tail) === after.at(-1 - tail)) tail++;
+  const moved = (offset: number): number => offset <= head ? offset
+    : Math.max(offset, before.length - tail) + grown;
+  return spans.map(s => ({ start: moved(s.start), end: moved(s.end) })).filter(s => s.start < s.end);
 };
 
 const partners = (tokens: Token[]): Map<Token, Token> => {
@@ -114,6 +127,8 @@ export class Editor {
   private tokens: Token[] = [];
   private pairs = new Map<Token, Token>();
   private mark: Span | null = null;
+  private erased: Span[] = [];
+  private shown: string;
   private hovered: Token | null = null;
   private hoverTimer = 0;
 
@@ -124,7 +139,7 @@ export class Editor {
       class: "source", wrap: "off", spellcheck: "false", autocomplete: "off", autocapitalize: "off",
       readonly: !editable, "aria-label": editable ? "Your program" : "Read-only source",
     });
-    this.area.value = text;
+    this.area.value = this.shown = text;
     this.area.addEventListener("input", () => { onEdit(); this.show(null, null); });
     for (const event of ["keyup", "click", "focus", "select"]) this.area.addEventListener(event, onCaret);
     for (const event of ["focus", "blur"]) this.area.addEventListener(event, () => this.paint());
@@ -152,8 +167,11 @@ export class Editor {
     this.paint();
   }
 
-  show(mark: Span | null, outputs: Output[] | null): void {
+  show(mark: Span | null, outputs: Output[] | null, erased?: { spans: Span[]; keepFrom: number }): void {
     this.mark = mark;
+    const kept = edited(this.erased, this.shown, this.text);
+    this.erased = erased ? [...erased.spans, ...kept.filter(s => s.start >= erased.keepFrom)] : kept;
+    this.shown = this.text;
     this.tokens = lex(this.text, this.phase());
     this.pairs = partners(this.tokens);
     const lines = this.text.split("\n");
@@ -179,6 +197,7 @@ export class Editor {
       ?? paired.find(t => t.span.end === caret);
     const decorations = decorate(text, this.tokens, t => this.kinds(t.span.start, t.text), [
       ...this.mark ? errorMarks(text, this.mark) : [],
+      ...this.erased.flatMap(s => runs(text, s, "hl-erased")),
       ...bracket ? [bracket, this.pairs.get(bracket)!].map(t => ({ ...t.span, cls: "hl-bracket" })) : [],
     ]).sort((a, b) => a.start - b.start);
     let from = 0, taken = 0;

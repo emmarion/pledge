@@ -72,6 +72,7 @@ export interface CheckResult {
   qed: "none" | "unreached" | "fails" | "checks";
   goalProved: boolean | null;
   prints: { span: Span; value: string }[];
+  erased: Span[];
   inspects: { span: Span; info: PositionInfo }[];
   infoAt(offset: number): PositionInfo;
   nameAt(offset: number): NameInfo | null;
