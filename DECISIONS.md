@@ -23,9 +23,9 @@ D35. For D16's "may": DESIGN.md says "is allowed to" for permission and
 D45. Some open questions will probably go into DESIGN.md as explicit
      TBDs; which ones is decided item by item.
 D59. Tentatively: the two parts are called "Global entries" and
-     "Declarations", and Scope's message at the top level (§13) points
+     "Declarations", and Local entries' message at the top level (§13) points
      to "Global entries".
-D60. Tentatively: the global entries come right after Scope, and the
+D60. Tentatively: the global entries come right after Local entries, and the
      functions and type constructors last, where the Globals were.
 D61. Tentatively: the global entries are in creation order.
 

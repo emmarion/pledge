@@ -169,7 +169,7 @@ and never renumbered (rule 15); a removed item leaves a gap.
     "parameter `v` of `vhead`", and so does a message about an erased
     value where none is allowed; a `qed`'s position is called "the
     goal's proof".
-63. **A tainted scope** is reported in the Scope panel by one line
+63. **A tainted scope** is reported in the Local entries panel by one line
     above the entries, linking to the scrutinee whose taint reached
     the position first, the outermost when several did. A tainted name
     carries a `tainted` tag after it, in the panel and in the hover
@@ -290,7 +290,7 @@ and never renumbered (rule 15); a removed item leaves a gap.
 41. **§13 snapshots.** Information is recorded at every expression,
     statement, binder and declaration, and `infoAt` answers from the
     smallest recorded span containing the position. Refutations are
-    shown at the `match` or pattern `let` itself. For what Scope lists,
+    shown at the `match` or pattern `let` itself. For what Local entries lists,
     a `mutual` block is one declaration and so is a function goal, and
     a position in the text after a syntax error has the top-level
     scope that follows the last item checked. Anonymous entries are
@@ -325,7 +325,7 @@ and never renumbered (rule 15); a removed item leaves a gap.
     rejected, since the run needs the value.
 50. **`sorry`'s telescope** takes no multiplicities; `sorry(_)` takes
     those of the telescope it stands for.
-53. **Scope and Expected panels** mark an entry erased when it was
+53. **Local entries and Expected panels** mark an entry erased when it was
     opened erased or every one of its names was bound erased.
     Interactive mode checks typed text as in an erased position, since
     it never evaluates.

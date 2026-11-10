@@ -39,8 +39,8 @@ Put the caret anywhere in a program and the page shows what the checker
 has there:
 
 - **Expected**: what the position has to produce.
-- **Scope**: every entry in scope, with its type and what it is known
-  to equal.
+- **Local entries**: every entry in scope that is not global, with its
+  type and what it is known to equal. It can be hidden; it starts open.
 - **Refutations**: at a `match`, the value constructors that are ruled
   out, each with a step-by-step derivation of why.
 - **Termination**: the parameters a recursive call has to decrease.

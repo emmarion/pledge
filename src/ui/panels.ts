@@ -139,7 +139,7 @@ export function infoView(info: PositionInfo, ctx: Host): HTMLElement[] {
         row("subterm parameters", termination.subtermParams.length
           ? h("code", {}, termination.subtermParams.join(", ")) : muted("none")),
         row("Group", h("code", {}, termination.group.join(", "))))),
-    section("Scope",
+    hidden(ctx, "Local entries", info.scope.length,
       info.taintedBy && h("p", { class: "muted" }, "This scope is tainted, so every result here is: the scrutinee at ",
         goto(ctx, info.taintedBy.start), " is tainted (", linked("§12"), ")."),
       info.topLevel ? muted("At the top level, every entry is global: see Global entries.")
@@ -155,7 +155,7 @@ export function infoView(info: PositionInfo, ctx: Host): HTMLElement[] {
   ];
 }
 
-const hidden = (ctx: Host, title: string, count: number, body: Child): HTMLElement =>
+const hidden = (ctx: Host, title: string, count: number, ...body: Child[]): HTMLElement =>
   h("details", { class: "panel", open: ctx.opened.has(title), ontoggle: (e: Event) => {
     if ((e.currentTarget as HTMLDetailsElement).open) ctx.opened.add(title); else ctx.opened.delete(title);
   } }, h("summary", {}, `${title} (${count})`), body);

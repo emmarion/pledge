@@ -186,7 +186,7 @@ export class Workspace {
   private active: number;
   private timer = 0;
   private ticket = 0;
-  readonly opened = new Set<string>();
+  readonly opened = new Set<string>(["Local entries"]);
 
   constructor(readonly boxes: Box[], readonly phase: () => Phase,
       programs: ProgramSpec[] = [{ label: "", boxes: boxes.map((_, i) => i) }]) {

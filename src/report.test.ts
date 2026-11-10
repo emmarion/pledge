@@ -61,7 +61,7 @@ test("the four qed states, and goalProved null only without a goal keyword", () 
   assert.deepEqual(states(`${nat}goal Nat(\n`), ["none", false]);
 });
 
-test("the entries a top-level statement created are global; Scope lists the rest, and none at the top level (§13)", () => {
+test("the entries a top-level statement created are global; Local entries lists the rest, and none at the top level (§13)", () => {
   const source = `${nat}let a = Zero();\nfn f(n : Nat()) -> (r : Nat()) {\n  let m = Succ(n);\n  inspect;\n  m\n}\nlet b = f(a);\ninspect;\n`;
   const r = check(source, 1), split = (offset: number) => { const i = r.infoAt(offset); return [globalEntriesOf(i), scopeOf(i)]; };
   assert.deepEqual(r.inspects.map(i => [globalEntriesOf(i.info), scopeOf(i.info), i.info.topLevel]), [

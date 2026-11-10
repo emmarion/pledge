@@ -52,7 +52,7 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
   goal (§12).
 - `src/eval.ts`: the tree-walking interpreter (§11, §14).
 - `src/info.ts`: `infoAt`, `nameAt`, `explainAt`, `evalAt`, and what
-  the Scope panel lists.
+  the Local entries panel lists.
 - `src/examples.ts`: the `Nat`, `Vec` and `vhead` sources shared by the
   tutorial and the tests, the front page's starting program, and the
   titles its Example menu gives the programs in `examples/`, each taken
