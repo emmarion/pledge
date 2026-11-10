@@ -584,6 +584,13 @@ for: the telescope, or the term the `_` is solved to. Each `is` rule a
 derivation or a sequence of rewrites uses links to where its fact was
 created.
 
+In phase 2, the interface sets erased code in italics: every expression
+in an erased position (§16) other than a type, with everything inside
+it; each erased binder's name where it is bound, with its `erased`; at
+an erased match, `erased`, the scrutinee, the patterns and the absurd
+branches; and a `let` whose binders are all erased, or an erased
+pattern `let`, as a whole.
+
 In the interface's interactive mode, a type or an expression typed in is
 checked in the scope at the selected position, and its type and `is`
 rule are shown, both as inferred and canonicalized.
