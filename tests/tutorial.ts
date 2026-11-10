@@ -18,7 +18,8 @@ export const errorAt = (slug: string, learner: string) => {
   return { at: r.error ? source.slice(r.error.span.start, r.error.span.end) : null, message: r.error?.message() ?? "" };
 };
 export const expected = (info: PositionInfo) =>
-  info.expected.entries?.map(e => `${e.name} : ${e.type?.text}${e.rule ? ` is ${e.rule.text}` : ""}`);
+  info.expected.entries?.map(e => `${e.name} : ${e.canonical.type?.term.text}` +
+    (e.canonical.rule ? ` is ${e.canonical.rule.term.text}` : ""));
 export const printsOf = (slug: string) => run(slug, page(slug).solution).r.prints.map(p => p.value);
 
 export const infoAt = (slug: string, learner: string, marker: string, nth = 0) => {
@@ -30,7 +31,8 @@ export const infoAt = (slug: string, learner: string, marker: string, nth = 0) =
 };
 
 export const expectedAt = (slug: string, learner: string, marker: string, nth = 0): string =>
-  infoAt(slug, learner, marker, nth).info.expected.entries!.map(e => `${e.name} : ${e.type!.text}`).join(", ");
+  infoAt(slug, learner, marker, nth).info.expected.entries!.map(e => `${e.name} : ${e.canonical.type!.term.text}`)
+    .join(", ");
 
 export const gapsTest = (gaps: [slug: string, gaps: string[], qedChecks?: boolean | null][]): void => {
   const title = "the starting text checks with a sorry(_) in each gap the prose describes";

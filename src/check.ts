@@ -56,7 +56,7 @@ export const check: Check = (source, phase, where = position(source)) => {
       const name = d.name.name;
       const params = telescope(c, top, d.params, "binder").tele;
       const g: Global & { kind: "type" } = { kind: "type", name,
-        sig: { head: { kind: "type", name }, params, ret: TYPE }, ctors: [], done: false };
+        sig: { head: { kind: "type", name }, params, ret: TYPE, retAt: d.span }, ctors: [], done: false };
       top = { ...top, scope: declare(top.scope, g.sig) };
       declared(c, d.name, g);
       return g;
@@ -74,7 +74,7 @@ export const check: Check = (source, phase, where = position(source)) => {
             `of ${code(owner.name)} (§5)`);
         const ret = term(c, fields.local, k.ret);
         const sig = { head: { kind: "ctor" as const, name }, params: fields.tele,
-          ret: abstract(ret.local.scope, ref(ret.id), fields.ids) };
+          ret: abstract(ret.local.scope, ref(ret.id), fields.ids), retAt: k.ret.span };
         top = { ...top, scope: declare(top.scope, sig) };
         declared(c, k.name, { kind: "ctor", name, sig });
         owner.ctors?.push(name);

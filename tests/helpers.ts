@@ -17,16 +17,23 @@ export const isZero = "data IsZero(n : Nat()) : Type() {\n  IsZeroHere() : IsZer
 
 export const qedChecks = (r: CheckResult): boolean | null => r.qed === "none" ? null : r.qed === "checks";
 export const verdicts = (r: CheckResult) => [r.containsSorry, qedChecks(r), r.goalProved];
+const shown = (type: string | undefined, rule: string | undefined): string =>
+  `${type}${rule === undefined ? "" : ` is ${rule}`}`;
 const entryText = (e: EntryInfo): string =>
-  `${e.names.join(",") || e.marker} : ${e.type.text}${e.rule ? ` is ${e.rule.text}` : ""}`;
+  `${e.names.join(",") || e.marker} : ${shown(e.canonical.type.term.text, e.canonical.rule?.term.text)}`;
+export const listed = (info: PositionInfo): EntryInfo[] => [...info.globalEntries, ...info.scope];
 export const scopeOf = (info: PositionInfo): string[] => info.scope.map(entryText);
+export const globalEntriesOf = (info: PositionInfo): string[] => info.globalEntries.map(entryText);
+export const entriesOf = (info: PositionInfo): string[] => [...globalEntriesOf(info), ...scopeOf(info)];
+export const namedOf = (info: PositionInfo): string[] => listed(info).filter(e => e.names.length).map(entryText);
 export const explainTerm = (r: CheckResult, at: number) => {
   const x = r.explainAt(at);
   return x && "canonical" in x ? x : null;
 };
 export const standsFor = (r: CheckResult, at: number): string[] | null => {
   const x = r.explainAt(at);
-  return x && "stands" in x ? x.stands.map(e => `${e.erased ? "erased " : ""}${e.name ?? "_"} : ${e.type?.text}${e.rule ? ` is ${e.rule.text}` : ""}`) : null;
+  return x && "stands" in x ? x.stands.map(e => `${e.erased ? "erased " : ""}${e.name ?? "_"} : ` +
+    shown(e.canonical.type?.term.text, e.canonical.rule?.term.text)) : null;
 };
 
 export const harness = (phase: Phase) => ({

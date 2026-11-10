@@ -5,7 +5,7 @@ import { TYPE, abstract, addRule, app, blank, canon, create, entry, forget, iden
 import type { Binder, EntryId, Ref, Scope, Signature, Telescope, Term } from "./terms.ts";
 import { force, open, unify } from "./telescope.ts";
 import type { Forced } from "./telescope.ts";
-import { label, render } from "./render.ts";
+import { cat, entryRef, label, render } from "./render.ts";
 import type { RefutationInfo } from "./api.ts";
 import { APP, HOLE, code, describe, erases, fail, labelled, newName, global, occur, plural, point, record, unfolds,
   written } from "./context.ts";
@@ -114,7 +114,8 @@ function settle(ctx: Ctx, scope: Scope, since: number): ReadonlySet<EntryId> {
       `this \`_\` must be ${show(scope, is)}, and it would be ${show(scope, value)}`);
     for (const p of ctx.st.explains.slice(from))
       if (!mentions(value, x => !known(p.scope, x)) && !entry(p.scope, id).rule)
-        p.scope = addRule(p.scope, id, value, span);
+        p.scope = addRule(p.scope, id, value, span, view => [cat(entryRef(view, id), " is ",
+          render(view, value, { canonical: false }), ": what this `_` is solved to (§20)")]);
     if (mentions(value, x => entry(scope, x).tainted)) bad.add(id);
   }
   return bad;
@@ -268,7 +269,7 @@ function construct(ctx: Ctx, local: Local, e: App, sig: Signature, given: Given 
     type ? "parameter" : "field", type && ctx.st.phase >= 2);
   const refs = trees(a.local.scope, a.results), tainted = a.results.some(r => r.tainted);
   const made = create(a.local.scope, subst(sig.ret, refs), app(sig.head, ...refs),
-    { origin: { kind: APP, span: e.span }, tainted });
+    { origin: { kind: APP, span: e.span }, tainted }, sig.retAt);
   point(ctx, made.scope, e.span, ref(made.id));
   return produced(ctx, { ...a.local, scope: made.scope }, given, [{ id: made.id, tainted, erased: false }], e.span,
     type ? { kind: "removed", span: e.span } : { ...e, args: a.trees });
@@ -330,7 +331,8 @@ function match(ctx: Ctx, local: Local, e: Match, given: Given | null, snap: Snap
   const scrut = closed(erased ? { ...ctx, erased } : ctx, local, e.scrut, null, "the scrutinee of a `many` match");
   const s = single(scrut, e.scrut.span), inner = scrut.local;
   const ann = annotation(ctx, inner, e.ann, given);
-  const fs = forcings(ctx, inner, s.id, e.scrut.span, e.branches.map(b => b.pat), e.span, erased);
+  const fs = forcings(ctx, inner, s.id, e.scrut.span, e.branches.map(b => b.pat), e.span, erased,
+    erased ? "match erased" : "match");
   const refuted = snap.refutations = refutations(fs);
   const branchOf = (pat: Pattern): Forcing => fs.find(f => f.pat === pat)!;
   for (const br of e.branches) {
@@ -392,7 +394,7 @@ function dataCtors(ctx: Ctx, scope: Scope, id: EntryId, span: Span): (Global & {
 }
 
 function forcings(ctx: Ctx, local: Local, id: EntryId, scrutSpan: Span, pats: readonly Pattern[], at: Span,
-    erased: boolean): Forcing[] {
+    erased: boolean, site: string): Forcing[] {
   const ctors = dataCtors(ctx, local.scope, id, scrutSpan), seen = new Set<string>();
   for (const p of pats) {
     const name = p.ctor.name, c = ctors.find(x => x.name === name);
@@ -407,7 +409,7 @@ function forcings(ctx: Ctx, local: Local, id: EntryId, scrutSpan: Span, pats: re
   }
   return ctors.map(({ name, sig }) => {
     const pat = pats.find(p => p.ctor.name === name);
-    const forced = force(local.scope, id, sig, pat?.span ?? at, (b, i) =>
+    const forced = force(local.scope, id, sig, pat?.span ?? at, site, (b, i) =>
       ({ origin: { kind: `${name}.${b.name ?? i + 1}`, span: pat?.fields[i]?.span ?? at,
         blank: pat?.fields[i]?.name === null },
       ...(erased ? { erased } : {}) }), (b, i) => pat ? pat.fields[i]?.name ?? null : `@${b.name ?? i + 1}`);
@@ -513,7 +515,8 @@ export function stmt(ctx: Ctx, local: Local, s: Stmt, comptime?: Comptime): Stmt
       names(ctx, local, s.pat.fields);
       const out = closed(erased ? { ...ctx, erased } : ctx, local, s.rhs, null,
         "the right-hand side of a `many` pattern `let`"), r = single(out, s.rhs.span);
-      const fs = forcings(ctx, out.local, r.id, s.rhs.span, [s.pat], s.span, erased);
+      const fs = forcings(ctx, out.local, r.id, s.rhs.span, [s.pat], s.span, erased,
+        s.comptime ? "comptime let" : erased ? "let erased" : "let");
       snap.refutations = refutations(fs);
       if (s.comptime) comptime?.(out.tree, r.tainted);
       const mine = fs.find(f => f.pat === s.pat)!;

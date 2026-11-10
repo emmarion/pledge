@@ -17,6 +17,22 @@ interface Look { info: PositionInfo; explained: Explained | null; answer: Return
 
 const checkingAfter = 300;
 
+const sideWidth = (px: number): void => document.documentElement.style.setProperty("--side", `${px}px`);
+
+function resizer(): HTMLElement {
+  const saved = Number(load("sideWidth"));
+  if (saved) sideWidth(saved);
+  const drag = (e: PointerEvent): void => {
+    const px = Math.round(Math.min(Math.max(innerWidth - e.clientX - 24, 220), innerWidth * 0.7));
+    sideWidth(px);
+    save("sideWidth", String(px));
+  };
+  const bar: HTMLElement = h("div", { class: "resizer", title: "Drag to resize the panels", role: "separator",
+    onpointerdown: (e: Event) => { bar.setPointerCapture((e as PointerEvent).pointerId); bar.onpointermove = drag; },
+    onpointerup: () => { bar.onpointermove = null; } });
+  return bar;
+}
+
 const kindNames: Record<NameKind, string> = { fn: "fn", type: "type", ctor: "value constructor" };
 
 class Program implements Host {
@@ -33,8 +49,7 @@ class Program implements Host {
   constructor(private readonly ws: Workspace, readonly label: string, readonly members: number[]) {}
 
   get showErased(): boolean { return this.ws.phase() >= 2; }
-  get globalsOpen(): boolean { return this.ws.globalsOpen; }
-  set globalsOpen(open: boolean) { this.ws.globalsOpen = open; }
+  get opened(): Set<string> { return this.ws.opened; }
 
   private get editors(): Editor[] { return this.members.map(i => this.ws.editors[i]!); }
 
@@ -48,7 +63,9 @@ class Program implements Host {
       end: Math.min(span.end - start, texts[index]!.length) } : null;
   }
 
-  where(offset: number): string { return `line ${position(this.texts.join("\n"))(offset)}`; }
+  at(offset: number): string { return position(this.texts.join("\n"))(offset); }
+
+  where(offset: number): string { return `line ${this.at(offset)}`; }
 
   firstLine(box: number): number { return lineCol(this.texts.join("\n"), this.offset(box, 0)).line; }
 
@@ -88,7 +105,7 @@ class Program implements Host {
   }
 
   private remember(infos: PositionInfo[]): void {
-    for (const info of infos) for (const e of info.scope) this.known.set(e.id, e);
+    for (const info of infos) for (const e of [...info.scope, ...info.globalEntries]) this.known.set(e.id, e);
   }
 
   outdate(): void {
@@ -169,7 +186,7 @@ export class Workspace {
   private active: number;
   private timer = 0;
   private ticket = 0;
-  globalsOpen = false;
+  readonly opened = new Set<string>();
 
   constructor(readonly boxes: Box[], readonly phase: () => Phase,
       programs: ProgramSpec[] = [{ label: "", boxes: boxes.map((_, i) => i) }]) {
@@ -245,7 +262,7 @@ export class Workspace {
         h("div", { class: "work" }, intro, this.programs[0]!.members.map(i => this.editors[i]!.root),
           h("div", { class: "row" }, controls),
           this.status, outro),
-        h("aside", { class: "side" }, this.panels)));
+        h("aside", { class: "side" }, resizer(), h("div", { class: "side-scroll" }, this.panels))));
     this.run();
   }
 }

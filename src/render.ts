@@ -1,6 +1,7 @@
-import type { EntryInfo, Rendered, Rewrite } from "./api.ts";
+import type { Canonical, EntryInfo, Rendered, Rewrite } from "./api.ts";
 import { canon, entries, entry, rewrites } from "./terms.ts";
-import type { Binder, Entry, EntryId, OpenTerm, Scope, Telescope, Term } from "./terms.ts";
+import { APP } from "./context.ts";
+import type { Binder, Entry, EntryId, OpenTerm, Scope, Telescope } from "./terms.ts";
 
 type Piece = string | Rendered;
 
@@ -52,18 +53,27 @@ export function renderTelescope(scope: Scope, tele: Telescope, outer: readonly (
   return cat("(", ...join(tele.map(b => renderBinder(scope, b, bound, canonical)), ", "), ")");
 }
 
+export const canonicalOf = (scope: Scope, t: OpenTerm, bound: readonly (string | null)[] = []): Canonical =>
+  ({ term: render(scope, t, { bound }), rewrites: () => explain(scope, t, bound).rewrites });
+
 export function entryInfo(scope: Scope, id: EntryId, canonical = true): EntryInfo {
   const e = entry(scope, id);
   return {
     id, names: [...e.names], origin: e.origin, marker: marker(scope, e),
     type: render(scope, e.type, { canonical }),
-    rule: e.rule && render(scope, e.rule.term, { canonical }),
+    rule: e.rule && render(scope, e.rule.term, { canonical }), ruleAt: e.rule?.at ?? null, typeAt: e.typeAt,
+    canonical: { type: canonicalOf(scope, e.type), rule: e.rule && canonicalOf(scope, e.rule.term) },
     erased: e.erased, tainted: [],
   };
 }
 
-export function explain(scope: Scope, t: Term): { canonical: Rendered; rewrites: Rewrite[] } {
-  const raw = (u: Term) => render(scope, u, { canonical: false });
-  return { canonical: render(scope, t), rewrites: rewrites(scope, t).map(s =>
-    ({ from: raw(s.from), to: raw(s.to), by: s.by, at: s.at })) };
+export function explain(scope: Scope, t: OpenTerm, bound: readonly (string | null)[] = []):
+    { canonical: Rendered; rewrites: Rewrite[] } {
+  const raw = (u: OpenTerm) => render(scope, u, { canonical: false, bound });
+  return { canonical: render(scope, t, { bound }), rewrites: rewrites(scope, t).map(s => {
+    const e = entry(scope, s.by), stated = (sep: string) => cat(entryRef(scope, s.by), sep, raw(e.rule!.term));
+    return { from: raw(s.from), to: raw(s.to), by: s.by, at: s.at, rule: stated(" → "),
+      how: () => e.rule!.how?.(scope) ?? [cat(stated(" is "), e.origin.kind === APP
+        ? ": the entry of an application is that application (§7)" : ": the `is` clause of its binder (§6)")] };
+  }) };
 }

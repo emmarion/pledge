@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { check } from "./check.ts";
-import { explainTerm, file, files, harness, isZero, nat, qedChecks, scopeOf, standsFor, vecBy, verdicts } from "../tests/helpers.ts";
+import { entriesOf, explainTerm, file, files, globalEntriesOf, harness, isZero, nat, qedChecks, scopeOf, standsFor, vecBy,
+  verdicts } from "../tests/helpers.ts";
 
 const { ok, err } = harness(1);
 const vec = vecBy("");
@@ -56,8 +57,8 @@ test("proof by reflection with a mutual decideEven, proving a goal", () => {
   const source = `${decide}goal Even(${nats(2)});\ncomptime let Some(_, p) = decideEven(${nats(2)});\nprint p;\nqed p;\n`;
   const r = ok(source);
   assert.deepEqual(r.prints.map(p => p.value), [`EvenSucc(${nats(1)}, OddSucc(Zero(), EvenZero()))`]);
-  const p = r.infoAt(offset(source, "print p", 6)).scope.find(e => e.names.includes("p"));
-  assert.equal(p?.type.text, `Even(${nats(2)})`);
+  const p = r.infoAt(offset(source, "print p", 6)).globalEntries.find(e => e.names.includes("p"));
+  assert.equal(p?.canonical.type.term.text, `Even(${nats(2)})`);
   assert.deepEqual(verdicts(r), [false, true, true]);
   err(`${decide}let Some(_, p) = decideEven(${nats(2)});\n`, "Some(_, p)", /`None` is not refuted/);
   err(`${decide}comptime let Some(_, p) = decideEven(${nats(1)});\n`, `decideEven(${nats(1)})`, /evaluates to `None\(_\)`, which is not headed by `Some`/);
@@ -156,17 +157,18 @@ test("anonymous markers place their origin with the given formatter", () => {
   const source = file("design_vhead.pledge");
   const info = check(source, 1, at => `<${at}>`).infoAt(offset(source, "hd\n}", 1));
   const rest = info.scope.find(e => e.origin.kind === "VCons.rest")!;
-  assert.equal(info.scope.find(e => e.names[0] === "v")?.rule?.text, `VCons(A, n, hd, _@<${rest.origin.span.start}>)`);
+  assert.equal(info.scope.find(e => e.names[0] === "v")?.canonical.rule?.term.text, `VCons(A, n, hd, _@<${rest.origin.span.start}>)`);
 });
 
 test("infoAt inside vhead's body: scope, expected and termination", () => {
   const source = file("design_vhead.pledge");
   const info = ok(source).infoAt(offset(source, "hd\n}", 1));
   assert.deepEqual(scopeOf(info), [
-    "A : Type()", "n : Nat()", "v : Vec(A, Succ(n)) is VCons(A, n, hd, _@12:23)", "hd : A",
-    "_@12:23 : Vec(A, n)",
+    "?@11:14 : Type() is Type()", "A : Type()", "?@11:26 : Type() is Nat()", "n : Nat()", "?@11:44 : Nat() is Succ(n)",
+    "?@11:37 : Type() is Vec(A, Succ(n))", "v : Vec(A, Succ(n)) is VCons(A, n, hd, _@12:23)", "_@12:13 : Type() is A",
+    "_@12:16 : Nat() is n", "hd : A", "_@12:23 : Vec(A, n)",
   ]);
-  assert.deepEqual(info.expected.entries?.map(e => [e.name, e.type?.text, e.undetermined]), [["x", "A", false]]);
+  assert.deepEqual(info.expected.entries?.map(e => [e.name, e.canonical.type?.term.text, e.undetermined]), [["x", "A", false]]);
   assert.deepEqual(info.termination, { fn: "vhead", subtermParams: [], group: ["vhead"] });
   assert.deepEqual(info.globals.map(g => g.name + g.signature.text), [
     "Type() : Type()", "Nat() : Type()", "Vec(A : Type(), n : Nat()) : Type()", "vhead(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (x : A)",
@@ -184,7 +186,7 @@ test("infoAt: termination inside ack, refutations at §10's inner match", () => 
   const info = ok(iz).infoAt(offset(iz, "match p", 2));
   assert.deepEqual(info.refutations?.map(r => r.ctor), ["IsZeroHere"]);
   assert.deepEqual(info.refutations?.[0]?.derivation().map(l => l.text), [
-    "IsZeroHere() =>",
+    "suppose match p { IsZeroHere() => ... }",
     "1. IsZero(Succ(m)) = IsZero(Zero())   (the scrutinee's type and IsZeroHere's; rewritten by n)",
     "2. Succ(m) = Zero()   (argument 1 of IsZero in 1)",
     "refuted: Succ and Zero are different heads",
@@ -193,23 +195,24 @@ test("infoAt: termination inside ack, refutations at §10's inner match", () => 
   assert.equal(ok(iz).infoAt(offset(iz, "Zero() => Zero()", 12)).refutations, null);
 });
 
-test("infoAt: undetermined binders, nothing given, and globals with bindings", () => {
+test("infoAt: undetermined binders, nothing given, and global entries at the top level", () => {
   const source = `${nat}let s = sorry(x : Nat());\nlet (a, b : Nat()) = (s, Zero());\nprint a;\n`;
   const r = ok(source);
   const at = r.infoAt(offset(source, "(s, Zero())"));
-  assert.deepEqual(at.expected.entries?.map(e => [e.name, e.type?.text ?? null, e.undetermined]), [["a", null, true], ["b", "Nat()", false]]);
+  assert.deepEqual(at.expected.entries?.map(e => [e.name, e.canonical.type?.term.text ?? null, e.undetermined]), [["a", null, true], ["b", "Nat()", false]]);
   assert.equal(r.infoAt(offset(source, "print a", 6)).expected.entries, null);
   assert.equal(r.infoAt(offset(source, "let s")).expected.entries, null);
   const end = r.infoAt(source.length);
-  assert.deepEqual(end.globals.filter(g => g.kind === "binding").map(g => g.name + g.signature.text), ["s : Nat()", "a : Nat()", "b : Nat() is Zero()"]);
-  assert.deepEqual(end.scope.filter(e => e.tainted.length).map(e => e.names.join(",")), ["s,a"]);
+  assert.deepEqual(end.scope, []);
+  assert.deepEqual(globalEntriesOf(end).filter(e => !e.startsWith("?@")), ["s,a : Nat()", "b : Nat() is Zero()"]);
+  assert.deepEqual(end.globalEntries.filter(e => e.tainted.length).map(e => e.names.join(",")), ["s,a"]);
 });
 
 test("inspect reports position information", () => {
   const source = `${nat}fn f(n : Nat()) -> (r : Nat()) {\n  let m = Succ(n);\n  inspect;\n  m\n}\n`;
   const r = ok(source);
   assert.equal(r.inspects.length, 1);
-  assert.deepEqual(scopeOf(r.inspects[0]!.info), ["n : Nat()", "m : Nat() is Succ(n)"]);
+  assert.deepEqual(scopeOf(r.inspects[0]!.info), ["?@5:10 : Type() is Nat()", "n : Nat()", "m : Nat() is Succ(n)"]);
 });
 
 test("explainAt gives the canonical form and the rewrites of a skeleton term", () => {
@@ -276,10 +279,12 @@ test("function goals: plusZero proves the goal, binder names and subterm marks a
   const r = ok(source);
   assert.deepEqual(verdicts(r), [false, true, true]);
   const at = r.infoAt(offset(source, "qed plusZero", 5)).expected;
-  assert.deepEqual([at?.params?.map(e => `${e.name} : ${e.type?.text}`), at?.entries?.map(e => `${e.name} : ${e.type?.text}`)],
+  assert.deepEqual([at?.params?.map(e => `${e.name} : ${e.canonical.type?.term.text}`), at?.entries?.map(e => `${e.name} : ${e.canonical.type?.term.text}`)],
     [["n : Nat()", "r : Nat()", "p : Plus(n, Zero(), r)"], ["e : Eq(Nat(), r, n)"]]);
   const inGoal = offset(source, "Eq(Nat(), r, n));", 10);
-  assert.deepEqual(scopeOf(r.infoAt(inGoal)), ["n : Nat()", "r : Nat()", "p : Plus(n, Zero(), r)"]);
+  assert.deepEqual(scopeOf(r.infoAt(inGoal)), ["?@12:14 : Type() is Nat()", "n : Nat()", "?@12:25 : Type() is Nat()",
+    "r : Nat()", "?@12:44 : Nat() is Zero()", "?@12:36 : Type() is Plus(n, Zero(), r)", "p : Plus(n, Zero(), r)",
+    "?@12:67 : Type() is Nat()"]);
   assert.equal(r.infoAt(inGoal).termination, null);
   const p = r.evalAt(inGoal, "p");
   if ("error" in p) assert.fail(p.error.message());
@@ -307,9 +312,9 @@ test("function goals: a telescope that differs does not prove the goal", () => {
 
 test("function goals: the Expected panel shows the goal at a `qed` naming a function, on the error path too", () => {
   const fn = `${nat}fn f(n : Nat()) -> (r : Nat()) { n }\n`, typeGoal = `${fn}goal Nat();\nqed f;\n`;
-  assert.deepEqual(check(typeGoal, 1).infoAt(offset(typeGoal, "f;")).expected.entries?.map(e => e.type?.text), ["Nat()"]);
+  assert.deepEqual(check(typeGoal, 1).infoAt(offset(typeGoal, "f;")).expected.entries?.map(e => e.canonical.type?.term.text), ["Nat()"]);
   const fnGoal = `${fn}goal fn (m : Nat()) -> (r : Nat());\nqed f;\n`;
-  assert.deepEqual(ok(fnGoal).infoAt(offset(fnGoal, "f;")).expected.params?.map(e => e.type?.text), ["Nat()"]);
+  assert.deepEqual(ok(fnGoal).infoAt(offset(fnGoal, "f;")).expected.params?.map(e => e.canonical.type?.term.text), ["Nat()"]);
 });
 
 test("function goals: telescopes are compared with bound variables, an earlier is clause not in force (§12)", () => {
@@ -379,8 +384,9 @@ test("tuple let binders are a telescope, checked against the results they name (
 test("a pattern let's facts and fields survive its block; only its names end there (§7, §10)", () => {
   const source = `${nat}${vec}fn h(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (r : Vec(A, n)) {\n  let (t : Vec(A, n)) = { let VCons(_, _, _, r) = v; r };\n  inspect;\n  t\n}\n`;
   assert.deepEqual(scopeOf(ok(source).inspects[0]!.info), [
-    "A : Type()", "n : Nat()", "v : Vec(A, Succ(n)) is VCons(A, n, _@11:43, t)", "_@11:43 : A",
-    "t : Vec(A, n)",
+    "?@10:10 : Type() is Type()", "A : Type()", "?@10:22 : Type() is Nat()", "n : Nat()", "?@10:40 : Nat() is Succ(n)",
+    "?@10:33 : Type() is Vec(A, Succ(n))", "v : Vec(A, Succ(n)) is VCons(A, n, _@11:43, t)", "_@11:37 : Type() is A",
+    "_@11:40 : Nat() is n", "_@11:43 : A", "t : Vec(A, n)",
   ]);
   err(source.replace("  t\n}", "  r\n}"), "r", /`r` is not in scope/, "  r\n}");
   const isSucc = "data IsSucc(n : Nat()) : Type() {\n  IsSuccHere(m : Nat()) : IsSucc(Succ(m));\n}\n";
@@ -426,7 +432,8 @@ test("a tainted scrutinee taints the scope its facts reach, and names are tainte
   const source = `${nat}data Unit() : Type() {\n  U() : Unit();\n}\nlet n = Zero();\nlet s = sorry(s : Unit());\nlet r = match s : (r : Nat()) {\n  U() => { inspect; n };\n};\ninspect;\nprint n;\nlet U() = s;\ninspect;\nprint n;\n`;
   const r = ok(source), at = (needle: string) => ({ start: source.indexOf(needle), end: source.indexOf(needle) + 1 });
   assert.deepEqual(r.inspects.map(i => i.info.taintedBy), [at("s : (r"), null, at("s;\ninspect")]);
-  assert.deepEqual(r.inspects.map(i => i.info.scope.flatMap(e => e.tainted)), [["s"], ["s", "r"], ["s", "r"]]);
+  assert.deepEqual(r.inspects.map(i => [...i.info.globalEntries, ...i.info.scope].flatMap(e => e.tainted)),
+    [["s"], ["s", "r"], ["s", "r"]]);
   assert.deepEqual(r.prints.map(p => p.value), ["Zero()", "sorry"]);
   const empty = ok(`${nat}data False() : Type() {}\nlet x = match sorry(p : False()) : (r : Nat()) {};\ninspect;\nprint x;\n`);
   assert.deepEqual([empty.inspects[0]?.info.taintedBy, empty.prints[0]?.value], [null, "sorry"]);

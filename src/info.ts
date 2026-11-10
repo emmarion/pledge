@@ -1,7 +1,7 @@
 import type { CheckResult, EntryInfo, ExpectedEntry, ExpectedInfo, GlobalInfo, PositionInfo, Rendered } from "./api.ts";
-import { bound, canon, entries, entry, lookup, mapLeaves, mentions } from "./terms.ts";
-import type { Entry, EntryId, OpenTerm, Scope, Signature, Term } from "./terms.ts";
-import { cat, entryInfo, explain, render, renderTelescope } from "./render.ts";
+import { bound, entries, entry, mapLeaves } from "./terms.ts";
+import type { Entry, OpenTerm, Scope, Signature, Term } from "./terms.ts";
+import { canonicalOf, cat, entryInfo, explain, render, renderTelescope } from "./render.ts";
 import { parseExpr } from "./parser.ts";
 import { attempt, globalAt, innermost, written } from "./context.ts";
 import type { Declared, Given, Global, Local, Snapshot, State } from "./context.ts";
@@ -10,12 +10,12 @@ import { closed, single } from "./expr.ts";
 const shift = (t: OpenTerm, env: readonly Term[]): OpenTerm =>
   mapLeaves(t, u => u.tag === "bound" ? env[u.index] ?? bound(u.index - env.length) : u);
 
-const givenTerms = (given: Given | null): OpenTerm[] =>
-  given?.wants.flatMap(w => [w.type, w.is].flatMap(t => t ? [shift(t, given.env)] : [])) ?? [];
-
 function expectedEntries(scope: Scope, given: Given): ExpectedEntry[] {
-  const show = (t: OpenTerm) => render(scope, shift(t, given.env), { bound: given.wants.map(w => w.name) });
-  return given.wants.map(w => ({ name: w.name, type: w.type && show(w.type), rule: w.is && show(w.is),
+  const bound = given.wants.map(w => w.name), at = (t: OpenTerm) => shift(t, given.env);
+  const raw = (t: OpenTerm) => render(scope, at(t), { canonical: false, bound });
+  const canonical = (t: OpenTerm) => canonicalOf(scope, at(t), bound);
+  return given.wants.map(w => ({ name: w.name, type: w.type && raw(w.type), rule: w.is && raw(w.is),
+    canonical: { type: w.type && canonical(w.type), rule: w.is && canonical(w.is) },
     undetermined: w.type === null, erased: w.mult === "erased" }));
 }
 
@@ -45,40 +45,24 @@ function globalInfo(scope: Scope, g: Global, st: State, limit: number): GlobalIn
       });
       return [{ kind: "type", name: g.name, signature: declared(scope, g), ...(g.ctors ? { ctors } : {}) }];
     }
-    case "binding": {
-      const e = lookup(scope, g.name);
-      return e?.id === g.id
-        ? [{ kind: "binding", name: g.name, signature: cat(" : ", render(scope, e.type),
-          ...(e.rule ? [" is ", render(scope, e.rule.term)] : [])) }]
-        : [];
-    }
+    case "binding": return [];
   }
 }
 
 function scoped({ scope, tainted, erased }: Local, e: Entry): EntryInfo {
-  return { ...entryInfo(scope, e.id), tainted: e.names.filter(n => tainted.has(n)),
+  return { ...entryInfo(scope, e.id, false), tainted: e.names.filter(n => tainted.has(n)),
     erased: e.erased || (e.names.length > 0 && e.names.every(n => erased.has(n))) };
 }
 
-function listed(scope: Scope, decl: EntryId | null, given: Given | null): Entry[] {
-  const keep = new Set<EntryId>(), all = entries(scope);
-  const add = (e: Entry): void => { keep.add(e.id); [e.type, e.rule?.term].forEach(t => t && visit(t)); };
-  const visit = (t: OpenTerm): boolean => mentions(canon(scope, t), id => {
-    const e = entry(scope, id);
-    if (!e.names.length && !keep.has(id)) add(e);
-    return false;
-  });
-  all.filter(e => e.names.length && (decl === null || e.id >= decl)).forEach(add);
-  givenTerms(given).forEach(visit);
-  return all.filter(e => keep.has(e.id));
-}
-
 export function info(st: State, snap: Snapshot): PositionInfo {
-  const { scope } = snap.local;
+  const { scope } = snap.local, all = entries(scope).map(e => scoped(snap.local, e));
+  const global = (e: EntryInfo): boolean => snap.decl === null || e.id < snap.decl;
   return {
     expected: expected(scope, snap.given),
     termination: snap.fn?.info ?? null,
-    scope: listed(scope, snap.decl, snap.given).map(e => scoped(snap.local, e)),
+    scope: all.filter(e => !global(e)),
+    globalEntries: all.filter(global),
+    topLevel: snap.decl === null,
     taintedBy: snap.local.taintedBy,
     refutations: snap.refutations,
     globals: st.globals.slice(0, snap.limit).flatMap(g => globalInfo(scope, g, st, snap.limit)),

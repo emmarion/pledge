@@ -1,13 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { check } from "../check.ts";
-import { explainTerm, scopeOf, verdicts } from "../../tests/helpers.ts";
+import { entriesOf, explainTerm, listed, verdicts } from "../../tests/helpers.ts";
 import { page, program, run } from "../../tests/tutorial.ts";
 
 test("tuple-let-telescope: Expected lists both binders, and dropping m's type is an error at the reference", () => {
   const { source, r } = run("tuple-let-telescope", page("tuple-let-telescope").solution);
-  assert.deepEqual(r.infoAt(source.indexOf("pair(x)")).expected.entries?.map(e => `${e.name} : ${e.type?.text}`), ["m : Nat()", "v : Vec(Nat(), Succ(m))"]);
-  assert.ok(scopeOf(r.infoAt(source.indexOf("print v"))).includes("v : Vec(Nat(), Succ(m))"));
+  assert.deepEqual(r.infoAt(source.indexOf("pair(x)")).expected.entries?.map(e => `${e.name} : ${e.canonical.type?.term.text}`), ["m : Nat()", "v : Vec(Nat(), Succ(m))"]);
+  assert.ok(entriesOf(r.infoAt(source.indexOf("print v"))).includes("v : Vec(Nat(), Succ(m))"));
   const dropped = run("tuple-let-telescope", page("tuple-let-telescope").solution.replace("m : Nat(),", "m,"));
   assert.match(dropped.r.error?.message() ?? "", /`m` has no type here/);
   assert.equal(dropped.r.error?.span.start, dropped.source.indexOf("Succ(m)))") + 5);
@@ -15,10 +15,10 @@ test("tuple-let-telescope: Expected lists both binders, and dropping m's type is
 
 test("facts-escape: after the block, v's rule and the anonymous tail remain, and the goal needs them", () => {
   const { source, r } = run("facts-escape", page("facts-escape").solution);
-  const after = scopeOf(r.infoAt(source.indexOf("inspect;")));
+  const after = entriesOf(r.infoAt(source.indexOf("inspect;")));
   assert.ok(after.some(e => /^v : .* is VCons\(Nat\(\), n, h, \?@/.test(e)), after.join("; "));
   assert.ok(after.some(e => /^\?@\d+:\d+ : Vec\(Nat\(\), n\)$/.test(e)), after.join("; "));
-  const tail = r.infoAt(source.indexOf("inspect;")).scope.find(e => e.origin.kind === "VCons.rest")!;
+  const tail = listed(r.infoAt(source.indexOf("inspect;"))).find(e => e.origin.kind === "VCons.rest")!;
   assert.equal(source.slice(tail.origin.span.start, tail.origin.span.end), "tl");  assert.ok(!after.some(e => /^(hd|tl)\b/.test(e)));
   assert.match(run("facts-escape", `let k = tl;\n${page("facts-escape").solution}`).r.error?.message() ?? "", /`tl` is not in scope/);
   const p = page("facts-escape");

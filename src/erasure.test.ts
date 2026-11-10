@@ -1,14 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { CheckResult, EntryInfo, PositionInfo } from "./api.ts";
-import { explainTerm, file, files, harness, isZero, nat, qedChecks, standsFor, vecBy, verdicts, vheadBy } from "../tests/helpers.ts";
+import { explainTerm, file, files, harness, isZero, listed, nat, qedChecks, standsFor, vecBy, verdicts, vheadBy } from "../tests/helpers.ts";
 
 const { ok, err } = harness(2);
 const vec = vecBy("erased "), vhead = vheadBy("erased ");
 const eq = "data Eq(A : Type(), a : A, b : A) : Type() {\n  Refl(erased A : Type(), erased a : A) : Eq(A, a, a);\n}\n";
 
 const prints = (r: CheckResult): string[] => r.prints.map(p => p.value);
-const flagged = (info: PositionInfo): string[] => info.scope.filter(e => e.erased).map((e: EntryInfo) => e.names.join(",") || `?${e.origin.kind}`);
+const flagged = (info: PositionInfo): string[] => listed(info).filter(e => e.erased).map((e: EntryInfo) => e.names.join(",") || `?${e.origin.kind}`);
 const leak = /is erased, and .* is not; an erased value is allowed only in an erased position/;
 
 test("the phase 2 example programs check and print erased fields as _", () => {
@@ -38,7 +38,7 @@ test("every tests/design_*.pledge checks under phase 2 as under phase 1", () => 
 test("in phase 1, erased is a plain name and nothing is erased", () => {
   const source = `${nat}fn f(erased : Nat(), many : Nat()) -> (r : Nat()) {\n  let x = Succ(erased);\n  inspect;\n  many\n}\n`;
   const r = ok(source, 1);
-  assert.deepEqual(r.inspects[0]?.info.scope.map(e => [e.names.join(","), e.erased]), [["erased", false], ["many", false], ["x", false]]);
+  assert.deepEqual(listed(r.inspects[0]!.info).filter(e => e.names.length).map(e => [e.names.join(","), e.erased]), [["erased", false], ["many", false], ["x", false]]);
 });
 
 test("an erased name is an error outside an erased position, at the name", () => {
@@ -90,7 +90,7 @@ test("match erased: at most one branch with a many annotation entry", () => {
   const one = `${nat}${vec}fn f(erased n : Nat(), v : Vec(Nat(), Succ(n)), w : Nat()) -> (r : Nat()) {\n  match erased v : (r : Nat()) { VCons(_, k, h, _) => w; }\n}\nprint f(_, VCons(_, _, Zero(), VNil(_)), Succ(Zero()));\n`;
   assert.deepEqual(prints(ok(one)), ["Succ(Zero())"]);
   const info = ok(one).infoAt(one.indexOf("w; }"));
-  assert.deepEqual(flagged(info), ["n", "k", "h", "?VCons.rest"]);
+  assert.deepEqual(flagged(info), ["n", "?VCons.A", "k", "h", "?VCons.rest"]);
   err(one.replace("=> w;", "=> h;"), "h", leak, "=> h");
 });
 
@@ -131,7 +131,8 @@ test("let erased: tuple binders and pattern lets bind erased; comptime cannot be
   const source = `${nat}${vec}let v = VCons(_, _, Zero(), VNil(_));\nlet (erased a, b) = (Succ(Zero()), Zero());\nlet erased c = b;\nlet erased VCons(x, y, z, w) = v;\nlet VCons(_, _, h, t) = v;\nprint VCons(x, y, h, t);\n`;
   const r = ok(source);
   assert.deepEqual(prints(r), ["VCons(_, _, Zero(), VNil(_))"]);
-  assert.deepEqual(flagged(r.infoAt(source.length)), ["a", "x", "y", "z", "w"]);
+  assert.deepEqual(flagged(r.infoAt(source.length)),
+    ["?_", "?_", "?_", "a", "x", "y", "z", "w", "?VCons.A", "?VCons.n"]);
   err(source.replace("print VCons(x, y, h, t)", "print VCons(x, y, z, t)"), "z", leak, "print");
   err(`${nat}comptime let erased Succ(p) = Succ(Zero());\n`, "comptime let erased Succ(p) = Succ(Zero());", /cannot be erased/);
 });
@@ -147,7 +148,7 @@ test("_ stands for an erased argument, solved from later arguments and from what
   assert.deepEqual(prints(r), ["Zero()"]);
   const source = `${nat}${vec}let x = VCons(_, _, Zero(), VNil(_));\n`;
   assert.equal(explainTerm(ok(source), source.indexOf("_"))?.canonical.text, "Nat()");
-  assert.deepEqual(ok(source).infoAt(source.indexOf("_")).expected.entries?.map(e => [e.name, e.type?.text, e.erased]), [["A", "Type()", true]]);
+  assert.deepEqual(ok(source).infoAt(source.indexOf("_")).expected.entries?.map(e => [e.name, e.canonical.type?.term.text, e.erased]), [["A", "Type()", true]]);
 });
 
 test("explainAt shows a skeleton term with its _ solved", () => {
@@ -190,7 +191,7 @@ test("interface data shows multiplicities where written", () => {
     "VNil(erased A : Type()) : Vec(A, Zero())", "VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n)) : Vec(A, Succ(n))",
   ]);
   const inBody = ok(source).infoAt(source.indexOf("hd\n}"));
-  assert.deepEqual(flagged(inBody), ["A", "n"]);
+  assert.deepEqual(flagged(inBody), ["A", "n", "?VCons.A", "?VCons.n"]);
   assert.deepEqual(inBody.expected.entries?.map(e => [e.name, e.erased]), [["x", false]]);
 });
 
@@ -226,7 +227,7 @@ test("taint: a _ whose solution mentions a tainted entry taints the application,
     assert.deepEqual([clean.goalProved, prints(clean)], [true, ["Zero()"]], arg);
   }
   const source = `${nat}${vec}let T = sorry(T : Type());\nlet (y : Vec(T, Zero())) = VNil(_);\nlet (z : Vec(Nat(), Zero())) = VNil(_);\ninspect;\n`;
-  assert.deepEqual(ok(source).inspects[0]?.info.scope.map(e => [e.names.join(","), e.tainted]), [["T", ["T"]], ["y", ["y"]], ["z", []]]);
+  assert.deepEqual(listed(ok(source).inspects[0]!.info).filter(e => e.names.length).map(e => [e.names.join(","), e.tainted]), [["T", ["T"]], ["y", ["y"]], ["z", []]]);
 });
 
 test("taint: a function written after a tainted pattern let in a top-level block is in a tainted scope (§12)", () => {
@@ -235,7 +236,7 @@ test("taint: a function written after a tainted pattern let in a top-level block
   const r = ok(source);
   assert.deepEqual(r.inspects.map(i => i.info.scope.filter(e => e.names.includes("x") || e.names.includes("m")).map(e => [e.names.join(","), e.tainted])),
     [[["x", ["x"]]], [["x", ["x"]]]]);
-  assert.deepEqual(r.infoAt(source.length).scope.filter(e => e.names.includes("m")).map(e => [e.names.join(","), e.tainted]),
+  assert.deepEqual(listed(r.infoAt(source.length)).filter(e => e.names.includes("m")).map(e => [e.names.join(","), e.tainted]),
     [["n,m", ["m"]]]);
   const scrutinee = source.indexOf("s; n }");
   assert.deepEqual(r.inspects.map(i => i.info.taintedBy), [1, 2].map(() => ({ start: scrutinee, end: scrutinee + 1 })));

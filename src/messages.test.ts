@@ -31,7 +31,7 @@ test("a refutation's derivation lists the equation that gave each rule it was re
 }
 `;
   assert.deepEqual(derivation(source), [
-    "Refl(_@11:10, x) =>",
+    "suppose match e { Refl(_@11:10, x) => ... }",
     "1. Eq(Nat(), Zero(), Succ(Zero())) = Eq(_@11:10, x, x)   " +
       "(the scrutinee's type and Refl's)",
     "2. Zero() = x   (argument 2 of Eq in 1), so x is Zero()",
@@ -40,10 +40,10 @@ test("a refutation's derivation lists the equation that gave each rule it was re
   ]);
 });
 
-test("a derivation never names the anonymous entry of an application written in place", () => {
+test("a derivation refers to the entry of an unnamed application by its marker (§13)", () => {
   assert.deepEqual(derivation(`${nat}let Succ(m) = Zero();\n`), [
-    "Succ(m) =>",
-    "1. Zero() = Succ(m)   (forcing Succ on the scrutinee)",
+    "suppose let Succ(m) = ?@5:15;",
+    "1. Zero() = Succ(m)   (forcing Succ on the scrutinee; rewritten by ?@5:15)",
     "refuted: Zero and Succ are different heads",
   ]);
 });

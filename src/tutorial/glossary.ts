@@ -12,7 +12,7 @@ export const glossary: Term[] = [
   { term: "scrutinee", at: "functions", means: "The value a `match` or a pattern `let` takes apart." },
   { term: "binder", at: "functions", means: "A name with its type, `n : Nat()`, or a name with what it is, `m is Succ(n)`." },
   { term: "telescope", at: "functions", means: "A parenthesized list of binders, such as a function's parameters or returns. Each binder's type can mention the names before it." },
-  { term: "entry", at: "knowledge", means: "One thing the checker keeps track of. It has a type, the names that refer to it, and sometimes an `is` rule. The Scope panel lists entries." },
+  { term: "entry", at: "knowledge", means: "One thing the checker keeps track of. It has a type, the names that refer to it, and sometimes an `is` rule. Scope and Global entries list entries." },
   { term: "`is` rule", at: "knowledge", means: "A fact the checker holds about an entry: that it is exactly some term, as `two` is `Succ(one)`.", elsewhere: "a definition that the checker unfolds; terms equal by unfolding are called definitionally equal" },
   { term: "canonical form", at: "knowledge", means: "What a term becomes when each entry in it is replaced by what its `is` rule says, until no rule applies. The checker compares two terms by comparing their canonical forms.", elsewhere: "normal form" },
   { term: "type constructor", at: "vhead", means: "A name that is applied to give a type: `Nat` gives `Nat()`, and `Vec` gives `Vec(Nat(), Zero())`. One declared by `data` is a data type constructor; `Type` is built in." },

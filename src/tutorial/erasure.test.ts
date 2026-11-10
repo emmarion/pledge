@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { check } from "../check.ts";
-import { explainTerm, scopeOf } from "../../tests/helpers.ts";
+import { entriesOf, explainTerm, listed, namedOf } from "../../tests/helpers.ts";
 import { page, program, run } from "../../tests/tutorial.ts";
 
 const errorAt = (slug: string, learner: string, at: string, after = "") => {
@@ -17,16 +17,16 @@ test("erased: the start fails at VCons's field A in vcons; the solution prints e
   assert.match(errorAt("erased", page("erased").initial, "A, n, x, v)", "VCons(A"), /`A` is erased/);
   const { source, r } = run("erased", page("erased").solution);
   assert.deepEqual(r.prints.map(p => p.value), ["Succ(Zero())", "VCons(_, _, Zero(), VCons(_, _, Succ(Zero()), VNil(_)))"]);
-  assert.deepEqual(scopeOf(r.infoAt(source.indexOf("vhead(A, n, rest)"))).slice(0, 2), ["A : Type()", "n : Nat()"]);
-  assert.deepEqual(r.infoAt(source.indexOf("vhead(A, n, rest)")).scope.slice(0, 2).map(e => e.erased), [true, true]);
+  assert.deepEqual(namedOf(r.infoAt(source.indexOf("vhead(A, n, rest)"))).slice(0, 2), ["A : Type()", "n : Nat()"]);
+  assert.deepEqual(listed(r.infoAt(source.indexOf("vhead(A, n, rest)"))).filter(e => e.names.length).slice(0, 2).map(e => e.erased), [true, true]);
 });
 
 test("erased-positions: the start fails at n in len's body, and either fix leaves k erased and Succ(Zero())", () => {
   assert.match(errorAt("erased-positions", page("erased-positions").initial, "n\n}"), /`n` is erased/);
   for (const fix of [page("erased-positions").solution, keepN]) {
     const { source, r } = run("erased-positions", fix);
-    const k = r.infoAt(source.indexOf("print w")).scope.find(e => e.names.includes("k"));
-    assert.deepEqual([k?.erased, k?.rule?.text], [true, "Succ(Zero())"]);
+    const k = listed(r.infoAt(source.indexOf("print w"))).find(e => e.names.includes("k"));
+    assert.deepEqual([k?.erased, k?.canonical.rule?.term.text], [true, "Succ(Zero())"]);
   }
 });
 
@@ -78,7 +78,7 @@ test("match-erased: a many match on p, and a second live branch, are rejected; e
   errorAt("match-erased", twoBranches("r"), "Succ(k) => k;");
   assert.equal(run("match-erased", twoBranches("erased r")).r.error, null);
   const { source, r } = run("match-erased", page("match-erased").solution);
-  assert.ok(scopeOf(r.infoAt(source.indexOf("=> v") + 3)).includes("n : Nat() is m"));
+  assert.ok(entriesOf(r.infoAt(source.indexOf("=> v") + 3)).includes("n : Nat() is m"));
   assert.deepEqual(r.prints.map(p => p.value), ["VCons(_, _, Zero(), VNil(_))"]);
 });
 

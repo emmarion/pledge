@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { scopeOf, standsFor } from "../../tests/helpers.ts";
+import { entriesOf, namedOf, standsFor } from "../../tests/helpers.ts";
 import { errorAt, expected, page, printsOf, run } from "../../tests/tutorial.ts";
 
 test("vhead: VNil is refuted at the match, a branch for it is an error, and an empty vector is rejected", () => {
@@ -55,10 +55,10 @@ test("annotation-underscore: _ in vuncons stands for its returns, and the untype
 test("is-binders: without the promise m is only a number; with it, m is Succ(Zero()) and a false promise is rejected", () => {
   const before = run("is-binders", page("is-binders").initial);
   const last = before.source.indexOf("print vhead");
-  assert.deepEqual(scopeOf(before.r.infoAt(last)), ["m : Nat()", "w : Vec(Nat(), m)"]);
+  assert.deepEqual(namedOf(before.r.infoAt(last)), ["m : Nat()", "w : Vec(Nat(), m)"]);
   assert.equal(before.r.error?.span.start, before.source.indexOf("w);"));
   const after = run("is-binders", page("is-binders").solution);
-  assert.deepEqual(scopeOf(after.r.infoAt(after.source.indexOf("print vhead"))), ["m : Nat() is Succ(Zero())", "w : Vec(Nat(), Succ(Zero()))"]);
+  assert.deepEqual(namedOf(after.r.infoAt(after.source.indexOf("print vhead"))), ["m : Nat() is Succ(Zero())", "w : Vec(Nat(), Succ(Zero()))"]);
   assert.deepEqual(after.r.prints.map(p => p.value), ["Zero()"]);
   assert.equal(errorAt("is-binders", page("is-binders").solution.replace("m is Succ(n)", "m is Succ(Succ(n))")).at, "Succ(n)");
 });
@@ -66,7 +66,7 @@ test("is-binders: without the promise m is only a number; with it, m is Succ(Zer
 test("pattern-let: VNil is refuted at the let, rest is one shorter, and let Succ(k) = n is rejected", () => {
   const { source, r } = run("pattern-let", page("pattern-let").initial);
   assert.deepEqual(r.infoAt(source.indexOf("let VCons")).refutations?.map(x => x.ctor), ["VNil"]);
-  assert.ok(scopeOf(r.infoAt(source.indexOf("rest\n}"))).includes("rest : Vec(A, Succ(n))"));
+  assert.ok(entriesOf(r.infoAt(source.indexOf("rest\n}"))).includes("rest : Vec(A, Succ(n))"));
   assert.equal(r.error?.span.start, source.indexOf("rest\n}"));
   assert.deepEqual(printsOf("pattern-let"), ["Succ(Zero())"]);
   const succ = errorAt("pattern-let", page("pattern-let").solution.replace("  let VCons(_, _, _", "  let Succ(k) = n;\n  let VCons(_, _, _"));

@@ -1,5 +1,5 @@
 import type { Mult, Span } from "./syntax.ts";
-import type { EntryId } from "./api.ts";
+import type { EntryId, Rendered } from "./api.ts";
 
 export type { EntryId };
 
@@ -12,16 +12,17 @@ export type OpenTerm = Term<Bound>;
 
 export interface Binder { name: string | null; type: OpenTerm; is: OpenTerm | null; mult: Mult; span: Span }
 export type Telescope = readonly Binder[];
-export interface Signature { head: Head; params: Telescope; ret: OpenTerm }
+export interface Signature { head: Head; params: Telescope; ret: OpenTerm; retAt?: Span }
 
 interface Origin { kind: string; span: Span; blank?: boolean }
-interface Rule { term: Term; at: Span }
+interface Rule { term: Term; at: Span; how?: (view: Scope) => Rendered[] }
 export interface Entry {
   readonly id: EntryId;
   readonly names: readonly string[];
   readonly type: Term;
   readonly rule: Rule | null;
   readonly origin: Origin;
+  readonly typeAt: Span;
   readonly erased: boolean;
   readonly tainted: boolean;
 }
@@ -89,10 +90,11 @@ export function entries(scope: Scope): Entry[] {
 
 const put = (scope: Scope, e: Entry): Scope => ({ ...scope, table: pset(scope.table, e.id, e) });
 
-export function create(scope: Scope, type: Term, rule: Term | null, fresh: Fresh): { scope: Scope; id: EntryId } {
+export function create(scope: Scope, type: Term, rule: Term | null, fresh: Fresh,
+    typeAt = fresh.origin.span): { scope: Scope; id: EntryId } {
   const id = scope.supply.next++;
   const e: Entry = {
-    id, names: [], type, rule: rule && { term: rule, at: fresh.origin.span }, origin: fresh.origin,
+    id, names: [], type, rule: rule && { term: rule, at: fresh.origin.span }, origin: fresh.origin, typeAt,
     erased: fresh.erased ?? false, tainted: fresh.tainted ?? false,
   };
   return { scope: { ...put(scope, e), order: { id, prev: scope.order } }, id };
@@ -115,8 +117,8 @@ export const forget = (inner: Scope, outer: Scope, named: readonly { name: strin
 export const mark = (scope: Scope, id: EntryId, flags: { erased?: boolean; tainted?: boolean }): Scope =>
   put(scope, { ...entry(scope, id), ...flags });
 
-export const addRule = (scope: Scope, id: EntryId, term: Term, at: Span): Scope =>
-  put(scope, { ...entry(scope, id), rule: { term, at } });
+export const addRule = (scope: Scope, id: EntryId, term: Term, at: Span, how?: (view: Scope) => Rendered[]): Scope =>
+  put(scope, { ...entry(scope, id), rule: { term, at, ...how ? { how } : {} } });
 
 export const mapLeaves = <B extends Bound, C extends Bound>(t: Term<B>, leaf: (u: Ref | B) => Term<C>): Term<C> =>
   t.tag === "app" ? { ...t, args: t.args.map(a => mapLeaves(a, leaf)) } : leaf(t);
@@ -171,15 +173,16 @@ export function isStrictSubterm(scope: Scope, s: Term, t: Term): boolean {
   return below(canon(scope, t));
 }
 
-interface Step { by: EntryId; at: Span; from: Term; to: Term }
+interface Step { by: EntryId; at: Span; from: OpenTerm; to: OpenTerm }
 
-const replace = (t: Term, id: EntryId, by: Term): Term => mapLeaves(t, u => u.id === id ? by : u);
+const replace = (t: OpenTerm, id: EntryId, by: Term): OpenTerm =>
+  mapLeaves(t, u => u.tag === "entry" && u.id === id ? by : u);
 
-export function rewrites(scope: Scope, t: Term): Step[] {
+export function rewrites(scope: Scope, t: OpenTerm): Step[] {
   const seen = new Set<EntryId>(), post: [EntryId, Rule][] = [];
-  const visit = (u: Term): void => {
+  const visit = (u: OpenTerm): void => {
     if (u.tag === "app") return u.args.forEach(visit);
-    if (seen.has(u.id)) return;
+    if (u.tag === "bound" || seen.has(u.id)) return;
     seen.add(u.id);
     const rule = entry(scope, u.id).rule;
     if (rule) { visit(rule.term); post.push([u.id, rule]); }
