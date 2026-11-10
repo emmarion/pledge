@@ -55,12 +55,13 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
   tutorial and the tests, and the front page's starting program.
 - `src/ui/`: the page (§13) and the tutorial page (§12).
 - `src/tutorial/`: the tutorial as data. `pages.ts` has the `Page` type
-  and assembles the sections; `basics.ts`, `proofs.ts`, `erasure.ts`,
-  `beyond.ts` and `appendix.ts` hold one section each; `programs.ts`
-  holds the program snippets that sections share; `glossary.ts` holds
-  the glossary.
+  and assembles the sections; `start.ts`, `dependent.ts`,
+  `recursion.ts`, `evidence.ts`, `relation.ts`, `arithmetic.ts`,
+  `limits.ts`, `erasure.ts` and `appendix.ts` hold one section each, in
+  that order; `programs.ts` holds the program snippets that sections
+  share; `glossary.ts` holds the glossary.
 - `src/ui/links.ts`: the links that citations of DESIGN.md get, and the
   rendering of prose and messages (code between backticks, citations as links).
 - `tests/`: Pledge programs the tests check (`.pledge`); `helpers.ts`
   and `tutorial.ts`, which the test files share; and `Beyond.agda`,
-  the Agda file the tutorial's closing page quotes.
+  the Agda file the tutorial's page "What Pledge leaves out" quotes.

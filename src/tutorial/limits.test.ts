@@ -2,7 +2,24 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { file, scopeOf, verdicts } from "../../tests/helpers.ts";
 import { page, run } from "../../tests/tutorial.ts";
-import { agda } from "./beyond.ts";
+import { agda } from "./limits.ts";
+
+test("comptime: n is known only by its type, so only the run proves Even(n)", () => {
+  const { r } = run("comptime", page("comptime").solution);
+  assert.deepEqual(verdicts(r), [false, true, true]);
+  assert.equal(r.prints[0]?.value, `${"Succ(".repeat(100)}Zero()${")".repeat(100)}`);
+  assert.match(run("comptime", page("comptime").initial).r.error?.message() ?? "", /`None` is not refuted/);
+  assert.match(run("comptime", "qed EvenSucc(Succ(Zero()), OddSucc(Zero(), EvenZero()));\n").r.error?.message() ?? "", /type `Even\(n\)`/);
+  const fallback = run("comptime", "let p = match decideEven(n) : (p : Even(n)) {\n  None(_) => sorry(_);\n  Some(_, q) => q;\n};\nqed p;\n").r;
+  assert.deepEqual(verdicts(fallback), [true, true, false]);
+});
+
+test("soundness: marking n subterm does not help loop, a match with no branches is rejected, and sorry leaves the goal unproved", () => {
+  assert.match(run("soundness", page("soundness").initial.replace("loop(n)", "match n : _ {}")).r.error?.message() ?? "", /no branch for `Zero`, `Succ`/);
+  const marked = page("soundness").initial.replace("loop(n : Nat())", "loop(subterm n : Nat())").replace("loop(n)", "loop(subterm n)");
+  assert.match(run("soundness", marked).r.error?.message() ?? "", /not a strict subterm/);
+  assert.deepEqual(verdicts(run("soundness", page("soundness").solution).r), [true, true, false]);
+});
 
 test("beyond: the start fails at qed p, with p's type ending in r, while print shows four", () => {
   const { source, r } = run("beyond", page("beyond").initial);

@@ -1,6 +1,6 @@
 import type { Section } from "./pages.ts";
 import { nat, vec, vheadBy } from "../examples.ts";
-import { paragraphs, box, vecErased, vheadErased } from "./programs.ts";
+import { paragraphs, box, isZero, vecErased, vheadErased } from "./programs.ts";
 
 const erasedUses = `fn vcons(erased A : Type(), erased n : Nat(), x : A, v : Vec(A, n))
     -> (w : Vec(A, Succ(n))) {
@@ -38,6 +38,15 @@ const castHead = `fn cast(erased m : Nat(), erased n : Nat(),
 
 const castUse = `print cast(_, _, Refl(_, Succ(Zero())), VCons(_, _, Zero(), VNil(_)));
 qed cast;
+`;
+
+const absurdHead = `fn f(erased n : Nat(), p : IsZero(n)) -> (r : Nat()) {
+  match erased n : (r : Nat()) {
+    Zero() => Zero();`;
+
+const absurdUse = `  }
+}
+print f(Zero(), IsZeroHere());
 `;
 
 export const erasure: Section = { title: "Erasure", pages: [
@@ -118,8 +127,8 @@ qed VCons(_, _, one, VCons(_, _, Zero(), VNil(_)));
     prose: paragraphs(
       "Some arguments are proofs that only the checker needs. `cast`, in your box, turns a vector of length `m` into a vector of length `n`, given a proof `p` that `m` and `n` are equal. When it runs, the vector comes back unchanged; `p` is there only to convince the checker, so it is erased. But the checker learns that `m` and `n` are equal only by matching on `p`, and a match looks at its scrutinee.",
       "`match erased p : (...)` is a match whose scrutinee is erased, and the fields of each of its branches are erased too. A match written without `erased` is `many`. The scrutinee of a `many` match is not an erased position, so `match p` on the erased `p` is rejected at `p`.",
-      "An erased match has a catch. Evaluation skipped `p`, so when the match runs it has no value to look at and cannot choose a branch. So if the match produces anything that is `many`, at most one of its branches can be one that runs. Every other branch must be an *absurd branch*: one whose body is a match with no branches. Evaluation runs the branch that is not absurd. An absurd branch never runs: its match has no branches because every value constructor is refuted there.",
-      "So `match erased n : (r : Nat()) { Zero() => Zero(); Succ(k) => k; }` is rejected at its second branch, while with `erased r` in the annotation it is allowed, since then it produces nothing that is `many`.",
+      "An erased match has a catch. Evaluation skipped `p`, so when the match runs it has no value to look at and cannot choose a branch. So if the match produces anything that is `many`, at most one of its branches can be one that runs, and evaluation runs that branch without looking.",
+      "So `match erased n : (r : Nat()) { Zero() => Zero(); Succ(k) => k; }` is rejected at its second branch, while with `erased r` in the annotation it is allowed, since then it produces nothing that is `many`. The next page shows what a second branch is allowed to be.",
       "`cast` needs only one branch, for `Refl`. Forcing `Refl` equates `m` and `n`, so in that branch `v` has the type Expected asks for, and the branch is `v` itself. The goal is a function goal, as on the page \"Proof by recursion\". In phase 2 the multiplicities must agree too, so `cast` erases exactly the binders the goal erases."),
     task: "Replace `sorry(_)` with an erased match on `p`, with one branch. Put the caret in the branch: Scope shows that forcing `Refl` gave `n` the rule that it is `m`. The `print` then shows the vector, and the goal is proved.",
     refs: "§7, §10, §12, §16",
@@ -138,5 +147,27 @@ ${castUse}`,
   }
 }
 ${castUse}`,
+  },
+  {
+    slug: "absurd-branches",
+    title: "Absurd branches",
+    phase: 2,
+    prose: paragraphs(
+      "An erased match has no value to choose a branch by, so at most one of its branches can run. In `cast` on the previous page that was easy: `Eq` has one value constructor. A match on an erased number has two to deal with, `Zero` and `Succ`.",
+      "Sometimes forcing refutes one of them, and then it has no branch. But often a value constructor is ruled out only by a proof in scope, and as the page \"Refuting through a proof\" showed, it then still needs a branch: one that matches on the proof and finds every value constructor refuted.",
+      "An erased match allows exactly that kind of extra branch. A branch whose body is a match with no branches is an *absurd branch*. (The body can also be a block that ends in such a match.) An absurd branch never runs, since no value can reach a match with no branches. So the rule is: an erased match that produces anything `many` has at most one branch that is not absurd, and evaluation runs that one.",
+      "`f` in your box is the function of that earlier page, cut down: it returns a number in place of evidence, and it takes `n` erased, since its result never needs `n`. Its `Zero` branch is the one that runs. Its `Succ` branch is missing, and the error says so.",
+      "Once your box checks, put the caret on `match erased`: Refutations lists `Succ` as absurd. Put it on the inner `match p`: Refutations lists `IsZeroHere` as refuted, and opening it shows why. The `print` shows `Zero()`, from the branch that is not absurd.",
+      "This is the end of the main path. You have written types that rule out mistakes, read types as claims, proved claims by recursion, and marked what only the checker needs. The appendix that follows is optional: each of its pages pins down one fine point of the rules."),
+    task: "Write the `Succ` branch as an absurd one: match on `p` there, with no branches.",
+    refs: "§10, §13, §16",
+    boxes: [box(nat, isZero)],
+    initial: `-- Add the Succ branch: an absurd one, matching on p.
+${absurdHead}
+${absurdUse}`,
+    requireQed: false,
+    solution: `${absurdHead}
+    Succ(m) => match p : _ {};
+${absurdUse}`,
   },
 ] };

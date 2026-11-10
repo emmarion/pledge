@@ -57,11 +57,3 @@ test("goal-comparison: an earlier is clause is not in force, so the starting tex
   const goalChanged = run("goal-comparison", page("goal-comparison").initial.replace("Eq(Nat(), b, Succ(a))", "Eq(Nat(), Succ(a), b)")).r;
   assert.deepEqual(verdicts(goalChanged), [false, true, true]);
 });
-
-test("absurd-branches: Succ is absurd, IsZeroHere refuted, and print runs the live branch", () => {
-  const { source, r } = run("absurd-branches", page("absurd-branches").solution);
-  assert.deepEqual(r.prints.map(p => p.value), ["Zero()"]);
-  assert.deepEqual(r.infoAt(source.indexOf("match erased") + 2).refutations?.map(x => [x.ctor, x.kind]), [["Succ", "absurd"]]);
-  assert.deepEqual(r.infoAt(source.indexOf("match p") + 2).refutations?.map(x => [x.ctor, x.kind]), [["IsZeroHere", "refuted"]]);
-  assert.match(run("absurd-branches", page("absurd-branches").initial).r.error?.message() ?? "", /no branch for `Succ`/);
-});

@@ -27,7 +27,7 @@ export const plusRel = `data Plus(m : Nat(), n : Nat(), r : Nat()) : Type() {
     : Plus(Succ(m), n, Succ(r));
 }`;
 
-export const plus = box(plusRel, `fn plus(subterm m : Nat(), n : Nat())
+export const plusEvidence = `fn plus(subterm m : Nat(), n : Nat())
     -> (r : Nat(), p : Plus(m, n, r)) {
   match m : _ {
     Zero() => (n, PlusZero(n));
@@ -36,7 +36,9 @@ export const plus = box(plusRel, `fn plus(subterm m : Nat(), n : Nat())
       (Succ(r), PlusSucc(k, n, r, p))
     };
   }
-}`);
+}`;
+
+export const plus = box(plusRel, plusEvidence);
 
 export const eq = `data Eq(A : Type(), x : A, y : A) : Type() {
   Refl(A : Type(), x : A) : Eq(A, x, x);
@@ -49,3 +51,30 @@ export const isZero = `data IsZero(n : Nat()) : Type() {
 export const vecErased = vecBy("erased ");
 
 export const vheadErased = vheadBy("erased ");
+
+export const bool = `data Bool() : Type() {
+  Yes() : Bool();
+  No() : Bool();
+}`;
+
+export const twoVec = `let one = Succ(Zero());
+let xs = VCons(Nat(), one, Zero(),
+  VCons(Nat(), Zero(), one, VNil(Nat())));`;
+
+export const vuncons = (body: string, use: string, ann = "(hd : A, tl : Vec(A, n))"): string =>
+  `fn vuncons(A : Type(), n : Nat(), v : Vec(A, Succ(n)))
+    -> (hd : A, tl : Vec(A, n)) {
+  match v : ${ann} {
+    VCons(_, _, h, t) => ${body};
+  }
+}
+${use}
+`;
+
+export const falseType = `data False() : Type() {}`;
+
+export const gap = " sorry(_)";
+
+export const withQed = (fn: string, name: string): string => `${fn}
+qed ${name};
+`;

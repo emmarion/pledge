@@ -81,3 +81,11 @@ test("match-erased: a many match on p, and a second live branch, are rejected; e
   assert.ok(scopeOf(r.infoAt(source.indexOf("=> v") + 3)).includes("n : Nat() is m"));
   assert.deepEqual(r.prints.map(p => p.value), ["VCons(_, _, Zero(), VNil(_))"]);
 });
+
+test("absurd-branches: Succ is absurd, IsZeroHere refuted, and print runs the live branch", () => {
+  const { source, r } = run("absurd-branches", page("absurd-branches").solution);
+  assert.deepEqual(r.prints.map(p => p.value), ["Zero()"]);
+  assert.deepEqual(r.infoAt(source.indexOf("match erased") + 2).refutations?.map(x => [x.ctor, x.kind]), [["Succ", "absurd"]]);
+  assert.deepEqual(r.infoAt(source.indexOf("match p") + 2).refutations?.map(x => [x.ctor, x.kind]), [["IsZeroHere", "refuted"]]);
+  assert.match(run("absurd-branches", page("absurd-branches").initial).r.error?.message() ?? "", /no branch for `Succ`/);
+});

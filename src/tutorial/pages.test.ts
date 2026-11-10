@@ -15,6 +15,10 @@ test("section links match DESIGN.md's headings, and every citation in the pages 
     for (const part of text.split(cited).filter((_, i) => i % 2)) assert.notEqual(citationUrl(part), null, part);
 });
 
+test("a page whose saved text from before its rewrite no longer checks keeps a revision", () => {
+  assert.deepEqual(pages.filter(p => p.revision).map(p => [p.slug, p.revision]), [["functions", 2], ["mutual", 2]]);
+});
+
 test("slugs are unique", () => {
   assert.equal(new Set(pages.map(p => p.slug)).size, pages.length);
 });
@@ -53,9 +57,20 @@ for (const page of pages) {
 }
 
 test("appendix: its pages are the last ones, phase 1 unless they need phase 2", () => {
-  const slugs = ["tuple-let-telescope", "facts-escape", "tainted-pattern-let", "hole-through-block", "hole-taint", "goal-comparison", "absurd-branches"];
+  const slugs = ["tuple-let-telescope", "facts-escape", "tainted-pattern-let", "hole-through-block", "hole-taint", "goal-comparison"];
   assert.deepEqual(pages.filter(p => p.appendix).map(p => p.slug), slugs);
-  assert.deepEqual(pages.slice(-slugs.length).map(p => [p.slug, p.phase]), slugs.map(s => [s, ["hole-through-block", "hole-taint", "absurd-branches"].includes(s) ? 2 : 1]));
+  assert.deepEqual(pages.slice(-slugs.length).map(p => [p.slug, p.phase]), slugs.map(s => [s, ["hole-through-block", "hole-taint"].includes(s) ? 2 : 1]));
+});
+
+test("optional sections: the appendix and the arithmetic pages, with a page of the main path after the latter", () => {
+  assert.deepEqual([...new Set(pages.filter(p => p.optional).map(p => p.section))], ["Arithmetic", "Appendix: fine points"]);
+  assert.equal(pages.find((p, i) => !p.optional && pages[i - 1]?.optional)?.slug, "comptime");
+});
+
+test("a page named in another page's prose or task exists", () => {
+  const titles = new Set(pages.map(p => p.title));
+  for (const p of pages) for (const [, title] of `${p.prose} ${p.task}`.matchAll(/pages? "([^"]+)"/g))
+    assert.ok(titles.has(title!), `${p.slug}: ${title}`);
 });
 
 test("every program line fits in 72 columns", () => {

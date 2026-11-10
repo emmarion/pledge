@@ -15,17 +15,19 @@ const paragraphs = (text: string) => text.split(/\n\s*\n/).map(paragraph => /^``
 const link = (i: number) => h("a", { href: href(i) }, pages[i]!.title);
 
 const fixed = [...page.boxes.keys()];
+const key = `page:${page.slug}${page.revision ? `:${page.revision}` : ""}`;
 const workspace = new Workspace(
-  [...page.boxes.map(text => ({ text, key: null })), { text: page.initial, key: `page:${page.slug}`,
-    holdsQed: page.requireQed }, { text: page.solution, key: null }],
+  [...page.boxes.map(text => ({ text, key: null })), { text: page.initial, key, holdsQed: page.requireQed },
+    { text: page.solution, key: null }],
   () => page.phase,
   [{ label: "your box", boxes: [...fixed, fixed.length] }, { label: "the solution",
     boxes: [...fixed, fixed.length + 1] }]);
 
 const next = pages[index + 1];
+const resume = next?.optional && !page.optional ? pages.findIndex((p, i) => i > index && !p.optional) : -1;
 const toc = h("details", { class: "toc" }, h("summary", {}, "Pages"),
   h("nav", { "aria-label": "Pages" }, [...new Set(pages.map(p => p.section))].map(section =>
-    [h("h2", {}, section, pages.find(p => p.section === section)!.appendix && h("span", { class: "note" }, "optional")),
+    [h("h2", {}, section, pages.find(p => p.section === section)!.optional && h("span", { class: "note" }, "optional")),
       h("ol", {}, pages.map((p, i) => p.section === section && h("li", {},
         h("a", { href: href(i), "aria-current": i === index && "page" }, p.title,
           p.phase > 1 && h("span", { class: "tag" }, `phase ${p.phase}`)))))])));
@@ -45,8 +47,10 @@ workspace.mount(
   [h("details", { class: "solution" }, h("summary", {}, "Show a solution"), workspace.editors.at(-1)!.root),
   h("p", { class: "pager" },
     index > 0 && h("a", { href: href(index - 1) }, `← ${pages[index - 1]!.title}`),
-    next && h("a", { href: href(index + 1), class: "next" },
-      `${next.appendix && !page.appendix ? "Appendix: " : ""}${next.title} →`))],
+    next && h("span", { class: "next" },
+      resume >= 0 && [h("a", { href: href(resume) }, `Skip to ${pages[resume]!.title}`), " · "],
+      h("a", { href: href(index + 1) },
+        `${next.optional && !page.optional ? next.appendix ? "Appendix: " : "Optional: " : ""}${next.title} →`)))],
   toc);
 
 const wide = matchMedia("(min-width: 1440px)");

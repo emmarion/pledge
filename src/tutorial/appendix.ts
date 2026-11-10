@@ -1,6 +1,6 @@
 import type { Section } from "./pages.ts";
 import { nat, vec } from "../examples.ts";
-import { paragraphs, box, eq, isZero, vecErased, vheadErased } from "./programs.ts";
+import { paragraphs, box, eq, vecErased, vheadErased } from "./programs.ts";
 
 const pair = `fn pair(x : Nat()) -> (n : Nat(), v : Vec(Nat(), Succ(n))) {
   (Zero(), VCons(Nat(), Zero(), x, VNil(Nat())))
@@ -48,15 +48,6 @@ fn succEq(subterm x : Nat(), y is Succ(x))
   Refl(Nat(), y)
 }
 qed succEq;
-`;
-
-const absurdHead = `fn f(erased n : Nat(), p : IsZero(n)) -> (r : Nat()) {
-  match erased n : (r : Nat()) {
-    Zero() => Zero();`;
-
-const absurdUse = `  }
-}
-print f(Zero(), IsZeroHere());
 `;
 
 export const appendix: Section = { title: "Appendix: fine points", appendix: true, pages: [
@@ -170,24 +161,5 @@ ${taintedHole("sorry(A : Type())")}`,
 ${succEq("Succ(x), y")}`,
     requireQed: true,
     solution: succEq("y, Succ(x)"),
-  },
-  {
-    slug: "absurd-branches",
-    title: "Absurd branches",
-    phase: 2,
-    prose: paragraphs(
-      "An erased match has no value of its scrutinee to choose a branch by. So an erased match with a `many` annotation entry can have at most one branch that is not absurd, a branch being absurd when its body is a match with no branches, possibly the final expression of a block. Evaluation runs the branch that is not absurd (§16).",
-      "An absurd branch never runs: its match has no branches because every value constructor of its scrutinee's type is refuted there. Allowing it is what lets an erased match use a proof to rule out a value constructor, as on the page \"Refuting through a proof\", where §10 requires the branch. Here `f` takes `n` erased, since its result never needs it.",
-      "Once your box checks, put the caret on `match erased`: Refutations lists `Succ` as absurd (§13). Put it on the inner `match p`: Refutations lists `IsZeroHere` as refuted, and opening it shows why. The `print` shows `Zero()`, from the branch that is not absurd."),
-    task: "Write the `Succ` branch as an absurd one: match on `p` there, with no branches.",
-    refs: "§10, §13, §16",
-    boxes: [box(nat, isZero)],
-    initial: `-- Add the Succ branch: an absurd one, matching on p.
-${absurdHead}
-${absurdUse}`,
-    requireQed: false,
-    solution: `${absurdHead}
-    Succ(m) => match p : _ {};
-${absurdUse}`,
   },
 ] };

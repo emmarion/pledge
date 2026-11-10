@@ -1,12 +1,17 @@
 import type { Phase } from "../syntax.ts";
-import { basics } from "./basics.ts";
-import { proofs } from "./proofs.ts";
+import { start } from "./start.ts";
+import { dependent } from "./dependent.ts";
+import { recursion } from "./recursion.ts";
+import { evidence } from "./evidence.ts";
+import { relation } from "./relation.ts";
+import { arithmetic } from "./arithmetic.ts";
+import { limits } from "./limits.ts";
 import { erasure } from "./erasure.ts";
-import { beyond } from "./beyond.ts";
 import { appendix } from "./appendix.ts";
 
 export interface Page {
   section: string;
+  optional: boolean;
   appendix: boolean;
   slug: string;
   title: string;
@@ -18,15 +23,19 @@ export interface Page {
   initial: string;
   requireQed: boolean;
   solution: string;
+  revision?: number;
 }
 
 export interface Section {
   title: string;
+  optional?: boolean;
   appendix?: boolean;
-  pages: Omit<Page, "section" | "appendix">[];
+  pages: Omit<Page, "section" | "optional" | "appendix">[];
 }
 
 export const disclaimer = "This tutorial was written by a Claude session, not by Pledge's owner, and may contain mistakes. DESIGN.md is the specification; where the two disagree, DESIGN.md is right and this tutorial is wrong. Each page ends with the DESIGN.md sections (§) its claims are based on. What the pages say about Pledge's soundness rests on SOUNDNESS.md, a written argument that no machine has checked. What they say about other languages, and their reasons for Pledge's rules, are the session's own. Where DESIGN.md is silent, the pages describe what this implementation does; ASSUMPTIONS.md lists those choices.";
 
-export const pages: Page[] = [basics, proofs, erasure, beyond, appendix].flatMap(s =>
-  s.pages.map(p => ({ ...p, section: s.title, appendix: s.appendix ?? false })));
+const sections = [start, dependent, recursion, evidence, relation, arithmetic, limits, erasure, appendix];
+
+export const pages: Page[] = sections.flatMap(({ title, optional = false, appendix = false, pages }) =>
+  pages.map(p => ({ ...p, section: title, optional: optional || appendix, appendix })));

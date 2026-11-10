@@ -138,7 +138,10 @@ and never renumbered (rule 15); a removed item leaves a gap.
     `localStorage`, with a button to restore the starting text, which
     asks before it replaces text that was changed; checking runs
     shortly after the last edit, and the panels follow the caret
-    without rechecking.
+    without rechecking. A tutorial page's text is kept under the page's
+    slug, together with the page's revision where it has one: a page
+    rewritten so that text saved for it would no longer check is given
+    a new revision, and so opens with its starting text.
 43. **Syntax highlighting** lexes each box under the page's phase, so
     `erased` is coloured as a name in phase 1 and a keyword in phase 2.
     A name is coloured by what the checker says that occurrence refers
@@ -209,13 +212,13 @@ and never renumbered (rule 15); a removed item leaves a gap.
     expressed; the owner may intend another idiom. The page "Appending
     vectors" follows it where a type would need a call: `vappend`
     returns the result's length and a `Plus` value with the vector.
-29. **Names.** `Bool`'s value constructors are `True` and `False`, and
-    the empty type on a later page is also `False`; they never share a
-    program. The solution of the page "Soundness" uses
+29. **Names.** `Bool`'s value constructors are `Yes` and `No`, which
+    leaves `False` to the empty type of a later page; the names are a
+    session's choice. The solution of the page "Soundness" uses
     `sorry` deliberately, so its goal stays unproved.
 59. **The arithmetic pages** state everything relationally: `Plus(m,
-    n, r)` as on the proof-by-recursion page, and `Times(m, n, r)`
-    with recursion on the first argument, `TimesSucc` needing
+    n, r)` as on the page "Plus: addition as a type", and `Times(m, n,
+    r)` with recursion on the first argument, `TimesSucc` needing
     `Times(m, n, r)` and `Plus(r, n, s)` for `Times(Succ(m), n, s)`.
     Existential witnesses are extra returns. Distributivity is proved
     through an `exchange` lemma, (w + y) + (x + z) = (w + x) + (y + z),
@@ -232,13 +235,16 @@ and never renumbered (rule 15); a removed item leaves a gap.
 64. **Sections.** The tutorial's pages are grouped under headings in
     the list of pages, each page shows its section above its title, a
     page checked under a later phase carries a tag saying so in the
-    list, and the appendix's heading is marked optional; §12 says
-    nothing about how pages are arranged.
+    list, and the headings of the appendix and of the section
+    "Arithmetic" are marked optional. The link to the first page of an
+    optional section says so, and beside it is a link to the next page
+    that is not optional, where there is one. §12 says nothing about
+    how pages are arranged.
 66. **A page's task and the glossary.** A tutorial page shows its task
     in a block of its own, and offers a glossary of the terms the
     tutorial defines, each with the page that defines it. The
     glossary's definitions are a session's paraphrases of DESIGN.md.
-67. **The closing page**, "What Pledge leaves out", compares Pledge
+67. **The page "What Pledge leaves out"** compares Pledge
     with Agda. Its Agda code is an abridgement of `tests/Beyond.agda`,
     which a session compiled with Agda 2.6.3; the tests check that the
     page's lines occur in that file, not that the file compiles. What

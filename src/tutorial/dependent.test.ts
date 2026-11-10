@@ -1,43 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { explainTerm, scopeOf, standsFor } from "../../tests/helpers.ts";
-import { page, run } from "../../tests/tutorial.ts";
-import type { PositionInfo } from "../api.ts";
-
-const errorAt = (slug: string, learner: string) => {
-  const { source, r } = run(slug, learner);
-  return { at: r.error ? source.slice(r.error.span.start, r.error.span.end) : null, message: r.error?.message() ?? "" };
-};
-const expected = (info: PositionInfo) => info.expected.entries?.map(e => `${e.name} : ${e.type?.text}${e.rule ? ` is ${e.rule.text}` : ""}`);
-const printsOf = (slug: string) => run(slug, page(slug).solution).r.prints.map(p => p.value);
-
-test("nat: the solution prints two and three", () => {
-  assert.deepEqual(printsOf("nat"), ["Succ(Succ(Zero()))", "Succ(Succ(Succ(Zero())))"]);
-});
-
-test("functions: the starting text fails at the match for want of a Succ branch, and Expected there is b : Bool()", () => {
-  const { source, r } = run("functions", page("functions").initial);
-  assert.equal(r.error?.span.start, source.indexOf("match n"));
-  assert.match(r.error?.message() ?? "", /no branch for `Succ`/);
-  assert.deepEqual(expected(r.infoAt(source.indexOf("match n"))), ["b : Bool()"]);
-  assert.deepEqual(printsOf("functions"), ["False()"]);
-  assert.match(errorAt("functions", page("functions").solution.replace("Succ(_)", "Succ(Succ(m))")).message, /a pattern does not nest/);
-});
-
-test("knowledge: Scope shows two's rule canonically, and the Term panel and the At the caret field show the rewrites", () => {
-  const { source, r } = run("knowledge", page("knowledge").initial);
-  const at = source.lastIndexOf("two");
-  assert.ok(scopeOf(r.infoAt(at)).includes("two : Nat() is Succ(Succ(Zero()))"));
-  const explained = explainTerm(r, at);
-  assert.equal(explained?.canonical.text, "Succ(Succ(Zero()))");
-  assert.deepEqual(explained?.rewrites.map(w => `${w.from.text} -> ${w.to.text}`), ["two -> Succ(one)", "Succ(one) -> Succ(Succ(Zero()))"]);
-  const typed = r.evalAt(at, "Succ(two)");
-  assert.ok(!("error" in typed));
-  assert.deepEqual([typed.type.text, typed.rule?.text, typed.canonicalRule?.text], ["Nat()", "Succ(two)", "Succ(Succ(Succ(Zero())))"]);
-  assert.equal(r.error?.span.start, at);
-  assert.match(r.error?.message() ?? "", /`Succ\(Zero\(\)\)`, and this is `Succ\(Succ\(Zero\(\)\)\)`/);
-  assert.equal(r.inspects.length, 1);
-});
+import { scopeOf, standsFor } from "../../tests/helpers.ts";
+import { errorAt, expected, page, printsOf, run } from "../../tests/tutorial.ts";
 
 test("vhead: VNil is refuted at the match, a branch for it is an error, and an empty vector is rejected", () => {
   const { source, r } = run("vhead", page("vhead").solution);
@@ -108,23 +72,4 @@ test("pattern-let: VNil is refuted at the let, rest is one shorter, and let Succ
   const succ = errorAt("pattern-let", page("pattern-let").solution.replace("  let VCons(_, _, _", "  let Succ(k) = n;\n  let VCons(_, _, _"));
   assert.equal(succ.at, "Succ(k)");
   assert.match(succ.message, /`Zero` is not refuted/);
-});
-
-test("termination: the unmarked call is an error about plus's group, m is Succ(k) there, and the solution prints six", () => {
-  const { source, r } = run("termination", page("termination").initial);
-  const call = source.indexOf("plus(k, n)");
-  assert.equal(r.error?.span.start, call);
-  assert.match(r.error?.message() ?? "", /`plus`'s group/);
-  const info = r.infoAt(call);
-  assert.ok(scopeOf(info).includes("m : Nat() is Succ(k)"));
-  assert.deepEqual(info.termination, { fn: "plus", subtermParams: [], group: ["plus"] });
-  assert.deepEqual(printsOf("termination"), [`${"Succ(".repeat(6)}Zero()${")".repeat(6)}`]);
-});
-
-test("mutual: isOdd's group is isEven and isOdd, and EvenZero() is not evidence that two is even", () => {
-  const { source, r } = run("mutual", page("mutual").initial);
-  assert.deepEqual(r.infoAt(source.indexOf("=> False()")).termination?.group, ["isEven", "isOdd"]);
-  const half = errorAt("mutual", page("mutual").initial.replace("False();", "False();\n      Succ(m) => isEven(subterm m);"));
-  assert.equal(half.at, "EvenZero()");
-  assert.match(half.message, /`Even\(Zero\(\)\)`/);
 });
