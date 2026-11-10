@@ -1,5 +1,5 @@
 -- Height-indexed 2-3 trees: balance by construction.
--- Every path from the root to a Leaf has the same length, because Tree(h) records it in its index.
+-- Tree(h) records the height in its index, which, as we understand it, keeps every root-to-Leaf path the same length.
 -- Insertion either keeps the height or splits; the top-level insert returns erased evidence (Grow)
 -- that the height stayed the same or grew by one. Key order is not proved here, only balance.
 
