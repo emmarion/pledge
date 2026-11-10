@@ -368,10 +368,11 @@ typed by the annotation as it stands before the match.
 for the telescope given at its position (§8). It is allowed only where
 a whole telescope is given: at a function body, a branch body, the
 right-hand side of a tuple `let` whose binders all carry a type or an
-`is` clause, and a block's final expression at one of these. At a
+`is` clause with no `_` in it (§20), and a block's final expression at
+one of these. At a
 `qed`'s expression, whether it is allowed is an implementation choice
-(§14). `_` never stands for one entry of a telescope, so it is not
-allowed at an argument or at a tuple's element.
+(§14). This `_` never stands for one entry of a telescope, so it is not
+allowed at a tuple's element; a `_` at an argument is the form of §20.
 
 Each branch is for a value constructor of the scrutinee's data type
 constructor. Patterns do not nest: a branch gives the fresh entry each
@@ -424,8 +425,10 @@ A program has no run-time stage: code is evaluated only at compile
 time. Each top-level statement is evaluated as soon as it is checked,
 every `let` included, except for what taint removes (§12). Only `print`
 shows a value, apart from the error of a `comptime` pattern `let`
-below. A value is a tree of applications of type constructors and value
-constructors.
+below. A value is a tree of applications of value constructors, with a
+blank in place of each type and, in phase 2, of each erased value
+(§16). No type is evaluated: an application of a type constructor is
+skipped, with everything in it, and gives a blank.
 
 Evaluation is eager: a call evaluates its arguments, in order, before
 its body, and a block evaluates its statements in order, then its final
@@ -494,7 +497,7 @@ result is produced, never from canonicalization:
   scrutinee is tainted, the rest of the match branch or function body
   it is in, or, at the top level, of the program; every result
   produced in a tainted scope is tainted;
-- a `_` (§16) is tainted when the term it is solved to mentions a
+- a `_` (§20) is tainted when the term it is solved to mentions a
   tainted entry;
 - nothing else is tainted.
 
@@ -514,8 +517,9 @@ tainted, nothing evaluates, every `print` shows `sorry` and no `qed`
 proves the goal, though checking goes on.
 
 `print e;` is a top-level statement that evaluates `e` and shows its
-value beside the statement, as a tree of applications of type
-constructors and value constructors. When `e`'s result is tainted, it
+value beside the statement, as a tree of applications of value
+constructors, with `_` in place of each type and, in phase 2, of each
+erased value (§11, §16). When `e`'s result is tainted, it
 evaluates nothing and shows `sorry`.
 
 `goal T;` sets the program's goal, a type, checked in the scope where
@@ -584,8 +588,8 @@ were created at one position. Clicking a skeleton
 term, in the source, in the interface or in text typed into it, shows
 its canonical form and a sequence of rewrites with the fewest steps that
 produces it. Clicking or hovering over a `_` that stands for a
-telescope (§10) or for an erased argument (§16) shows what it stands
-for: the telescope, or the term the `_` is solved to. Each `is` rule a
+telescope (§10) or is in place of an argument or inside a type (§20)
+shows what it stands for: the telescope, or the term the `_` is solved to. Each `is` rule a
 derivation or a sequence of rewrites uses links to where its fact was
 created.
 
@@ -623,8 +627,7 @@ so whether `qed sorry(_);` is allowed, is an implementation choice.
 ## 15. Not in phase 1
 
 Every binder has multiplicity `many`; no multiplicity is written. There
-are no literals, strings, characters or input. `_` is inferred only in
-place of a match annotation or `sorry`'s telescope (§10).
+are no literals, strings, characters or input.
 
 Pledge has no uniqueness, no `at` and no coercions, in any phase.
 
@@ -643,8 +646,7 @@ tag.
 An erased name is allowed only in an erased position: a type, an
 argument for an erased parameter or field, the result for an erased
 return or binder, and everything inside these. A call whose results are
-all erased takes any arguments. Evaluation skips erased positions, and
-`print` shows an erased field as `_`.
+all erased takes any arguments. Evaluation skips erased positions.
 
 `match erased e : (...)` and `let erased C(...) = e;` take their
 scrutinee erased; a match without a multiplicity is `many`. A destructure binds a field erased when the
@@ -654,8 +656,7 @@ branch is absurd when its body is a match with no branches, possibly
 the final expression of a block, and evaluation runs the branch that is
 not absurd.
 
-`_` then also stands for erased arguments, solved by unification; `_`
-in place of an annotation takes the given telescope with its
+`_` in place of an annotation takes the given telescope with its
 multiplicities.
 
 Phase 3 is to be designed later. It will allow creating an executable,
@@ -689,7 +690,7 @@ param     ::= ['subterm'] binder
 binders   ::= binder (',' binder)*
 binder    ::= id (':' term | 'is' term)
 id        ::= NAME | '_'
-term      ::= NAME | NAME '(' [term (',' term)*] ')'
+term      ::= NAME | NAME '(' [term (',' term)*] ')' | '_'
 block     ::= '{' statement* expr '}'
 statement ::= 'let' letlhs '=' expr ';' | 'inspect' ';'
 topstatement ::= 'comptime' 'let' pattern '=' expr ';'
@@ -700,7 +701,7 @@ letbinder ::= id [':' term | 'is' term]
 pattern   ::= NAME '(' [id (',' id)*] ')'
 expr      ::= NAME | NAME '(' [arg (',' arg)*] ')' | '(' expr (',' expr)* ')'
               | block | match | sorry
-arg       ::= ['subterm' | 'same'] expr
+arg       ::= ['subterm' | 'same'] (expr | '_')
 match     ::= 'match' expr ':' ('(' binders ')' | '_') '{' (pattern '=>' expr ';')* '}'
 sorry     ::= 'sorry' '(' (binders | '_') ')'
 ```
@@ -708,3 +709,39 @@ sorry     ::= 'sorry' '(' (binders | '_') ')'
 A `NAME` followed by `(` in `expr` is a call when it names a function,
 and otherwise an application of the type constructor or value
 constructor it names. Only a call within its group has marks (§9).
+
+## 20. `_` for an argument or inside a type
+
+`_` is allowed in place of an argument of a call, or of an application
+of a type constructor or value constructor (§8), when the argument is:
+
+1. erased where it stands (§16); or
+2. for a parameter or field whose type is `Type()`.
+
+It is also allowed in place of a whole type, or of a term anywhere
+inside one.
+
+`_` is also allowed in place of a match annotation or `sorry`'s
+telescope, where it stands for the telescope given at its position
+(§10).
+
+Each `_` in place of an argument or inside a type stands for a skeleton
+term (§3), found by unification alone. Where a result is checked
+against what its position is given (§8), a `_` on either side is solved
+to whatever makes the two identical.
+
+A `_` must be solved by the end of the innermost of these that it is
+written in: a call; a function body; a branch body; a scrutinee; a
+pattern `let`'s right-hand side; a tuple `let`; a `print`'s or `qed`'s
+expression; a type or `is` term written in a telescope. An application
+of a type constructor or value constructor does not end it.
+
+The term must have the type of the `_`'s position and satisfy its
+parameter's `is` clause. It must also mention only entries that exist
+before the `_`.
+
+A tuple `let`'s binders are checked before its right-hand side, with
+their `_` unsolved, and the right-hand side is given them. A `_` in a
+binder is allowed to mention what the right-hand side produces.
+
+A `_` that is not solved so is an error.
