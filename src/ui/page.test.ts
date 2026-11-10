@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { example } from "../examples.ts";
+import { pages } from "../tutorial/pages.ts";
 
 const html = (file: string): string => readFileSync(new URL(`../../web/${file}`, import.meta.url), "utf8");
 
@@ -21,4 +22,10 @@ test("both pages have a description and a noscript block with content", () => {
     const noscript = /<noscript>([^]*)<\/noscript>/.exec(page);
     assert.ok(noscript && noscript[1]!.replace(/<[^>]*>/g, "").trim(), file);
   }
+});
+
+test("the tutorial's noscript block links each section, in order, to a source file that exists", () => {
+  const links = [...html("tutorial.html").matchAll(/src\/tutorial\/(\w+\.ts)">([^<]*)</g)];
+  assert.deepEqual(links.map(l => l[2]!.replace(/\s+/g, " ")), [...new Set(pages.map(p => p.section))]);
+  for (const [, file] of links) readFileSync(new URL(`../tutorial/${file}`, import.meta.url));
 });
