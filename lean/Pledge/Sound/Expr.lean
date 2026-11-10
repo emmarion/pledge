@@ -1,5 +1,6 @@
 import Pledge.Sound.Match
 import Pledge.Sound.Call
+import Pledge.Sound.Simple
 
 namespace Pledge
 
@@ -8,7 +9,16 @@ case lemma is about an untainted scope (`Inv`); `Expr.sound` and `Stmt.sound` as
 
 /-- A variable (§2): its name's ideal value, and the evaluator's value for an untainted name. -/
 theorem var_sound (x : Id) : ExprSound (.var x) := by
-  sorry
+  intro C sc g n0 W ρ act o hI hg h
+  refine ⟨?_, fun _ ha => by simp [Expr.absurd] at ha⟩
+  unfold checkExpr at h
+  obtain ⟨o₀, h₀, hf⟩ := bind_eq_ok.1 h
+  simp only at h₀
+  split at h₀
+  · simp [failAt_eq] at h₀
+  · split at h₀
+    · exact Simple.var_post hI hg ‹_› ‹_› h₀ hf
+    · simp [notValue, failAt_eq] at h₀
 
 /-- A call (§8, §9, §12): its arguments' ideal values satisfy the parameters; for an untainted function and
 untainted arguments, the measure decreases and the callee's specification gives typed ideal results, and the call
@@ -31,7 +41,26 @@ theorem ctorApp_sound {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSou
     (hI : Inv C sc n0 W ρ act) (hg : ∀ g', g = some g' → g'.Ok W.Sc ρ)
     (hgl : (C.global h.name).any (fun gl => gl matches .type .. || gl matches .ctor _) = true)
     (h : checkExpr C sc g (.app h args) = .ok o) : ExprPost C sc g n0 W ρ act o := by
-  sorry
+  unfold checkExpr at h
+  obtain ⟨o₀, h₀, hf⟩ := bind_eq_ok.1 h
+  simp only [Ctx.global] at hgl h₀
+  split at h₀
+  · rename_i hT; simp [hT] at hgl
+  · rename_i T cs d hT
+    simp only [hT] at h₀
+    obtain ⟨u, -, h₀⟩ := bind_eq_ok.1 h₀
+    obtain ⟨sig, hsig, h₀⟩ := bind_eq_ok.1 h₀
+    obtain ⟨u₂, har, h₀⟩ := bind_eq_ok.1 h₀
+    obtain ⟨a, ha, h₀⟩ := bind_eq_ok.1 h₀
+    exact Simple.ctorApp_post ih ihs hh hI hg (hI.globals.type hT).1 rfl (Scope.sig_ok hsig) (arity_ok har) ha h₀ hf
+  · rename_i c hT
+    simp only [hT] at h₀
+    obtain ⟨u, -, h₀⟩ := bind_eq_ok.1 h₀
+    obtain ⟨sig, hsig, h₀⟩ := bind_eq_ok.1 h₀
+    obtain ⟨u₂, har, h₀⟩ := bind_eq_ok.1 h₀
+    obtain ⟨a, ha, h₀⟩ := bind_eq_ok.1 h₀
+    exact Simple.ctorApp_post ih ihs hh hI hg (hI.globals.ctor hT) rfl (Scope.sig_ok hsig) (arity_ok har) ha h₀ hf
+  · simp [notApplied, failAt_eq] at h₀
 
 theorem app_sound {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSound a.expr)
     (ihs : ∀ a ∈ args, ExprShape a.expr) (hh : ∀ a ∈ args, a.expr.holeFree = true) : ExprSound (.app h args) := by
@@ -57,13 +86,40 @@ theorem app_sound {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSound a
 /-- A tuple (§8): its elements' results, in order. -/
 theorem tuple_sound (p : Pos) {es : List Expr} (ih : ∀ e ∈ es, ExprSound e) (ihs : ∀ e ∈ es, ExprShape e) :
     ExprSound (.tuple p es) := by
-  sorry
+  intro C sc g n0 W ρ act o hI hg h
+  refine ⟨?_, fun _ ha => by simp [Expr.absurd] at ha⟩
+  unfold checkExpr at h
+  obtain ⟨o₀, h₀, hf⟩ := bind_eq_ok.1 h
+  simp only at h₀
+  split at h₀
+  · rename_i g' hg'
+    split at h₀
+    · simp [miscount, failAt_eq, bind, Except.bind] at h₀
+    · rename_i hne
+      obtain ⟨oe, hoe, h₀⟩ := bind_eq_ok.1 h₀
+      simp only [pure, Except.pure, Except.ok.injEq] at h₀
+      subst h₀
+      exact Simple.tuple_post ih ihs hI hg
+        (fun g'' h'' => by simp only [Simple.given] at h''; rw [hg'] at h''; cases h''; simpa using hne) hoe hf
+  · rename_i hg'
+    obtain ⟨oe, hoe, h₀⟩ := bind_eq_ok.1 h₀
+    simp only [pure, Except.pure, Except.ok.injEq] at h₀
+    subst h₀
+    exact Simple.tuple_post ih ihs hI hg (fun g'' h'' => (hg' g'' h'').elim) hoe hf
 
 /-- A block (§8): its statements run in order, then its final expression, whose results are the block's; a block
 whose statements taint the scope (§12) is removed; an absurd block's final expression is absurd. -/
 theorem block_sound {ss : List Stmt} {f : Expr} (ihs : ∀ s ∈ ss, StmtSound s) (ihss : ∀ s ∈ ss, StmtShape s)
     (ihf : ExprSound f) (ihfs : ExprShape f) : ExprSound (.block ss f) := by
-  sorry
+  intro C sc g n0 W ρ act o hI hg h
+  unfold checkExpr at h
+  obtain ⟨o₀, h₀, hf⟩ := bind_eq_ok.1 h
+  obtain ⟨s, hs, h₀⟩ := bind_eq_ok.1 h₀
+  obtain ⟨of, hof, h₀⟩ := bind_eq_ok.1 h₀
+  simp only [pure, Except.pure, Except.ok.injEq] at h₀
+  subst h₀
+  rw [keep_ok] at hof
+  exact Simple.block_post ihs ihss ihf ihfs hI hg hs hof hf
 
 /-- A `match` that is not erased (§10, §11): the untainted scrutinee's ideal value is headed by a value constructor
 whose forcing survived, so the match has a branch for it, whose results are the match's; at run time the
@@ -92,7 +148,12 @@ theorem match_sound {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : Li
 /-- `sorry` (§12): every result is tainted, opened to `junk` or its `is` clause's value (`annotation_cons`), and the
 tree is removed. -/
 theorem sorry_sound (p : Pos) (t : Tele) : ExprSound (.sorry p t) := by
-  sorry
+  intro C sc g n0 W ρ act o hI hg h
+  refine ⟨?_, fun _ ha => by simp [Expr.absurd] at ha⟩
+  unfold checkExpr at h
+  obtain ⟨o₀, h₀, hf⟩ := bind_eq_ok.1 h
+  obtain ⟨⟨tele, env⟩, ha, h₀⟩ := bind_eq_ok.1 h₀
+  exact Simple.sorry_post hI hg ha h₀ hf
 
 theorem removed_sound : ExprSound .removed := by
   intro C sc g n0 W ρ act o _ _ h
@@ -101,7 +162,14 @@ theorem removed_sound : ExprSound .removed := by
 /-- A tuple `let` (§8): its binders name the right-hand side's results. -/
 theorem let_sound {p : Pos} {bs : List LetBinder} {rhs : Expr} (ih : ExprSound rhs) (ihs : ExprShape rhs) :
     StmtSound (.let p bs rhs) := by
-  sorry
+  intro C sc n0 W ρ act o hI h
+  simp only [checkStmt] at h
+  obtain ⟨u, -, h⟩ := bind_eq_ok.1 h
+  obtain ⟨ws, hws, h⟩ := bind_eq_ok.1 h
+  obtain ⟨o', ho', h⟩ := bind_eq_ok.1 h
+  simp only [pure, Except.pure, Except.ok.injEq] at h
+  subst h
+  exact Simple.let_post ih ihs hI hws ho'
 
 /-- A pattern `let` that is not erased (§10): as a `match` with one branch, the rest of the body; a tainted
 scrutinee taints the scope after it (§12). -/
