@@ -1,4 +1,5 @@
 import Pledge.Sound.Term
+import Pledge.Sound.Match
 
 namespace Pledge
 
@@ -514,9 +515,114 @@ theorem inspect_sound (p : Pos) : StmtSound (.inspect p) := by
 /-- A `match` (§10): the scrutinee's value is headed by a value constructor that survives forcing, so its branch
 exists, runs, and its results satisfy the annotation as it stands before the match. -/
 theorem match_sound {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Branch} (ihs : ExprSound s)
-    (ihb : ∀ b ∈ bs, ExprSound b.body) (hm : m = none) (hann : ann.plain = true) :
-    ExprSound (.match p m s ann bs) := by
-  sorry
+    (ihb : ∀ b ∈ bs, ExprSound b.body) (hm : m = none) (hann : ann.plain = true)
+    (hbp : ∀ b ∈ bs, b.body.plain = true) : ExprSound (.match p m s ann bs) := by
+  intro C sc g n0 W ρ env act o hI hg hc
+  subst hm
+  rw [checkExpr] at hc
+  simp only [hI.erased, Given.whole_false hg, Bool.false_or, Bool.false_eq_true, ↓reduceIte,
+    Ctx.erased_false hI.erased] at hc
+  obtain ⟨o', ho', hf⟩ := bind_eq_ok.1 hc
+  clear hc
+  obtain ⟨so, hso, ho₁⟩ := bind_eq_ok.1 ho'
+  clear ho'
+  rw [keep_ok] at ho₁
+  obtain ⟨r, hr, ho₂⟩ := bind_eq_ok.1 ho₁
+  obtain ⟨⟨tele, tenv⟩, hann', ho₃⟩ := bind_eq_ok.1 ho₂
+  obtain ⟨fs, hfs, ho₄⟩ := bind_eq_ok.1 ho₃
+  obtain ⟨u1, -, ho₅⟩ := bind_eq_ok.1 ho₄
+  clear ho₁ ho₂ ho₃ ho₄
+  obtain ⟨hsigs₁, hnames₁, hrt, ρ₁, v, V, hev₁, hI₁, hv, hV⟩ :=
+    scrut_sound ihs hI (by exact rfl) (by rw [hI.erased]; rfl) (by exact rfl) (by exact rfl) hso hr
+  have hgρ₁ : ∀ g', g = some g' → g'.Ok (ρ ++ ρ₁) := fun g' h =>
+    let ⟨⟨envv, he⟩, hm⟩ := hg g' h
+    ⟨⟨envv, Term.evalList_frame_ρ ρ₁ he⟩, hm⟩
+  obtain ⟨⟨envv, henv⟩, htm⟩ := annotation_sound hann hgρ₁ hann'
+  obtain ⟨c, ws, sig, Γ', ids, pat, rfl, hfc, hsig, hws, hsat, -, hids, hpat⟩ := forcings_value hI₁ hfs hv hV
+  simp only [show ((none : Option Mult) == some Mult.erased) = false from rfl, Bool.false_and,
+    Bool.false_eq_true, ↓reduceIte] at ho₅
+  split at ho₅
+  case isFalse => simp [failAt_eq, bind, Except.bind] at ho₅
+  rename_i hmiss
+  obtain ⟨b₀, hb₀, hb₀n⟩ : ∃ b ∈ bs, b.pat.ctor.name = c := by
+    have := List.filter_eq_nil_iff.1 (List.map_eq_nil_iff.1 (List.isEmpty_iff.1 hmiss)) _
+      (List.mem_of_find?_eq_some hfc)
+    cases hp' : pat with
+    | none => simp [hp'] at this
+    | some p0 =>
+      rw [hp'] at hpat
+      obtain ⟨b, hb, rfl⟩ := List.mem_map.1 (List.mem_of_find?_eq_some hpat.symm)
+      exact ⟨b, hb, by simpa using List.find?_some hpat.symm⟩
+  have hgE : ∀ i, g.any (·.erasedAt i) = false := fun i => by
+    cases g with
+    | none => rfl
+    | some g' => simpa using Given.erasedAt_eq_false (hg g' rfl).mult i
+  have hclean : FnsClean C.globals := fun n m sig h => (hI.globals.fn h).tainted
+  split at ho₅
+  all_goals
+    obtain ⟨u4, hens, ho₆⟩ := bind_eq_ok.1 ho₅
+    obtain ⟨bo, hbo, ho₇⟩ := bind_eq_ok.1 ho₆
+    obtain ⟨o'', ho'', ho₈⟩ := bind_eq_ok.1 ho₇
+    simp only [pure, Except.pure, Except.ok.injEq] at ho₈
+    subst ho₈
+    rw [keep_ok] at ho''
+    clear ho₅ ho₆ ho₇
+    obtain ⟨hol, htr, hbr⟩ := checkBranches_spec hbo
+    obtain ⟨⟨b, ob⟩, hfind⟩ : ∃ q, (bs.zip bo.outs).find? (fun q => q.1.pat.ctor.name == c) = some q := by
+      apply Option.isSome_iff_exists.1
+      apply List.find?_isSome.2
+      obtain ⟨o₀, ho₀⟩ := mem_zip_left (l' := bo.outs) (by omega) hb₀
+      exact ⟨_, ho₀, by simpa using hb₀n⟩
+    have hbm : (b, ob) ∈ bs.zip bo.outs := List.mem_of_find?_eq_some hfind
+    have hbn : b.pat.ctor.name = c := by simpa using List.find?_some hfind
+    have hpick : pickBranch none (.app ⟨.ctor, c⟩ ws) bo.trees = .ok (.mk b.pat ob.tree) := by
+      apply pickBranch_of_find
+      rw [htr, List.find?_map]
+      simp only [Function.comp_def, Branch.pat]
+      simp only [Branch.pat] at hfind
+      rw [hfind]
+      rfl
+    obtain ⟨Γb, idsb, hsurv, hcheck⟩ := hbr b ob hbm
+    obtain ⟨f, hf1, hf2⟩ := survivor_spec hsurv
+    rw [hbn, hfc] at hf1
+    cases hf1
+    simp only [Forced.ok.injEq] at hf2
+    obtain ⟨rfl, rfl⟩ := hf2
+    have hbmem : b ∈ bs := (List.of_mem_zip hbm).1
+    have hfl := forcings_fields hfs (List.mem_map_of_mem hbmem) (hbn ▸ hsig) hws
+    have hIb := hI₁.pattern hsat hids hws hfl (reach_none (pos := s.pos) hI₁.inert.taintedBy hrt) rfl
+    obtain ⟨-, -, -, ρ₂, vsb, hevb, -, -, htyb, hwb⟩ := ihb b hbmem _ _ _ n0 W _ _ act ob hIb (by
+      rintro g' ⟨⟩
+      refine ⟨⟨envv, Term.evalList_frame_ρ ws henv⟩, fun w hw => ?_⟩
+      obtain ⟨i, hi, rfl⟩ := List.mem_mapIdx.1 hw
+      simp [hgE, htm _ (List.getElem_mem hi)]) hcheck
+    have htele : TeleSat W.Sc ((ρ ++ ρ₁) ++ ws ++ ρ₂) tele envv vsb :=
+      TeleSat.of_wantsSat (by simp) (fun i w b' hw' hb' => by
+        rw [List.getElem?_mapIdx, hb'] at hw'; cases hw'; exact ⟨rfl, rfl⟩)
+        (hwb _ rfl envv (Term.evalList_frame_ρ ws henv))
+    have hens' := ensure_ok hens
+    simp only [Bool.and_eq_true] at hens'
+    have htele' : TeleSat W.Sc (ρ ++ ρ₁) tele envv vsb := by
+      refine (TeleSat.iff_of_entriesBelow (n := so.sc.Γ.length) ?_ hens'.1).1 htele
+      rw [← hI₁.sat.1, List.append_assoc (ρ ++ ρ₁), List.take_append_of_le_length (Nat.le_refl _)]
+    have htf := matchTaint_false hrt (checkBranches_clean (fun b hb => Expr.clean b.body (hbp b hb)) hI.phase
+      hclean hI₁.inert hrt hbo)
+    obtain ⟨hsat', hrs, -, huntaint⟩ := opened_sound (kind := "match") (pos := p) hI₁.sat henv htele'
+    obtain ⟨rfl, hwo⟩ := produced_sound hsat' (hI₁.sigsClose vsb) hI₁.inert.holes hrs htyb
+      (fun g' h => let ⟨envv', he⟩ := (hgρ₁ g' h).env; ⟨envv', Term.evalList_frame_ρ vsb he⟩) ho''
+    obtain ⟨rfl, -, her⟩ := finish_inert (Given.ok_mult hg) (by exact hI₁.inert.taintedBy) (huntaint htf) hf
+    have htrees : List.filterMap (fun x => some x.snd) (bs.zip bo.trees) = bo.trees := by
+      rw [show (fun x : Branch × Branch => some x.snd) = some ∘ Prod.snd from rfl, List.filterMap_eq_map]
+      exact List.map_snd_zip (by rw [htr]; simp [hol])
+    refine ⟨hsigs₁, hnames₁, fun r' hr' => ⟨huntaint htf r' hr', her r' hr'⟩, ρ₁ ++ vsb, vsb, ?_, ?_,
+      by rw [← List.append_assoc]; exact hrs, htyb, fun g' hg' envv' henv' => ?_⟩
+    · simp only
+      rw [htrees, evalExpr_match, hev₁, ok_bind, one_singleton, ok_bind, hpick, ok_bind,
+        show (Branch.mk b.pat ob.tree).pat = b.pat from rfl, show (Branch.mk b.pat ob.tree).body = ob.tree from rfl,
+        (bindPattern_app (h := ⟨.ctor, c⟩)).2 ⟨hbn.symm, bindIds_of_length hfl⟩, ok_bind, hevb, ok_bind]
+      exact annotation_annTake hann hann' htele'.length_eq
+    · simpa using hI₁.extend hsat' rfl rfl ⟨hI₁.inert.holes, hI₁.inert.taintedBy, hI₁.inert.names⟩
+    · simpa using (hwo g' hg' envv' (by simpa using Term.evalList_frame_ρ (ρ₁ ++ vsb) henv')).2
 
 theorem take_of_length {n : Nat} {vs : List Value} (h : vs.length = n) : take n vs = .ok vs := by
   simp [take, h, pure, Except.pure]
@@ -559,7 +665,35 @@ theorem let_sound {p : Pos} {bs : List LetBinder} {rhs : Expr} (ih : ExprSound r
 value. -/
 theorem patlet_sound {p : Pos} {ct : Bool} {m : Option Mult} {pat : Pattern} {rhs : Expr} (ih : ExprSound rhs)
     (hm : m = none) : StmtSound (.patlet p ct m pat rhs) := by
-  sorry
+  intro C sc n0 W ρ env act o hI h
+  subst hm
+  simp only [checkStmt, show ((none : Option Mult) == some Mult.erased) = false from rfl, Bool.and_false,
+    Bool.false_eq_true, ↓reduceIte] at h
+  obtain ⟨u, hct, h⟩ := bind_eq_ok.1 h
+  obtain rfl : ct = false := by simpa using ensure_ok hct
+  obtain ⟨u', -, h⟩ := bind_eq_ok.1 h
+  obtain ⟨o', ho', h⟩ := bind_eq_ok.1 h
+  rw [keep_ok] at h
+  obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
+  obtain ⟨fs, hfs, h⟩ := bind_eq_ok.1 h
+  obtain ⟨sc', hsc', h⟩ := bind_eq_ok.1 h
+  simp only [pure, Except.pure, Except.ok.injEq] at h
+  subst h
+  obtain ⟨hsigs₁, -, hrt, ρ₁, v, V, hev₁, hI₁, hv, hV⟩ :=
+    scrut_sound ih hI (by exact rfl) (by simp) (by exact rfl) (by exact rfl) ho' hr
+  obtain ⟨c, ws, sig, Γ', ids, pat', rfl, hfc, hsig, hws, hsat, -, hids, -⟩ := forcings_value hI₁ hfs hv hV
+  obtain ⟨Γ, ids', ⟨f, hf1, hf2⟩, hone, rfl⟩ := patBind_spec hsc'
+  obtain rfl : c = pat.ctor.name := Decidable.byContradiction fun hne =>
+    hone rfl _ (List.mem_of_find?_eq_some hfc) hne Γ' ids rfl
+  rw [hfc] at hf1
+  cases hf1
+  simp only [Forced.ok.injEq] at hf2
+  obtain ⟨rfl, rfl⟩ := hf2
+  have hfl := forcings_fields hfs (List.mem_singleton_self _) hsig hws
+  refine ⟨by rw [Scope.bind_eq]; exact hsigs₁, ρ₁ ++ ws, _, ?_,
+    by simpa using hI₁.pattern hsat hids hws hfl (reach_none hI₁.inert.taintedBy hrt) hI₁.inert.holes⟩
+  rw [evalStmt_patlet, hev₁, ok_bind, one_singleton, ok_bind]
+  exact (bindPattern_app (h := ⟨.ctor, pat.ctor.name⟩)).2 ⟨rfl, bindIds_of_length hfl⟩
 
 
 theorem Arg.sizeOf_expr_lt {a : Arg} {args : List Arg} (h : a ∈ args) : sizeOf a.expr < 1 + sizeOf args := by
@@ -586,6 +720,7 @@ theorem Expr.sound : (e : Expr) → e.plain = true → ExprSound e
     simp only [Expr.plain, Bool.and_eq_true, Option.isNone_iff_eq_none] at hp
     exact match_sound (Expr.sound s hp.1.1.2)
       (fun b hb => Expr.sound b.body (Branch.plain_body ▸ Branch.plainList_iff.1 hp.2 b hb)) hp.1.1.1 hp.1.2
+      (fun b hb => Branch.plain_body ▸ Branch.plainList_iff.1 hp.2 b hb)
   | .sorry .., hp | .removed, hp => by simp [Expr.plain] at hp
 termination_by e => sizeOf e
 decreasing_by
