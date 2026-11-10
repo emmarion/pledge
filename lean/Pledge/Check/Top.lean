@@ -87,6 +87,7 @@ def topLevel (st : TopState) (pos : Pos) (tele : Telescope) : CheckM Unit :=
 def declType (st : TopState) (d : Data) : CheckM TopState := do
   let C := st.ctx true
   let _ ← fresh C st.sc [] d.name.name d.name.pos
+  ensure (d.name.name != junkHead.name) d.name.pos "a type constructor is named `sorry`"
   let ps ← telescope C st.sc d.params "binder"
   topLevel st d.name.pos ps.tele
   pure (addSig st ⟨⟨.type, d.name.name⟩, ps.tele, .TYPE⟩ (.type d.name.name (some []) false))
@@ -94,6 +95,7 @@ def declType (st : TopState) (d : Data) : CheckM TopState := do
 def declCtor (owner : String) (st : TopState) (k : Ctor) : CheckM TopState := do
   let C := st.ctx true
   let _ ← fresh C st.sc [] k.name.name k.name.pos
+  ensure (k.name.name != junkHead.name) k.name.pos "a value constructor is named `sorry`"
   let fs ← telescope C st.sc k.fields "binder"
   unless (match k.ret with | .app h _ => h.name == owner | .var _ => false) do
     failAt k.ret.pos fun _ =>
@@ -361,10 +363,11 @@ structure Outcome where
   env : Env
   goal : Option CheckedGoal
   qedFn : Option String
+  tainted : Bool
 
 /-- Checks and evaluates a parsed program; `has` says whether the source contains a keyword, and `syntaxError`
 is the parser's error, if any. -/
-def runProgram (phase : Nat) (prog : Program) (has : String → Bool := fun _ => false)
+def runProgram (phase : Nat) (prog : Program) (has : String → Bool)
     (syntaxError : Option (Pos × String) := none) : Outcome :=
   let (st, failed) := topItems (.init phase) prog
   let error := (failed.map fun (e, _) => (e.pos, e.msg ())).orElse fun _ => syntaxError
@@ -373,7 +376,8 @@ def runProgram (phase : Nat) (prog : Program) (has : String → Bool := fun _ =>
     else if st.qedChecks then "checks" else "unreached"
   { error := error, prints := st.prints, inspects := st.snaps.map fun s => (s.pos, s.render), qed := qed,
     goalProved := if has "goal" then some (error.isNone && st.proved) else none, containsSorry := has "sorry",
-    sigs := st.sc.sigs, entries := st.sc.Γ, fns := st.fns, env := st.env, goal := st.goal, qedFn := st.qedFn }
+    sigs := st.sc.sigs, entries := st.sc.Γ, fns := st.fns, env := st.env, goal := st.goal, qedFn := st.qedFn,
+    tainted := st.sc.taintedBy.isSome }
 
 /-- Parses, checks and evaluates a program under a phase. -/
 def run (source : String) (phase : Nat) : Outcome :=

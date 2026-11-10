@@ -246,9 +246,9 @@ mutual
     | v :: vs => v.noRemoved && Value.noRemovedList vs
 end
 
-/-- The head of `Value.junk`. No signature is meant to have it: `Program.holeFree` asks that no
-type constructor or value constructor be named so, which, `sorry` being a keyword, a parsed
-program is believed to meet. -/
+/-- The head of `Value.junk`. No signature is meant to have it: the checker rejects a type
+constructor or value constructor named so, which, `sorry` being a keyword, a parsed program is
+believed never to have. -/
 def junkHead : Head := ⟨.ctor, "sorry"⟩
 
 /-- The value a soundness proof may give a tainted result that need have none (§12), such as a result

@@ -33,21 +33,15 @@ mutual
     | b :: bs => b.holeFree && Branch.holeFreeList bs
 end
 
-/-- No type constructor or value constructor is named as `junkHead` is, which a parsed program is believed to
-meet since `sorry` is a keyword; no theorem says so. -/
-def Data.holeFree (d : Data) : Bool := d.name.name != junkHead.name && d.ctors.all (·.name.name != junkHead.name)
-
 def Top.holeFree : Top → Bool
-  | .data d => d.holeFree
+  | .data _ | .mutualData .. | .goal .. => true
   | .fn f => f.body.holeFree
-  | .mutualData _ ds => ds.all Data.holeFree
   | .mutualFn _ fs => fs.all (·.body.holeFree)
   | .stmt s => s.holeFree
   | .print _ e | .qed _ e => e.holeFree
-  | .goal .. => true
 
 /-- The programs the soundness theorems cover: no `_` argument (§16) anywhere, `sorry` and multiplicities
-allowed, and no declaration named `sorry`. -/
+allowed. -/
 def Program.holeFree (prog : Program) : Bool := prog.all Top.holeFree
 
 theorem Expr.holeFreeList_iff : ∀ {es : List Expr}, Expr.holeFreeList es = true ↔ ∀ e ∈ es, e.holeFree = true

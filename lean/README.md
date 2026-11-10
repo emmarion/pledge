@@ -126,20 +126,21 @@ halves of a specification.
 ## What Lean checks
 
 A program is **hole-free** (`Program.holeFree`, `Sound/HoleFree.lean`)
-when no expression in it is `_` (§16's `_` arguments) and no type
-constructor or value constructor is named `sorry`. `sorry`, `_` in
+when no expression in it is `_` (§16's `_` arguments). `sorry`, `_` in
 place of a telescope, as in `sorry(_)`, and multiplicities are allowed.
 For a hole-free program `prog`, any phase, any `has` (whether the
-source is taken to contain a keyword, which `run` reads off the
-tokens) and any syntax error `err`, writing `out` for
+source is taken to contain a keyword, an argument of `runProgram` with
+no default, which `run` reads off the tokens) and any syntax error
+`err`, writing `out` for
 `runProgram phase prog has err`, Lean checks:
 
 - `runProgram_sound`: there is a world `W` whose evaluator's view of
   the program `W.P` is that of the final top-level state, whose closed
   signatures `W.Sc` are `out.sigs.map (Sig.close W.ρ)`, whose functions
   are `out.fns`, and whose valuation `W.ρ` has one value per entry of
-  `out.entries`; if the final top-level scope is untainted, `W.ρ`
-  satisfies it (`Sat W.Sc out.entries W.ρ`); and if `out.goalProved =
+  `out.entries`; if the final top-level scope is untainted
+  (`out.tainted = false`), `W.ρ` satisfies it
+  (`Sat W.Sc out.entries W.ρ`); and if `out.goalProved =
   some true`, the goal `out.goal` holds in `W` (`GoalHolds`), and
   `ProvedAt` holds of it: `prog` has a `qed` up to which checking stops
   at no error, the state just after it has the goal proved, an
@@ -257,7 +258,9 @@ items 69 to 75.
   mentioning an entry created after the scrutinee, a `comptime` pattern
   `let` below the top level, a `removed` expression being checked, and
   a telescope, value-constructor return or goal mentioning an entry
-  below the top level. No program of the corpus reaches one of these;
+  below the top level, and a type constructor or value constructor
+  named `sorry`, which, `sorry` being a keyword, the parser is believed
+  never to produce. No program of the corpus reaches one of these;
   nothing proves them unreachable.
 - It has no interface: it answers `inspect;` as text, and nothing else
   of §13.
@@ -292,12 +295,3 @@ The statements are also weaker than they may first read:
 - `GoalHolds` for a function goal is vacuous when no values satisfy
   the goal's parameters, which seems inherent in a statement of this
   shape.
-- With `runProgram`'s default `has`, which is false for every keyword,
-  `goalProved` is `none`, so the goal clauses say nothing; `run` passes
-  the token scan `hasKeyword`.
-- `Program.holeFree` also asks that no type constructor or value
-  constructor is named `sorry`. Since `sorry` is a keyword, the parser
-  is believed never to produce one, but no theorem says so.
-- Whether the final top-level scope is untainted, which the `Sat`
-  clause for the final scope depends on, is read from `topItems`'s
-  state; `Outcome` has no field for it.

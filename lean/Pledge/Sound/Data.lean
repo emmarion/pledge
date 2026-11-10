@@ -24,7 +24,8 @@ def groupGlobals (ts : List String) (cs : List (String × String)) (done : Bool)
   ts.map (fun T => .type T (some (ownedBy cs T)) done) ++ cs.map (fun p => .ctor p.2)
 
 /-- A state reached while checking a group of `data` declarations from `st`: the type constructors `ts` and value
-constructors `cs` (each with its owner) declared so far, with their fresh names and their signatures `new`. -/
+constructors `cs` (each with its owner) declared so far, with their fresh names, none `sorry`, and their signatures
+`new`. -/
 structure Group (st : TopState) (ts : List String) (cs : List (String × String)) (new : Sigs) (done : Bool)
     (s : TopState) : Prop where
   eq : s = { st with sc := { st.sc with sigs := st.sc.sigs ++ new }, globals := st.globals ++ groupGlobals ts cs done }
@@ -36,6 +37,7 @@ structure Group (st : TopState) (ts : List String) (cs : List (String × String)
     (∃ p ∈ cs, sig.head = ⟨.ctor, p.2⟩ ∧ ∃ args, sig.ret = .app ⟨.type, p.1⟩ args)
   types : ∀ T ∈ ts, ∃ sig ∈ new, sig.head = ⟨.type, T⟩
   ctors : ∀ p ∈ cs, ∃ sig ∈ new, sig.head = ⟨.ctor, p.2⟩
+  junk : ∀ n ∈ ts ++ cs.map (·.2), n ≠ junkHead.name
 
 theorem find?_old {gs X : List Global} {p : Global → Bool} {g : Global} (h : gs.find? p = some g) :
     (gs ++ X).find? p = some g := by
@@ -123,15 +125,16 @@ theorem declType_group {st s s' : TopState} {ts : List String} {new : Sigs} {d :
     ∃ sig, Group st (ts ++ [d.name.name]) [] (new ++ [sig]) false s' := by
   unfold declType at h
   obtain ⟨_, hf, h⟩ := bind_eq_ok.1 h
+  obtain ⟨_, hj, h⟩ := bind_eq_ok.1 h
   obtain ⟨ps, hps, h⟩ := bind_eq_ok.1 h
   obtain ⟨_, htl, h⟩ := bind_eq_ok.1 h
   simp only [pure, Except.pure, Except.ok.injEq] at h
   subst h
   obtain ⟨hfr, hts, -⟩ := hg.global_none (by simpa [TopState.ctx_global] using fresh_ok hf)
   have hbelow := topLevel_ok htl
-  obtain ⟨heq, hnd, hfresh, -, hok, hsigs, htypes, -⟩ := hg
+  obtain ⟨heq, hnd, hfresh, -, hok, hsigs, htypes, -, hjunk⟩ := hg
   subst heq
-  refine ⟨⟨⟨.type, d.name.name⟩, ps.tele, .TYPE⟩, ⟨?_, ?_, ?_, by simp, ?_, ?_, ?_, by simp⟩⟩
+  refine ⟨⟨⟨.type, d.name.name⟩, ps.tele, .TYPE⟩, ⟨?_, ?_, ?_, by simp, ?_, ?_, ?_, by simp, ?_⟩⟩
   · simp [addSig, groupGlobals, ownedBy]
   · simp only [List.map_nil, List.append_nil] at hnd ⊢
     refine List.nodup_append.2 ⟨hnd, by simp, fun a ha b hb hab => hts ?_⟩
@@ -165,6 +168,11 @@ theorem declType_group {st s s' : TopState} {ts : List String} {new : Sigs} {d :
     · simp only [List.mem_singleton] at hT
       subst hT
       exact ⟨_, List.mem_append_right _ (List.mem_singleton_self _), rfl⟩
+  · intro n hn
+    simp only [List.map_nil, List.append_nil, List.mem_append, List.mem_singleton] at hn
+    rcases hn with hn | rfl
+    · exact hjunk n (by simpa using hn)
+    · simpa using ensure_ok hj
 
 theorem abstractChecked_app {Γ : Entries} {hd : Head} {as : List Term} {ids : List Nat} {pos : Pos} {ret : Term}
     (h : abstractChecked Γ (.app hd as) ids pos = .ok ret) : ∃ args, ret = .app hd args := by
@@ -199,6 +207,7 @@ theorem declCtor_group {st s s' : TopState} {ts : List String} {cs : List (Strin
     (h : declCtor T s k = .ok s') : ∃ sig, Group st ts (cs ++ [(T, k.name.name)]) (new ++ [sig]) false s' := by
   unfold declCtor at h
   obtain ⟨_, hf, h⟩ := bind_eq_ok.1 h
+  obtain ⟨_, hj, h⟩ := bind_eq_ok.1 h
   obtain ⟨fs, hfs, h⟩ := bind_eq_ok.1 h
   dsimp only at h
   obtain ⟨hd, args, hkr⟩ : ∃ hd args, k.ret = .app hd args := by
@@ -236,9 +245,9 @@ theorem declCtor_group {st s s' : TopState} {ts : List String} {cs : List (Strin
   obtain ⟨args', rfl⟩ := abstractChecked_app hret
   have hbelow := topLevel_ok htl
   have hens := ensure_ok he
-  obtain ⟨heq, hnd, hfresh, hown, hok, hsigs, htypes, hctors⟩ := hg
+  obtain ⟨heq, hnd, hfresh, hown, hok, hsigs, htypes, hctors, hjunk⟩ := hg
   subst heq
-  refine ⟨⟨⟨.ctor, k.name.name⟩, fs.tele, .app ⟨.type, hd.name⟩ args'⟩, ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩⟩
+  refine ⟨⟨⟨.ctor, k.name.name⟩, fs.tele, .app ⟨.type, hd.name⟩ args'⟩, ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩⟩
   · simp only [addSig]
     rw [map_owner (T := hd.name) (c := k.name.name) (fun g hg' => ?h1) (fun _ _ => rfl) (fun _ => rfl)]
     · simp
@@ -296,6 +305,13 @@ theorem declCtor_group {st s s' : TopState} {ts : List String} {cs : List (Strin
     · simp only [List.mem_singleton] at hp'
       subst hp'
       exact ⟨_, List.mem_append_right _ (List.mem_singleton_self _), rfl⟩
+  · intro n hn
+    rw [List.map_append, ← List.append_assoc] at hn
+    rcases List.mem_append.1 hn with hn | hn
+    · exact hjunk n hn
+    · simp only [List.map_cons, List.map_nil, List.mem_singleton] at hn
+      subst hn
+      simpa using ensure_ok hj
 
 theorem map_done {F : Global → Global} {gs : List Global} {ts : List String} {cs : List (String × String)}
     (h1 : ∀ g ∈ gs, F g = g) (h2 : ∀ T ∈ ts, ∀ X, F (.type T X false) = .type T X true)
@@ -319,7 +335,8 @@ theorem dataGroup_group {st st' : TopState} {ds : List Data}
   simp only [pure, Except.pure, Except.ok.injEq] at h
   subst h
   have g0 : Group st [] [] [] false st :=
-    ⟨by cases st; simp [groupGlobals], by simp, by simp, by simp, by simp [SigsOk], by simp, by simp, by simp⟩
+    ⟨by cases st; simp [groupGlobals], by simp, by simp, by simp, by simp [SigsOk], by simp, by simp, by simp,
+      by simp⟩
   obtain ⟨new1, g1⟩ : ∃ new, Group st (ds.map (·.name.name)) [] new false s1 := by
     have := foldlM_induct (fun pre s => ∃ new, Group st (pre.map (·.name.name)) [] new false s) ds []
       (fun q x b b' hx ⟨new, hb⟩ hf => by
@@ -336,9 +353,9 @@ theorem dataGroup_group {st st' : TopState} {ds : List Data}
             exact ⟨new ++ [sig], by simpa using hg⟩) ⟨new, by simpa using hb⟩ hf
         simpa [groupCtors] using this) ⟨new1, g1⟩ h2
     simpa using this
-  obtain ⟨heq, hnd, hfresh, hown, hok, hsigs, htypes, hctors⟩ := g2
+  obtain ⟨heq, hnd, hfresh, hown, hok, hsigs, htypes, hctors, hjunk⟩ := g2
   subst heq
-  refine ⟨new2, ⟨?_, hnd, hfresh, hown, hok, hsigs, htypes, hctors⟩⟩
+  refine ⟨new2, ⟨?_, hnd, hfresh, hown, hok, hsigs, htypes, hctors, hjunk⟩⟩
   simp only
   rw [map_done (fun g hg => ?h1) (fun T hT X => ?h2) (fun _ => rfl)]
   case h1 =>
