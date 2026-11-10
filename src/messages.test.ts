@@ -31,17 +31,17 @@ test("a refutation's derivation lists the equation that gave each rule it was re
 }
 `;
   assert.deepEqual(derivation(source), [
-    "1. Eq(Nat(), Zero(), Succ(Zero())) = Eq(_@11:10, ?Refl.x@11:13, ?Refl.x@11:13)   " +
+    "1. Eq(Nat(), Zero(), Succ(Zero())) = Eq(_@11:10, ?@11:13, ?@11:13)   " +
       "(the scrutinee's type and Refl's)",
-    "2. Zero() = ?Refl.x@11:13   (argument 2 of Eq in 1), so ?Refl.x@11:13 is Zero()",
-    "3. Succ(Zero()) = Zero()   (argument 3 of Eq in 1; rewritten by ?Refl.x@11:13, from 2)",
+    "2. Zero() = ?@11:13   (argument 2 of Eq in 1), so ?@11:13 is Zero()",
+    "3. Succ(Zero()) = Zero()   (argument 3 of Eq in 1; rewritten by ?@11:13, from 2)",
     "refuted: Succ and Zero are different heads",
   ]);
 });
 
 test("a derivation never names the anonymous entry of an application written in place", () => {
   assert.deepEqual(derivation(`${nat}let Succ(m) = Zero();\n`), [
-    "1. Zero() = Succ(?Succ.pred@5:10)   (forcing Succ on the scrutinee)",
+    "1. Zero() = Succ(?@5:10)   (forcing Succ on the scrutinee)",
     "refuted: Zero and Succ are different heads",
   ]);
 });

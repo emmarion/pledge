@@ -105,11 +105,6 @@ and never renumbered (rule 15); a removed item leaves a gap.
     the fewest steps is presumed, not proved. A line does not list a
     rewrite by the anonymous entry of an application written in place,
     or of a `_` already solved.
-20. **Anonymous entries** other than those created where a `_` is
-    written render as `?kind@line:col`, with the kind the checker gives
-    the entry's origin. Two anonymous entries of the same kind at the
-    same position are not told apart, so the checker chooses distinct
-    kinds.
 21. **Forcing two applications with the same head but different
     argument counts**, impossible for well-formed terms, is treated as
     a refutation by different heads rather than an internal error.

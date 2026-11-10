@@ -1,5 +1,5 @@
 import type { EntryInfo, Rendered, Rewrite } from "./api.ts";
-import { canon, entry, rewrites } from "./terms.ts";
+import { canon, entries, entry, rewrites } from "./terms.ts";
 import type { Binder, Entry, EntryId, OpenTerm, Scope, Telescope, Term } from "./terms.ts";
 
 type Piece = string | Rendered;
@@ -18,8 +18,11 @@ export function cat(...pieces: readonly Piece[]): Rendered {
 
 export const join = (items: readonly Piece[], sep: string): Piece[] => items.flatMap((x, i) => i ? [sep, x] : [x]);
 
-const marker = (scope: Scope, { origin }: Entry): string =>
-  `${origin.blank ? "_" : `?${origin.kind}`}@${scope.where(origin.span.start)}`;
+function marker(scope: Scope, { id, origin }: Entry): string {
+  const at = origin.span.start, same = entries(scope).filter(e => !e.origin.blank && e.origin.span.start === at);
+  const mark = origin.blank ? "_" : `?${same.length > 1 ? same.findIndex(e => e.id === id) + 1 : ""}`;
+  return `${mark}@${scope.where(at)}`;
+}
 
 export const label = (scope: Scope, id: EntryId): string =>
   entry(scope, id).names[0] ?? marker(scope, entry(scope, id));

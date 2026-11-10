@@ -385,8 +385,8 @@ test("a pattern let's facts and fields survive its block; only its names end the
   const isSucc = "data IsSucc(n : Nat()) : Type() {\n  IsSuccHere(m : Nat()) : IsSucc(Succ(m));\n}\n";
   const refuted = `${nat}${vec}${isSucc}fn h(A : Type(), k : Nat(), w : Vec(A, k), p : IsSucc(k)) -> (r : A) {\n  let x = { let IsSuccHere(j) = p; let VCons(_, _, hd, _) = w; hd };\n  inspect;\n  x\n}\n`;
   const after = scopeOf(ok(refuted).inspects[0]!.info);
-  assert.ok(after.some(e => /^k : Nat\(\) is Succ\(\?IsSuccHere\.m@/.test(e)), after.join("; "));
-  assert.ok(after.some(e => /^w : .* is VCons\(A, \?IsSuccHere\.m@[\d:]+, x, /.test(e)), after.join("; "));
+  assert.ok(after.some(e => /^k : Nat\(\) is Succ\(\?@/.test(e)), after.join("; "));
+  assert.ok(after.some(e => /^w : .* is VCons\(A, \?@[\d:]+, x, /.test(e)), after.join("; "));
   err(refuted.replace("let IsSuccHere(j) = p; ", ""), "VCons(_, _, hd, _)", /`VNil` is not refuted/);
 });
 

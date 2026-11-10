@@ -214,9 +214,9 @@ test("anonymous entries render as markers with line and column, and refs locate 
   s = made.scope;
   [s, x] = add(s, "x", Nat, Succ(ref(made.id)));
   const r = render(s, app(C("MkTwo"), x, ref(made.id)));
-  assert.equal(r.text, "MkTwo(Succ(?call@2:3), ?call@2:3)");
-  assert.deepEqual(r.refs.map(q => r.text.slice(q.span.start, q.span.end)), ["?call@2:3", "?call@2:3"]);
+  assert.equal(r.text, "MkTwo(Succ(?@2:3), ?@2:3)");
+  assert.deepEqual(r.refs.map(q => r.text.slice(q.span.start, q.span.end)), ["?@2:3", "?@2:3"]);
   const info = entryInfo(s, id(x));
   assert.equal(info.type.text, "Nat()");
-  assert.equal(info.rule?.text, "Succ(?call@2:3)");
+  assert.equal(info.rule?.text, "Succ(?@2:3)");
 });
