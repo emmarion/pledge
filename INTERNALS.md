@@ -83,3 +83,13 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
 - `tests/`: Pledge programs the tests check (`.pledge`); `helpers.ts`
   and `tutorial.ts`, which the test files share; and `Beyond.agda`,
   the Agda file the tutorial's page "What Pledge leaves out" quotes.
+
+## The Lean implementation
+
+`lean/` holds a second implementation of the checker and evaluator, in
+Lean 4, and Lean-checked soundness theorems about it for phase 1
+programs without `sorry`; `lean/README.md` describes its layout, what
+is proved and how it differs from the code above. It shares no code
+with `src/`. `lean/tests/` compares its verdicts with those of
+`src/check.ts` on a corpus of programs that `lean/tests/gen-corpus.mjs`
+collects from the test suite, `tests/*.pledge` and the tutorial.

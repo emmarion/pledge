@@ -1,7 +1,9 @@
 # Implementation assumptions log
 
 A running log of the choices the implementation (`src/`, `web/`) makes
-where DESIGN.md is silent or ambiguous, or where it takes a shortcut.
+where DESIGN.md is silent or ambiguous, or where it takes a shortcut,
+and, under the last heading, the choices of the Lean implementation
+(`lean/`).
 Written by Claude sessions working autonomously at the owner's request;
 nothing here is a design decision (CLAUDE.md rules 11 and 14). Every
 item is a candidate question for the owner, and the owner's answer may
@@ -371,3 +373,56 @@ and never renumbered (rule 15); a removed item leaves a gap.
 58. **Panels.** At the `qed`'s name, Expected shows the goal's
     parameters, then its returns; inside the goal's telescopes the
     panels work as inside a function's, with no enclosing function.
+
+## The Lean implementation
+
+69. **A second implementation** in `lean/`, in Lean 4 with no library
+    beyond Lean's core, checks and evaluates programs under phases 1
+    and 2, with soundness theorems for phase 1 programs without `sorry`
+    (`lean/README.md`). Its interface is a command line, `pledge check
+    --phase N FILE`, printing one JSON object with the program's error,
+    printed values, `qed` state, whether the goal is proved, whether
+    the program contains `sorry`, and the text of each `inspect;`;
+    nothing else of §13 is offered. DESIGN.md does not ask for a
+    second implementation.
+70. **Canonicalization in one pass.** When an entry is given a rule,
+    the other rules are rewritten by it at once, so no rule's term
+    mentions an entry that has a rule, and canonicalizing replaces each
+    entry by its rule once. §7's fixed point is meant to be reached
+    the same way.
+71. **Results are terms.** An application written in an expression
+    gets no entry of its own (§7); its result is the application term
+    itself, the term its entry would canonicalize to (item 16).
+72. **The evaluator is total.** Each activation carries the measure of
+    SOUNDNESS.md part 6, the group of the running function and the
+    values of its `subterm` parameters; a call whose measure is not
+    below its caller's is not made, and the program's error is then
+    "evaluation stopped: the call to `f` does not decrease". There is
+    no fuel and no depth bound. Under phase 2 an erased `subterm`
+    parameter's value is removed (item 6), so a call that decreases
+    only on one is stopped there, where the TypeScript implementation
+    evaluates it.
+73. **Internal checks.** Where the code relies on an invariant of its
+    data, such as every entry having a type, a term to abstract over a
+    telescope being closed (`abstract?`), forcing never getting stuck,
+    or a declaration's telescopes mentioning only top-level entries, it
+    tests the invariant and rejects the program with an error starting
+    "internal:" when it fails, so that the proofs need no syntactic
+    invariants. `lean/README.md` lists them. Each is meant to be
+    unreachable.
+74. **`inspect;` text** is three parts, one per line: "Expected:" with
+    one line per entry given, or "Expected: nothing is given here";
+    "Termination:" with the enclosing function's `subterm` parameters
+    and group, or the top level; and "Scope:" with one line per entry
+    of the enclosing declaration's or the top level's scope, `names :
+    type is rule`, a tainted name followed by "(tainted)", an anonymous
+    entry that a shown type or rule mentions by its marker, and a last
+    line saying which scrutinee taints the scope, if one does.
+75. **What `lean/tests` compares.** The Lean checker's verdict and the
+    TypeScript checker's are required to agree on whether there is an
+    error, the printed values in order, `qed`, `goalProved` and
+    `containsSorry`; error positions and messages, print positions and
+    inspect positions are informational, and the text of `inspect;` is
+    not compared. The corpus is every program the TypeScript test suite
+    checks, every `tests/*.pledge` file and each tutorial page's
+    programs (`lean/tests/README.md`).

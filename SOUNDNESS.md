@@ -6,11 +6,17 @@ of DESIGN.md.
 
 **How rigorous it is.** The note defines a semantics and a typing of
 values, states its lemmas precisely, and proves each by a written
-induction. It is not machine-checked, and part 9 lists what it takes on
-trust: chiefly that the checker implements §3 to §12 as the declarative
-rules of part 4 describe them. It follows the shape of Sleight's
+induction. The note itself is not machine-checked, and part 9 lists
+what it takes on trust: chiefly that the checker implements §3 to §12
+as the declarative rules of part 4 describe them. It follows the shape
+of Sleight's
 [SOUNDNESS.md](https://github.com/emmarion/sleight/blob/main/SOUNDNESS.md),
-which argues the same points for a larger language.
+which argues the same points for a larger language. A second
+implementation of the checker and evaluator, in Lean under `lean/`,
+comes with Lean-checked counterparts of most of the lemmas below, for
+phase 1 programs without `sorry`; part 11 lists them. Those results are
+about the Lean implementation and about the definitions as formalized
+there, not about the TypeScript code.
 
 ## In short
 
@@ -301,7 +307,8 @@ out. ∎
   rules leave the scope with the branch, and that a pattern `let`'s
   rules, which Lemma 3.3 makes consequences of the typing, last to the
   end of the enclosing match branch or function body, or of the program
-  (§7, §10).
+  (§7, §10). For the Lean implementation, part 11's theorems are about
+  its code instead.
 - **The evaluator** computes the semantics of part 5. The facts a
   `comptime` pattern `let` adds depend on it.
 - **Phase 2.** Erasure is argued only in outline: evaluation that skips
@@ -327,3 +334,57 @@ If any of these changed, the argument would need revisiting:
 - a way to build a telescope by evaluation, which would remove the
   bound k;
 - matching on a value of type `Type()`.
+
+## 11. The Lean counterparts
+
+`lean/README.md` describes the Lean implementation and what its
+theorems assume. Lean checks the theorems below for phase 1 programs
+that contain no `sorry` (`Program.plain`), with no axioms beyond
+`propext`, `Classical.choice` and `Quot.sound`. Each is meant to be the
+counterpart of the part of this note it is listed under; the
+correspondence is a Claude session's reading and may be inexact. File
+names are under `lean/Pledge/`.
+
+- **Part 2.** `HasType` and `TeleSat` (`Core.lean`) define the typing of
+  values. They type values by closed signatures, the program's
+  signatures with the values of the top-level entries they mention
+  substituted (`Sig.close`), so that typing depends on no valuation.
+- **Lemma 2.1:** `HasType.inv_type`; **Lemma 2.2:** `HasType.unique`;
+  **Corollary 2.3:** `HasType.empty` (all in `CoreLemmas.lean`), with
+  `ownedBy_empty` (`Sound/Data.lean`) for a data type constructor that
+  declares no value constructors; **Lemma 2.4:** `Term.strictSub_eval`
+  (`UnifySound.lean`).
+- **Part 3.** `Sat` (`Core.lean`) is `rho |= Gamma`. **Lemma 3.1:**
+  `Term.eval_canon` (`CoreLemmas.lean`); **Corollary 3.2:**
+  `Sat.eval_eq_of_identical` (`CoreLemmas.lean`) and
+  `isStrictSubterm_sound` (`UnifySound.lean`); **Lemma 3.3:**
+  `solve_sound`, `force_good` and `force_refuted` (`UnifySound.lean`).
+- **Part 4** has no counterpart: the Lean theorems are about the Lean
+  checker's code, not about declarative rules.
+- **Theorems 5.1 and 6.2,** proved together as in part 6: `Expr.sound`
+  and `Stmt.sound` (`Sound/Expr.lean`) for an expression or statement
+  under an invariant on the scope, the valuation and the functions
+  available, and `GroupOk.fnSpec` (`Sound/Fn.lean`) for the functions of
+  a group, by well-founded induction on the measure of part 6. Here
+  evaluation is the Lean evaluator, which is total and stops with an
+  error where a call's measure does not decrease; these theorems say
+  that it returns values instead.
+- **Lemma 6.1:** `call_lt` (`Sound/Basic.lean`), with `Act.lt_wf`
+  (`Eval.lean`) for the well-foundedness of the order.
+- **(P) and (T)** for the top level: `runProgram_sound`,
+  `reached_eval_ok` and `reached_run_ok` (`Sound/Top.lean`).
+- **(K):** `type_goal_inhabited`, `fn_goal_holds` and `no_empty_goal`
+  (`Sound/Top.lean`), and `run_sound` and `run_no_empty_goal` for source
+  text whose parsed program contains no `sorry`.
+- **(C)** has no theorem: every definition of the Lean implementation is
+  total, by structural or well-founded recursion, with no `partial` and
+  no fuel, so Lean's acceptance of the definitions is meant to stand
+  for it.
+
+The following have no Lean counterpart and rest on this note alone:
+programs that contain `sorry`, and taint (§12); phase 2 and part 9's
+argument for erasure; the TypeScript implementation; and the parsers,
+about which no theorem says anything. That the Lean checker implements
+DESIGN.md is not proved either; it is supported only by comparing its
+verdicts with the TypeScript checker's on a corpus of programs
+(`lean/tests/README.md`).

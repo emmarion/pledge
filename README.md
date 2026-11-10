@@ -62,6 +62,9 @@ relies on one.
 - [DESIGN.md](DESIGN.md) is the specification.
 - [SOUNDNESS.md](SOUNDNESS.md) argues that no program can prove
   `False`. The argument is written out, not machine-checked.
+- [lean/](lean/README.md) is a second implementation of the checker and
+  evaluator, in Lean 4, with Lean-checked soundness theorems about it
+  for phase 1 programs without `sorry`.
 
 Pledge is loosely based on
 [Sleight](https://github.com/emmarion/sleight), a larger language, and
@@ -105,7 +108,7 @@ computation itself.
 Pledge is a prototype for teaching, not a language for writing
 software: it has no strings, no numbers beyond the ones you define, and
 no input or output. The language design is the repository owner's. The
-implementation, the tutorial and SOUNDNESS.md were written by Claude
+implementations, the tutorial and SOUNDNESS.md were written by Claude
 sessions and may contain mistakes; where they disagree with DESIGN.md,
 DESIGN.md is right. [ASSUMPTIONS.md](ASSUMPTIONS.md) lists the choices
 the implementation makes where DESIGN.md is silent.
@@ -127,6 +130,9 @@ npm test
 
 [INTERNALS.md](INTERNALS.md) describes how the code is laid out. A push
 to `main` type-checks, runs the tests and deploys `dist/` to GitHub Pages.
+[lean/README.md](lean/README.md) says how to build the Lean
+implementation and run its verification gate, which a push or pull
+request touching `lean/` or `src/` runs.
 
 ## Citing and license
 

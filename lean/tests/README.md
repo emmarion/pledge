@@ -46,3 +46,10 @@ source, and the exit code is then non-zero.
 `ts-pledge.mjs` puts the TypeScript checker behind the same command
 line, so `node lean/tests/compare.mjs --exe lean/tests/ts-pledge.mjs`
 checks the comparison itself; every program should agree.
+
+## The gate
+
+`node lean/tests/gate.mjs` builds the Lean tree, scans its sources,
+prints the axioms of the headline theorems through `Audit.lean`,
+checks that `corpus.json` is current and runs the comparison
+(`lean/README.md`).
