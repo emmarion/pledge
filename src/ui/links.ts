@@ -1,6 +1,7 @@
 import { h, type Child } from "./dom.ts";
 
-const repo = "https://github.com/emmarion/pledge/blob/main/";
+export const repository = "https://github.com/emmarion/pledge";
+const repo = `${repository}/blob/main/`;
 
 export const sections = [
   "1-syntax", "2-names", "3-skeleton-terms-and-types", "4-first-class-values", "5-data-types", "6-is",

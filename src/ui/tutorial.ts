@@ -1,7 +1,7 @@
 import { disclaimer, pages } from "../tutorial/pages.ts";
 import { glossary } from "../tutorial/glossary.ts";
 import { h } from "./dom.ts";
-import { linked, marked } from "./links.ts";
+import { linked, marked, repository } from "./links.ts";
 import { Workspace } from "./workspace.ts";
 
 const slug = new URLSearchParams(location.search).get("page");
@@ -34,7 +34,7 @@ const toc = h("details", { class: "toc" }, h("summary", {}, "Pages"),
 document.title = `${page.title} — Pledge tutorial`;
 workspace.mount(
   [h("h1", {}, h("a", { href: "index.html" }, "Pledge"), " tutorial"),
-    h("span", { class: "muted" }, `Phase ${page.phase}`)],
+    h("span", { class: "muted" }, `Phase ${page.phase}`), h("a", { href: repository }, "GitHub")],
   { label: "Reset your box", question: "Replace your text with the starting text? This cannot be undone." },
   [h("div", { class: "about" },
     h("details", { class: "disclaimer" }, h("summary", {}, "Disclaimer"), h("p", {}, linked(disclaimer))),
