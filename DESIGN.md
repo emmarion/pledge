@@ -444,7 +444,7 @@ a pattern `let` (§10), except that the run, not forcing, rules out the
 other value constructors: `C` must survive forcing, and the others need
 not be refuted. Its fields and facts stay in scope for the rest of the
 program. `comptime` is written only on a pattern `let`, and only at the
-top level.
+top level. A `comptime` pattern `let` cannot be erased (§16).
 
 This is how a proof by reflection is written, given
 

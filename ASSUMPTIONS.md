@@ -321,8 +321,7 @@ and never renumbered (rule 15); a removed item leaves a gap.
     expressions. So `print x;` and `qed x;` with `x` erased are errors.
 48. **The one-branch rule** applies to every `match erased` with a
     `many` annotation entry, even when the whole match is in an erased
-    position and never runs. `comptime let erased C(...) = e;` is
-    rejected, since the run needs the value.
+    position and never runs.
 50. **`sorry`'s telescope** takes no multiplicities; `sorry(_)` takes
     those of the telescope it stands for.
 53. **Local entries and Expected panels** mark an entry erased when it was
