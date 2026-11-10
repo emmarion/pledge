@@ -1,0 +1,648 @@
+-- Binary naturals (Pos: One, P0(p) = 2p, P1(p) = 2p+1; Bin: BZ or BP(p)) related to unary Nat by Rep.
+-- The file proves that Rep is functional and injective, that every Bin has a Nat (toNat) and every Nat a Bin
+-- (fromNat), and that add (with carry) and mul (shift-and-add) agree with Plus and Times; the goal is mul's.
+-- All Nat-level data is erased, so evaluation is meant to do only binary work: the prints below act on
+-- numbers whose unary form would presumably be far too large to build.
+
+data Nat() : Type() {
+  Zero() : Nat();
+  Succ(pred : Nat()) : Nat();
+}
+
+data Eq(A : Type(), x : A, y : A) : Type() {
+  Refl(erased A : Type(), erased x : A) : Eq(A, x, x);
+}
+
+data False() : Type() {}
+
+data NonZero(n : Nat()) : Type() {
+  NonZeroSucc(erased n : Nat()) : NonZero(Succ(n));
+}
+
+data Plus(m : Nat(), n : Nat(), r : Nat()) : Type() {
+  PlusZero(erased n : Nat()) : Plus(Zero(), n, n);
+  PlusSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(), p : Plus(m, n, r)) : Plus(Succ(m), n, Succ(r));
+}
+
+data Times(m : Nat(), n : Nat(), r : Nat()) : Type() {
+  TimesZero(erased n : Nat()) : Times(Zero(), n, Zero());
+  TimesSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(), erased s : Nat(),
+      t : Times(m, n, r), p : Plus(r, n, s)) : Times(Succ(m), n, s);
+}
+
+data Pos() : Type() {
+  One() : Pos();
+  P0(p : Pos()) : Pos();
+  P1(p : Pos()) : Pos();
+}
+
+data Bin() : Type() {
+  BZ() : Bin();
+  BP(p : Pos()) : Bin();
+}
+
+data PosRep(p : Pos(), n : Nat()) : Type() {
+  RepOne() : PosRep(One(), Succ(Zero()));
+  RepP0(erased p : Pos(), erased n : Nat(), erased d : Nat(), r : PosRep(p, n), s : Plus(n, n, d)) : PosRep(P0(p), d);
+  RepP1(erased p : Pos(), erased n : Nat(), erased d : Nat(), r : PosRep(p, n), s : Plus(n, n, d))
+    : PosRep(P1(p), Succ(d));
+}
+
+data Rep(b : Bin(), n : Nat()) : Type() {
+  RepZ() : Rep(BZ(), Zero());
+  RepP(erased p : Pos(), erased n : Nat(), r : PosRep(p, n)) : Rep(BP(p), n);
+}
+
+goal fn (erased m : Nat(), erased n : Nat(), x : Bin(), y : Bin(), erased px : Rep(x, m), erased py : Rep(y, n))
+    -> (z : Bin(), erased r : Nat(), erased pz : Rep(z, r), erased t : Times(m, n, r));
+
+fn plus(subterm m : Nat(), n : Nat()) -> (erased r : Nat(), erased p : Plus(m, n, r)) {
+  match m : _ {
+    Zero() => (n, PlusZero(_));
+    Succ(k) => {
+      let (erased r, erased p) = plus(subterm k, n);
+      (Succ(r), PlusSucc(_, _, _, p))
+    };
+  }
+}
+
+fn plusZeroRight(subterm n : Nat()) -> (erased p : Plus(n, Zero(), n)) {
+  match n : _ {
+    Zero() => PlusZero(_);
+    Succ(k) => PlusSucc(_, _, _, plusZeroRight(subterm k));
+  }
+}
+
+fn plusSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(), subterm p : Plus(m, n, r))
+    -> (erased q : Plus(m, Succ(n), Succ(r))) {
+  match p : _ {
+    PlusZero(_) => PlusZero(_);
+    PlusSucc(_, _, _, p1) => PlusSucc(_, _, _, plusSucc(_, _, _, subterm p1));
+  }
+}
+
+fn plusComm(erased m : Nat(), erased n : Nat(), erased r : Nat(), subterm p : Plus(m, n, r))
+    -> (erased q : Plus(n, m, r)) {
+  match p : _ {
+    PlusZero(_) => plusZeroRight(n);
+    PlusSucc(_, _, _, p1) => plusSucc(_, _, _, plusComm(_, _, _, subterm p1));
+  }
+}
+
+fn plusAssoc(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased ab : Nat(), erased r : Nat(),
+    subterm p : Plus(a, b, ab), q : Plus(ab, c, r))
+    -> (erased bc : Nat(), erased q1 : Plus(b, c, bc), erased q2 : Plus(a, bc, r)) {
+  match p : _ {
+    PlusZero(_) => (r, q, PlusZero(_));
+    PlusSucc(_, _, _, p1) => {
+      let PlusSucc(_, _, _, q3) = q;
+      let (erased bc, erased s1, erased s2) = plusAssoc(_, _, _, _, _, subterm p1, q3);
+      (bc, s1, PlusSucc(_, _, _, s2))
+    };
+  }
+}
+
+fn plusAssocRev(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased bc : Nat(), erased r : Nat(),
+    p : Plus(b, c, bc), subterm q : Plus(a, bc, r))
+    -> (erased ab : Nat(), erased q1 : Plus(a, b, ab), erased q2 : Plus(ab, c, r)) {
+  match q : _ {
+    PlusZero(_) => (b, PlusZero(_), p);
+    PlusSucc(_, _, _, q3) => {
+      let (erased ab, erased s1, erased s2) = plusAssocRev(_, _, _, _, _, p, subterm q3);
+      (Succ(ab), PlusSucc(_, _, _, s1), PlusSucc(_, _, _, s2))
+    };
+  }
+}
+
+fn exchange(erased w : Nat(), erased y : Nat(), erased x : Nat(), erased z : Nat(), erased wy : Nat(),
+    erased xz : Nat(), erased r : Nat(), p : Plus(w, y, wy), q : Plus(x, z, xz), s : Plus(wy, xz, r))
+    -> (erased wx : Nat(), erased yz : Nat(), erased p1 : Plus(w, x, wx), erased q1 : Plus(y, z, yz),
+        erased s1 : Plus(wx, yz, r)) {
+  let (erased yxz, erased s2, erased s3) = plusAssoc(_, _, _, _, _, p, s);
+  let (erased yx, erased s4, erased s5) = plusAssocRev(_, _, _, _, _, q, s2);
+  let (erased yz, erased s7, erased s8) = plusAssoc(_, _, _, _, _, plusComm(_, _, _, s4), s5);
+  let (erased wx, erased s9, erased s10) = plusAssocRev(_, _, _, _, _, s8, s3);
+  (wx, yz, s9, s7, s10)
+}
+
+fn plusFunc(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased d : Nat(),
+    subterm p : Plus(a, b, c), q : Plus(a, b, d)) -> (erased e : Eq(Nat(), c, d)) {
+  match p : _ {
+    PlusZero(_) => {
+      let PlusZero(_) = q;
+      Refl(_, _)
+    };
+    PlusSucc(_, _, _, p1) => {
+      let PlusSucc(_, _, _, q1) = q;
+      match erased plusFunc(_, _, _, _, subterm p1, q1) : _ {
+        Refl(_, _) => Refl(_, _);
+      }
+    };
+  }
+}
+
+fn succBoth(erased a : Nat(), erased b : Nat(), erased c : Nat(), p : Plus(a, b, c))
+    -> (erased q : Plus(Succ(a), Succ(b), Succ(Succ(c)))) {
+  PlusSucc(_, _, _, plusSucc(_, _, _, p))
+}
+
+fn halfStep(erased k : Nat(), erased d : Nat(), p : Plus(Succ(k), Succ(k), d))
+    -> (erased d1 : Nat(), erased e : Eq(Nat(), d, Succ(Succ(d1))), erased q : Plus(k, k, d1)) {
+  let PlusSucc(_, _, _, p1) = p;
+  let erased PlusSucc(_, _, d1, q) = plusComm(_, _, _, p1);
+  (d1, Refl(_, _), q)
+}
+
+fn doubleSum(erased a : Nat(), erased b : Nat(), erased r : Nat(), erased ma : Nat(), erased nb : Nat(),
+    p : Plus(a, b, r), pa : Plus(a, a, ma), pb : Plus(b, b, nb))
+    -> (erased d : Nat(), erased q : Plus(r, r, d), erased s : Plus(ma, nb, d)) {
+  let (erased d, erased s) = plus(ma, nb);
+  let (erased wx, erased yz, erased p1, erased p2, erased q) = exchange(_, _, _, _, _, _, _, pa, pb, s);
+  match erased plusFunc(_, _, _, _, p1, p) : _ {
+    Refl(_, _) => match erased plusFunc(_, _, _, _, p2, p) : _ {
+      Refl(_, _) => (d, q, s);
+    };
+  }
+}
+
+fn halfInj(subterm k : Nat(), l : Nat(), erased d : Nat(), p : Plus(k, k, d), q : Plus(l, l, d))
+    -> (erased e : Eq(Nat(), k, l)) {
+  match k : _ {
+    Zero() => {
+      let PlusZero(_) = p;
+      match l : _ {
+        Zero() => Refl(_, _);
+        Succ(_) => match q : _ {};
+      }
+    };
+    Succ(k1) => match l : _ {
+      Zero() => {
+        let PlusZero(_) = q;
+        match p : _ {}
+      };
+      Succ(l1) => {
+        let (erased d1, erased e1, erased p1) = halfStep(_, _, p);
+        let (erased d2, erased e2, erased q1) = halfStep(_, _, q);
+        match erased e1 : _ {
+          Refl(_, _) => match erased e2 : _ {
+            Refl(_, _) => match erased halfInj(subterm k1, l1, _, p1, q1) : _ {
+              Refl(_, _) => Refl(_, _);
+            };
+          };
+        }
+      };
+    };
+  }
+}
+
+fn notEvenOdd(subterm k : Nat(), l : Nat(), erased d : Nat(), p : Plus(k, k, d), q : Plus(l, l, Succ(d)))
+    -> (erased f : False()) {
+  match k : _ {
+    Zero() => {
+      let PlusZero(_) = p;
+      match l : _ {
+        Zero() => match q : _ {};
+        Succ(_) => {
+          let (erased d2, erased e2, erased q1) = halfStep(_, _, q);
+          match erased e2 : _ {}
+        };
+      }
+    };
+    Succ(k1) => {
+      let (erased d1, erased e1, erased p1) = halfStep(_, _, p);
+      match erased e1 : _ {
+        Refl(_, _) => match l : _ {
+          Zero() => match q : _ {};
+          Succ(l1) => {
+            let (erased d2, erased e2, erased q1) = halfStep(_, _, q);
+            match erased e2 : _ {
+              Refl(_, _) => notEvenOdd(subterm k1, l1, _, p1, q1);
+            }
+          };
+        };
+      }
+    };
+  }
+}
+
+fn posPos(erased x : Pos(), erased k : Nat(), subterm r : PosRep(x, k)) -> (erased z : NonZero(k)) {
+  match r : _ {
+    RepOne() => NonZeroSucc(_);
+    RepP0(_, _, _, r1, s) => {
+      let erased NonZeroSucc(_) = posPos(_, _, subterm r1);
+      let PlusSucc(_, _, _, _) = s;
+      NonZeroSucc(_)
+    };
+    RepP1(_, _, _, _, _) => NonZeroSucc(_);
+  }
+}
+
+fn posRepFunc(erased x : Pos(), erased m : Nat(), erased n : Nat(), subterm px : PosRep(x, m), py : PosRep(x, n))
+    -> (erased e : Eq(Nat(), m, n)) {
+  match px : _ {
+    RepOne() => {
+      let RepOne() = py;
+      Refl(_, _)
+    };
+    RepP0(_, _, _, r1, s1) => {
+      let RepP0(_, _, _, r2, s2) = py;
+      match erased posRepFunc(_, _, _, subterm r1, r2) : _ {
+        Refl(_, _) => plusFunc(_, _, _, _, s1, s2);
+      }
+    };
+    RepP1(_, _, _, r1, s1) => {
+      let RepP1(_, _, _, r2, s2) = py;
+      match erased posRepFunc(_, _, _, subterm r1, r2) : _ {
+        Refl(_, _) => match erased plusFunc(_, _, _, _, s1, s2) : _ {
+          Refl(_, _) => Refl(_, _);
+        };
+      }
+    };
+  }
+}
+
+fn repFunc(erased b : Bin(), erased m : Nat(), erased n : Nat(), px : Rep(b, m), py : Rep(b, n))
+    -> (erased e : Eq(Nat(), m, n)) {
+  match px : _ {
+    RepZ() => {
+      let RepZ() = py;
+      Refl(_, _)
+    };
+    RepP(_, _, r1) => {
+      let RepP(_, _, r2) = py;
+      posRepFunc(_, _, _, r1, r2)
+    };
+  }
+}
+
+fn posRepInj(erased x : Pos(), erased y : Pos(), erased n : Nat(), subterm px : PosRep(x, n), py : PosRep(y, n))
+    -> (erased e : Eq(Pos(), x, y)) {
+  match px : _ {
+    RepOne() => match py : _ {
+      RepOne() => Refl(_, _);
+      RepP0(_, _, _, r2, s2) => {
+        let erased NonZeroSucc(_) = posPos(_, _, r2);
+        let PlusSucc(_, _, _, s3) = s2;
+        match s3 : _ {}
+      };
+      RepP1(_, _, _, r2, s2) => {
+        let erased NonZeroSucc(_) = posPos(_, _, r2);
+        match s2 : _ {}
+      };
+    };
+    RepP0(_, k, _, r1, s1) => match py : _ {
+      RepOne() => {
+        let erased NonZeroSucc(_) = posPos(_, _, r1);
+        let PlusSucc(_, _, _, s3) = s1;
+        match s3 : _ {}
+      };
+      RepP0(_, l, _, r2, s2) => match erased halfInj(k, l, _, s1, s2) : _ {
+        Refl(_, _) => match erased posRepInj(_, _, _, subterm r1, r2) : _ {
+          Refl(_, _) => Refl(_, _);
+        };
+      };
+      RepP1(_, l, _, _, s2) => match erased notEvenOdd(l, k, _, s2, s1) : _ {};
+    };
+    RepP1(_, k, _, r1, s1) => match py : _ {
+      RepOne() => {
+        let erased NonZeroSucc(_) = posPos(_, _, r1);
+        match s1 : _ {}
+      };
+      RepP0(_, l, _, _, s2) => match erased notEvenOdd(k, l, _, s1, s2) : _ {};
+      RepP1(_, l, _, r2, s2) => match erased halfInj(k, l, _, s1, s2) : _ {
+        Refl(_, _) => match erased posRepInj(_, _, _, subterm r1, r2) : _ {
+          Refl(_, _) => Refl(_, _);
+        };
+      };
+    };
+  }
+}
+
+fn repInj(erased b : Bin(), erased c : Bin(), erased n : Nat(), px : Rep(b, n), py : Rep(c, n))
+    -> (erased e : Eq(Bin(), b, c)) {
+  match px : _ {
+    RepZ() => match py : _ {
+      RepZ() => Refl(_, _);
+      RepP(_, _, r2) => match erased posPos(_, _, r2) : _ {};
+    };
+    RepP(_, _, r1) => match py : _ {
+      RepZ() => match erased posPos(_, _, r1) : _ {};
+      RepP(_, _, r2) => match erased posRepInj(_, _, _, r1, r2) : _ {
+        Refl(_, _) => Refl(_, _);
+      };
+    };
+  }
+}
+
+fn toNatPos(subterm x : Pos()) -> (erased n : Nat(), erased r : PosRep(x, n)) {
+  match x : _ {
+    One() => (Succ(Zero()), RepOne());
+    P0(a) => {
+      let (erased k, erased r) = toNatPos(subterm a);
+      let (erased d, erased s) = plus(k, k);
+      (d, RepP0(_, _, _, r, s))
+    };
+    P1(a) => {
+      let (erased k, erased r) = toNatPos(subterm a);
+      let (erased d, erased s) = plus(k, k);
+      (Succ(d), RepP1(_, _, _, r, s))
+    };
+  }
+}
+
+fn toNat(b : Bin()) -> (erased n : Nat(), erased r : Rep(b, n)) {
+  match b : _ {
+    BZ() => (Zero(), RepZ());
+    BP(p) => {
+      let (erased n, erased r) = toNatPos(p);
+      (n, RepP(_, _, r))
+    };
+  }
+}
+
+fn succPos(erased m : Nat(), subterm x : Pos(), erased px : PosRep(x, m))
+    -> (z : Pos(), erased pz : PosRep(z, Succ(m))) {
+  match x : _ {
+    One() => {
+      let erased RepOne() = px;
+      (P0(One()), RepP0(_, _, _, RepOne(), PlusSucc(_, _, _, PlusZero(_))))
+    };
+    P0(a) => {
+      let erased RepP0(_, _, _, ra, sa) = px;
+      (P1(a), RepP1(_, _, _, ra, sa))
+    };
+    P1(a) => {
+      let erased RepP1(_, _, _, ra, sa) = px;
+      let (z, erased pz) = succPos(_, subterm a, ra);
+      (P0(z), RepP0(_, _, _, pz, succBoth(_, _, _, sa)))
+    };
+  }
+}
+
+fn inc(erased n : Nat(), b : Bin(), erased pb : Rep(b, n)) -> (c : Bin(), erased pc : Rep(c, Succ(n))) {
+  match b : _ {
+    BZ() => {
+      let erased RepZ() = pb;
+      (BP(One()), RepP(_, _, RepOne()))
+    };
+    BP(p) => {
+      let erased RepP(_, _, r) = pb;
+      let (q, erased pq) = succPos(_, p, r);
+      (BP(q), RepP(_, _, pq))
+    };
+  }
+}
+
+fn fromNat(subterm n : Nat()) -> (b : Bin(), erased r : Rep(b, n)) {
+  match n : _ {
+    Zero() => (BZ(), RepZ());
+    Succ(k) => {
+      let (b, erased r) = fromNat(subterm k);
+      inc(_, b, r)
+    };
+  }
+}
+
+fn oneRight(erased m : Nat()) -> (erased p : Plus(m, Succ(Zero()), Succ(m))) {
+  plusSucc(_, _, _, plusZeroRight(m))
+}
+
+mutual {
+  fn addPos(erased m : Nat(), erased n : Nat(), subterm x : Pos(), y : Pos(),
+      erased px : PosRep(x, m), erased py : PosRep(y, n))
+      -> (z : Pos(), erased r : Nat(), erased pz : PosRep(z, r), erased s : Plus(m, n, r)) {
+    match x : _ {
+      One() => {
+        let erased RepOne() = px;
+        let (z, erased pz) = succPos(_, y, py);
+        (z, Succ(n), pz, PlusSucc(_, _, _, PlusZero(_)))
+      };
+      P0(a) => {
+        let erased RepP0(_, _, _, ra, sa) = px;
+        match y : _ {
+          One() => {
+            let erased RepOne() = py;
+            let (z, erased pz) = succPos(_, x, px);
+            (z, Succ(m), pz, oneRight(m))
+          };
+          P0(b) => {
+            let erased RepP0(_, _, _, rb, sb) = py;
+            let (z, erased r, erased pz, erased s) = addPos(_, _, subterm a, b, ra, rb);
+            let (erased d, erased q, erased e) = doubleSum(_, _, _, _, _, s, sa, sb);
+            (P0(z), d, RepP0(_, _, _, pz, q), e)
+          };
+          P1(b) => {
+            let erased RepP1(_, _, _, rb, sb) = py;
+            let (z, erased r, erased pz, erased s) = addPos(_, _, subterm a, b, ra, rb);
+            let (erased d, erased q, erased e) = doubleSum(_, _, _, _, _, s, sa, sb);
+            (P1(z), Succ(d), RepP1(_, _, _, pz, q), plusSucc(_, _, _, e))
+          };
+        }
+      };
+      P1(a) => {
+        let erased RepP1(_, _, _, ra, sa) = px;
+        match y : _ {
+          One() => {
+            let erased RepOne() = py;
+            let (z, erased pz) = succPos(_, x, px);
+            (z, Succ(m), pz, oneRight(m))
+          };
+          P0(b) => {
+            let erased RepP0(_, _, _, rb, sb) = py;
+            let (z, erased r, erased pz, erased s) = addPos(_, _, subterm a, b, ra, rb);
+            let (erased d, erased q, erased e) = doubleSum(_, _, _, _, _, s, sa, sb);
+            (P1(z), Succ(d), RepP1(_, _, _, pz, q), PlusSucc(_, _, _, e))
+          };
+          P1(b) => {
+            let erased RepP1(_, _, _, rb, sb) = py;
+            let (z, erased r, erased pz, erased s) = addCarry(_, _, subterm a, b, ra, rb);
+            let (erased d, erased q, erased e) = doubleSum(_, _, _, _, _, s, sa, sb);
+            (P0(z), Succ(Succ(d)), RepP0(_, _, _, pz, succBoth(_, _, _, q)), succBoth(_, _, _, e))
+          };
+        }
+      };
+    }
+  }
+
+  fn addCarry(erased m : Nat(), erased n : Nat(), subterm x : Pos(), y : Pos(),
+      erased px : PosRep(x, m), erased py : PosRep(y, n))
+      -> (z : Pos(), erased r : Nat(), erased pz : PosRep(z, Succ(r)), erased s : Plus(m, n, r)) {
+    match x : _ {
+      One() => {
+        let erased RepOne() = px;
+        let (z1, erased pz1) = succPos(_, y, py);
+        let (z, erased pz) = succPos(_, z1, pz1);
+        (z, Succ(n), pz, PlusSucc(_, _, _, PlusZero(_)))
+      };
+      P0(a) => {
+        let erased RepP0(_, _, _, ra, sa) = px;
+        match y : _ {
+          One() => {
+            let erased RepOne() = py;
+            let (z1, erased pz1) = succPos(_, x, px);
+            let (z, erased pz) = succPos(_, z1, pz1);
+            (z, Succ(m), pz, oneRight(m))
+          };
+          P0(b) => {
+            let erased RepP0(_, _, _, rb, sb) = py;
+            let (z, erased r, erased pz, erased s) = addPos(_, _, subterm a, b, ra, rb);
+            let (erased d, erased q, erased e) = doubleSum(_, _, _, _, _, s, sa, sb);
+            (P1(z), d, RepP1(_, _, _, pz, q), e)
+          };
+          P1(b) => {
+            let erased RepP1(_, _, _, rb, sb) = py;
+            let (z, erased r, erased pz, erased s) = addCarry(_, _, subterm a, b, ra, rb);
+            let (erased d, erased q, erased e) = doubleSum(_, _, _, _, _, s, sa, sb);
+            (P0(z), Succ(d), RepP0(_, _, _, pz, succBoth(_, _, _, q)), plusSucc(_, _, _, e))
+          };
+        }
+      };
+      P1(a) => {
+        let erased RepP1(_, _, _, ra, sa) = px;
+        match y : _ {
+          One() => {
+            let erased RepOne() = py;
+            let (z1, erased pz1) = succPos(_, x, px);
+            let (z, erased pz) = succPos(_, z1, pz1);
+            (z, Succ(m), pz, oneRight(m))
+          };
+          P0(b) => {
+            let erased RepP0(_, _, _, rb, sb) = py;
+            let (z, erased r, erased pz, erased s) = addCarry(_, _, subterm a, b, ra, rb);
+            let (erased d, erased q, erased e) = doubleSum(_, _, _, _, _, s, sa, sb);
+            (P0(z), Succ(d), RepP0(_, _, _, pz, succBoth(_, _, _, q)), PlusSucc(_, _, _, e))
+          };
+          P1(b) => {
+            let erased RepP1(_, _, _, rb, sb) = py;
+            let (z, erased r, erased pz, erased s) = addCarry(_, _, subterm a, b, ra, rb);
+            let (erased d, erased q, erased e) = doubleSum(_, _, _, _, _, s, sa, sb);
+            (P1(z), Succ(Succ(d)), RepP1(_, _, _, pz, succBoth(_, _, _, q)), succBoth(_, _, _, e))
+          };
+        }
+      };
+    }
+  }
+}
+
+fn add(erased m : Nat(), erased n : Nat(), x : Bin(), y : Bin(), erased px : Rep(x, m), erased py : Rep(y, n))
+    -> (z : Bin(), erased r : Nat(), erased pz : Rep(z, r), erased s : Plus(m, n, r)) {
+  match x : _ {
+    BZ() => {
+      let erased RepZ() = px;
+      (y, n, py, PlusZero(_))
+    };
+    BP(p) => match y : _ {
+      BZ() => {
+        let erased RepZ() = py;
+        (x, m, px, plusZeroRight(m))
+      };
+      BP(q) => {
+        let erased RepP(_, _, rp) = px;
+        let erased RepP(_, _, rq) = py;
+        let (z, erased r, erased pz, erased s) = addPos(_, _, p, q, rp, rq);
+        (BP(z), r, RepP(_, _, pz), s)
+      };
+    };
+  }
+}
+
+fn timesZeroRight(subterm m : Nat()) -> (erased t : Times(m, Zero(), Zero())) {
+  match m : _ {
+    Zero() => TimesZero(_);
+    Succ(k) => TimesSucc(_, _, _, _, timesZeroRight(subterm k), PlusZero(_));
+  }
+}
+
+fn timesPlusLeft(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased n : Nat(), erased ta : Nat(),
+    erased tb : Nat(), erased t : Nat(), subterm p : Plus(a, b, c), t1 : Times(a, n, ta), t2 : Times(b, n, tb),
+    q : Plus(ta, tb, t)) -> (erased u : Times(c, n, t)) {
+  match p : _ {
+    PlusZero(_) => {
+      let TimesZero(_) = t1;
+      let PlusZero(_) = q;
+      t2
+    };
+    PlusSucc(_, _, _, p1) => {
+      let TimesSucc(_, _, _, _, t3, s1) = t1;
+      let (erased ntb, erased s2, erased s3) = plusAssoc(_, _, _, _, _, s1, q);
+      let (erased x, erased s4, erased s5) = plusAssocRev(_, _, _, _, _, plusComm(_, _, _, s2), s3);
+      TimesSucc(_, _, _, _, timesPlusLeft(_, _, _, _, _, _, _, subterm p1, t3, t2, s4), s5)
+    };
+  }
+}
+
+fn timesDouble(erased a : Nat(), erased ma : Nat(), erased n : Nat(), erased t : Nat(),
+    sa : Plus(a, a, ma), u : Times(a, n, t))
+    -> (erased d : Nat(), erased q : Plus(t, t, d), erased v : Times(ma, n, d)) {
+  let (erased d, erased q) = plus(t, t);
+  (d, q, timesPlusLeft(_, _, _, _, _, _, _, sa, u, u, q))
+}
+
+fn mulPos(erased m : Nat(), erased n : Nat(), subterm x : Pos(), y : Pos(),
+    erased px : PosRep(x, m), erased py : PosRep(y, n))
+    -> (z : Pos(), erased r : Nat(), erased pz : PosRep(z, r), erased t : Times(m, n, r)) {
+  match x : _ {
+    One() => {
+      let erased RepOne() = px;
+      (y, n, py, TimesSucc(_, _, _, _, TimesZero(_), PlusZero(_)))
+    };
+    P0(a) => {
+      let erased RepP0(_, _, _, ra, sa) = px;
+      let (z, erased r, erased pz, erased t) = mulPos(_, _, subterm a, y, ra, py);
+      let (erased d, erased q, erased u) = timesDouble(_, _, _, _, sa, t);
+      (P0(z), d, RepP0(_, _, _, pz, q), u)
+    };
+    P1(a) => {
+      let erased RepP1(_, _, _, ra, sa) = px;
+      let (z, erased r, erased pz, erased t) = mulPos(_, _, subterm a, y, ra, py);
+      let (erased d, erased q, erased u) = timesDouble(_, _, _, _, sa, t);
+      let (w, erased s, erased pw, erased e) = addPos(_, _, P0(z), y, RepP0(_, _, _, pz, q), py);
+      (w, s, pw, TimesSucc(_, _, _, _, u, e))
+    };
+  }
+}
+
+fn mul(erased m : Nat(), erased n : Nat(), x : Bin(), y : Bin(), erased px : Rep(x, m), erased py : Rep(y, n))
+    -> (z : Bin(), erased r : Nat(), erased pz : Rep(z, r), erased t : Times(m, n, r)) {
+  match x : _ {
+    BZ() => {
+      let erased RepZ() = px;
+      (BZ(), Zero(), RepZ(), TimesZero(_))
+    };
+    BP(p) => match y : _ {
+      BZ() => {
+        let erased RepZ() = py;
+        (BZ(), Zero(), RepZ(), timesZeroRight(m))
+      };
+      BP(q) => {
+        let erased RepP(_, _, rp) = px;
+        let erased RepP(_, _, rq) = py;
+        let (z, erased r, erased pz, erased t) = mulPos(_, _, p, q, rp, rq);
+        (BP(z), r, RepP(_, _, pz), t)
+      };
+    };
+  }
+}
+
+qed mul;
+
+let xHigh = P0(P0(P1(P1(P0(P1(P0(P0(P1(P1(P0(P0(P1(P0(P0(One())))))))))))))));
+let x = BP(P1(P1(P0(P0(P1(P0(P1(P1(P0(P1(P0(P0(P0(P0(P0(xHigh))))))))))))))));
+let yHigh = P0(P0(P1(P1(P1(P1(P0(P1(P1(P0(P1(P0(P1(P1(One()))))))))))))));
+let y = BP(P1(P0(P0(P0(P1(P1(P0(P1(P0(P0(P0(P1(P0(P1(P1(yHigh))))))))))))))));
+let (erased m, erased px) = toNat(x);
+let (erased n, erased py) = toNat(y);
+let (sum, erased r, erased psum, erased s) = add(m, n, x, y, px, py);
+print sum;
+let (product, erased t, erased pproduct, erased u) = mul(m, n, x, y, px, py);
+print product;
+
+let three = Succ(Succ(Succ(Zero())));
+let four = Succ(three);
+let twelve = Succ(Succ(Succ(Succ(Succ(Succ(Succ(Succ(four))))))));
+let (b3, erased p3) = fromNat(three);
+let (b4, erased p4) = fromNat(four);
+let (b12, erased k, erased p12, erased t12) = mul(three, four, b3, b4, p3, p4);
+print b12;
+let (c12, erased q12) = fromNat(twelve);
+print c12;
