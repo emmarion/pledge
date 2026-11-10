@@ -234,7 +234,8 @@ structure TopInv (st : TopState) (ρ : List Value) : Prop where
   fnNames : ∀ d ∈ st.fns, ∃ sig, st.globals.find? (·.name == d.name) = some (.fn d.name sig)
   groups : ∀ d ∈ st.fns, d.group < st.groups
   typeSig : ∃ s, st.sc.sigs.find Head.Type = some s
-  goal : ∀ g, st.goal = some g → GoalBelow st.sc.Γ.length g
+  goal : ∀ g, st.goal = some g → GoalBelow st.sc.Γ.length g ∧
+    (st.sc.taintedBy = none → ∀ t, g.kind = .type t → t.closed = true)
   proved : st.proved = true → ∃ g, st.goal = some g ∧ ∀ W', (st.world ρ).Le W' → GoalHolds W' st.phase g st.qedFn
   live : st.sc.taintedBy = none → TopLive st ρ
 
