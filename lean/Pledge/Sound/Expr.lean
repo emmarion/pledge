@@ -84,6 +84,58 @@ theorem checkArgs_sound {args : List Arg} (ih : ∀ a ∈ args, ExprSound a.expr
       · rw [← List.append_assoc]
         exact TeleSat.cons_iff.2 ⟨v, vs₂, rfl, hb.frame ρ₂, ht₂⟩
 
+theorem TeleSat.hasType {S : Sigs} {ρ : List Value} :
+    ∀ {Δ : Telescope} {env vs : List Value}, TeleSat S ρ Δ env vs → ∀ v ∈ vs, ∃ V, HasType S v V
+  | [], _, _, h => by rw [TeleSat.nil_iff.1 h]; simp
+  | _ :: _, _, _, h => by
+    obtain ⟨v, vs', rfl, ⟨A, -, hA, -⟩, ht⟩ := TeleSat.cons_iff.1 h
+    intro u hu
+    rcases List.mem_cons.1 hu with rfl | hu
+    · exact ⟨A, hA⟩
+    · exact TeleSat.hasType ht u hu
+
+/-- A call whose arguments checked: given that the measure decreases, the body runs to results satisfying the
+returns. -/
+theorem call_core {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSound a.expr) {C : Ctx} {sc : Scope}
+    {g : Option Given} {n0 : Nat} {W : World} {ρ : List Value} {env : Env} {act : Act} {o o' : Out} {sig : FnSig}
+    {a : ArgsOut} (hI : Inv C sc n0 W ρ env act) (hg : ∀ g', g = some g' → g'.Ok ρ)
+    (hfo : FnOk n0 W C.fn act h.name sig) (har : sig.params.length = args.length)
+    (ha : checkArgs C sc h.name "parameter" false sig.params [] args = .ok a)
+    (hlt : ∀ ρ' vs d, Inv C a.sc n0 W (ρ ++ ρ') env act →
+      Term.evalList (ρ ++ ρ') [] (a.res.map (·.term)) = some vs → vs.length = sig.params.length →
+      W.P.fns.find h.name = some d → d.subterm = sig.subterm → d.subterm.count true ≤ d.pad →
+      (if C.fn.any (·.group.contains h.name) then d.group = act.group ∧ d.pad = act.subs.length
+        else d.group < act.group) → Act.lt (calleeAct d vs) act)
+    (ho' : applied (opened a.sc sig.returns (a.res.map (·.term)) h.name h.pos
+        fun _ => sig.tainted || a.res.any (·.tainted)).1 g h.pos
+      (opened a.sc sig.returns (a.res.map (·.term)) h.name h.pos fun _ => sig.tainted || a.res.any (·.tainted)).2
+      (.app h a.trees) sc.holes.length a.snaps = .ok o')
+    (hf : finish C false g (.app h args) o' = .ok o) : ExprPost C sc g n0 W ρ env act o := by
+  obtain ⟨htn, hpar, hret, -, d, hd, -, hds, -, hdc, hspec, hgrp⟩ := hfo
+  obtain ⟨hsigs, hnames, hres, ρ', vs, hev, hI', hvs, -, ht⟩ :=
+    checkArgs_sound ih hI (fun p hp => (hpar p hp).2) har rfl ha
+  have hlt' := hlt ρ' vs d hI' hvs ht.length_eq hd hds hdc hgrp
+  have hagree : (ρ ++ ρ').take n0 = W.ρ.take n0 := hI'.agree
+  obtain ⟨rs, hcall, hrs⟩ := hspec vs
+    ((TeleSat.iff_of_entriesBelow hagree (List.all_eq_true.2 fun b hb => (hpar b hb).1)).1 ht) hlt'
+  have hrs' := (TeleSat.iff_of_entriesBelow hagree (List.all_eq_true.2 fun b hb => (hret b hb).1)).2 hrs
+  have htaint : (sig.tainted || a.res.any (·.tainted)) = false := by simpa [htn] using hres
+  obtain ⟨hsat, hrv, -, hun⟩ := opened_sound (kind := h.name) (pos := h.pos)
+    (taint := fun _ => sig.tainted || a.res.any (·.tainted)) hI'.sat hvs hrs'
+  have hI'' := Inv.extend hI' hsat rfl rfl
+    ⟨hI'.inert.holes, hI'.inert.taintedBy, hI'.inert.names⟩
+  have hty := hrs.hasType
+  have hframe {t : List Term} {us : List Value} (he : Term.evalList ρ [] t = some us) :=
+    Term.evalList_frame_ρ rs (Term.evalList_frame_ρ ρ' he)
+  obtain ⟨rfl, hw⟩ := applied_sound hsat (hI'.sigsClose rs) hI'.inert.holes hrv hty
+    (fun g' h' => let ⟨envv, he⟩ := (hg g' h').env; ⟨envv, hframe he⟩) ho'
+  have hun' := hun fun _ => htaint
+  obtain ⟨rfl, -, her⟩ := finish_inert (fun g' h' => (hg g' h').mult) hI'.inert.taintedBy hun' hf
+  refine ⟨hsigs, hnames, fun r hr => ⟨hun' r hr, her r hr⟩, ρ' ++ rs, rs, ?_, by simpa using hI'',
+    by simpa using hrv, hty, fun g' hg' envv henv => by simpa using (hw g' hg' envv (hframe henv)).2⟩
+  rw [evalExpr_call hev hd hlt']
+  exact hcall
+
 /-- A call (§8, §9): the arguments satisfy the parameters, the measure decreases, so the body runs to results
 satisfying the returns. -/
 theorem call_sound {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSound a.expr) {C : Ctx} {sc : Scope}
@@ -91,7 +143,55 @@ theorem call_sound {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSound 
     {sig : FnSig} (hI : Inv C sc n0 W ρ env act) (hg : ∀ g', g = some g' → g'.Ok ρ)
     (hglob : C.global h.name = some (.fn m (some sig))) (hc : checkExpr C sc g (.app h args) = .ok o) :
     ExprPost C sc g n0 W ρ env act o := by
-  sorry
+  have hwhole : g.any (·.allErased) = false := by
+    cases g with
+    | none => rfl
+    | some g' => simpa using Given.allErased_eq_false (hg g' rfl).mult
+  have hC : ({ C with erased := false } : Ctx) = C := by have := hI.erased; cases C; simp_all
+  have hfo := hI.globals.fn hglob
+  rw [checkExpr] at hc
+  simp only [hI.erased, hwhole, Bool.false_or, Bool.false_eq_true, ↓reduceIte, hC, hglob] at hc
+  obtain ⟨o', ho', hf⟩ := bind_eq_ok.1 hc
+  cases hF : C.fn.filter (·.group.contains h.name) with
+  | none =>
+    simp only [hF] at ho'
+    obtain ⟨u, -, ho'⟩ := bind_eq_ok.1 ho'
+    obtain ⟨plan, hplan, ho'⟩ := bind_eq_ok.1 ho'
+    simp only [pure, Except.pure, Except.ok.injEq] at hplan
+    subst hplan
+    obtain ⟨u, har, ho'⟩ := bind_eq_ok.1 ho'
+    obtain ⟨a, ha, ho'⟩ := bind_eq_ok.1 ho'
+    rw [keep_ok] at ho'
+    refine call_core ih hI hg hfo (arity_ok har) ha ?_ ho' hf
+    intro ρ' vs d _ _ _ _ _ _ hgrp
+    have hany : C.fn.any (·.group.contains h.name) = false := by
+      cases hfn : C.fn with
+      | none => rfl
+      | some f => simpa [hfn, Option.filter] using hF
+    simp only [hany, Bool.false_eq_true, ↓reduceIte] at hgrp
+    exact Act.lt_of_group hgrp
+  | some fn =>
+    simp only [hF] at ho'
+    obtain ⟨plan, hplan, ho'⟩ := bind_eq_ok.1 ho'
+    obtain ⟨u, har, ho'⟩ := bind_eq_ok.1 ho'
+    obtain ⟨a, ha, ho'⟩ := bind_eq_ok.1 ho'
+    rw [keep_ok] at ho'
+    obtain ⟨⟨subs, k⟩, hm, rfl⟩ : ∃ p, marks h.pos args h.name sig fn = .ok p ∧ plan = some p := by
+      cases hmk : marks h.pos args h.name sig fn with
+      | error e => simp [hmk, Functor.map, Except.map] at hplan
+      | ok p => simp [hmk, Functor.map, Except.map] at hplan; exact ⟨p, rfl, hplan.symm⟩
+    obtain ⟨u, hdec, ho'⟩ := bind_eq_ok.1 ho'
+    have hCfn : C.fn = some fn := by
+      cases hfn : C.fn with
+      | none => simp [hfn] at hF
+      | some f => simp only [hfn, Option.filter] at hF; split at hF <;> simp_all
+    refine call_core ih hI hg hfo (arity_ok har) ha ?_ ho' hf
+    intro ρ' vs d hI' hvs hl _ hds hdc hgrp
+    have hany : C.fn.any (·.group.contains h.name) = true := by
+      simpa [hCfn] using (Option.filter_eq_some_iff.1 hF).2
+    simp only [hany, ↓reduceIte] at hgrp
+    obtain ⟨ss, hss, hact⟩ := hI'.act fn hCfn
+    exact call_lt hI'.sat.rulesHold hm hdec hvs hss hact hds (hfo.subterm.trans hl.symm) hdc hgrp.1 hgrp.2
 
 /-- An application of a type constructor or value constructor builds a value of its type. -/
 theorem Given.ok_mult {ρ : List Value} {g : Option Given} (hg : ∀ g', g = some g' → g'.Ok ρ) :
