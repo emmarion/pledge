@@ -1,3 +1,4 @@
+-- Type safety.
 -- Type safety of the typed arithmetic language of TAPL chapter 8, as we understand it: terms, the typing
 -- relation HasType and small-step evaluation Step are data, preservation and progress are proved by structural
 -- recursion, and the goal is safety: a well-typed term, after any number of steps, is a value or steps again.

@@ -5,10 +5,10 @@ import type { CheckResult, Diagnostic, EntryInfo, PositionInfo } from "../src/ap
 import type { Phase } from "../src/syntax.ts";
 import * as examples from "../src/examples.ts";
 
-const dir = new URL("./", import.meta.url);
-export const file = (name: string): string => readFileSync(new URL(name, dir), "utf8");
-export const files = (prefix = ""): string[] =>
-  readdirSync(dir).filter(f => f.startsWith(prefix) && f.endsWith(".pledge"));
+const at = (dir: string): URL => new URL(`../${dir}/`, import.meta.url);
+export const file = (name: string, dir = "tests"): string => readFileSync(new URL(name, at(dir)), "utf8");
+export const files = (prefix = "", dir = "tests"): string[] =>
+  readdirSync(at(dir)).filter(f => f.startsWith(prefix) && f.endsWith(".pledge"));
 
 export const nat = `${examples.nat}\n`;
 export const vecBy = (mult: string): string => `${examples.vecBy(mult)}\n`;

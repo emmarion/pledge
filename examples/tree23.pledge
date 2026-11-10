@@ -1,3 +1,4 @@
+-- Balanced 2-3 trees.
 -- Height-indexed 2-3 trees: balance by construction.
 -- Tree(h) records the height in its index, which, as we understand it, keeps every root-to-Leaf path the same length.
 -- Insertion either keeps the height or splits; the top-level insert returns erased evidence (Grow)

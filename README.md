@@ -67,6 +67,33 @@ Pledge is loosely based on
 [Sleight](https://github.com/emmarion/sleight), a larger language, and
 shares none of its code.
 
+## Examples
+
+Longer programs in [examples/](examples/), each checked under phase 2
+(which adds erasure), with a goal the checker reports as proved without
+`sorry`. The playground's Example menu opens any of them. The
+summaries below are a Claude session's reading of what each goal
+states.
+
+- [binary.pledge](examples/binary.pledge): binary naturals related to
+  unary `Nat`, with addition and multiplication shown to agree with
+  their unary counterparts.
+- [compiler.pledge](examples/compiler.pledge): a compiler from
+  expressions of literals and addition to a stack machine, with
+  evidence that running the compiled code pushes the expression's value.
+- [sort.pledge](examples/sort.pledge): insertion sort returning
+  evidence that its result is sorted and a permutation of its input.
+- [tree23.pledge](examples/tree23.pledge): 2-3 trees whose height is
+  in their type, so that, as we understand it, they stay balanced by
+  construction; key order is not proved.
+- [typesafety.pledge](examples/typesafety.pledge): type safety
+  (progress and preservation) of the typed arithmetic language of
+  Pierce's *Types and Programming Languages*, chapter 8, as we
+  understand that language.
+
+In each, the evidence is erased, so what runs is meant to be only the
+computation itself.
+
 ## Status
 
 Pledge is a prototype for teaching, not a language for writing

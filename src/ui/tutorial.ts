@@ -35,7 +35,8 @@ document.title = `${page.title} — Pledge tutorial`;
 workspace.mount(
   [h("h1", {}, h("a", { href: "index.html" }, "Pledge"), " tutorial"),
     h("span", { class: "muted" }, `Phase ${page.phase}`), h("a", { href: repository }, "GitHub")],
-  { label: "Reset your box", question: "Replace your text with the starting text? This cannot be undone." },
+  h("button", { type: "button", onclick: () => workspace.replace(
+    "Replace your text with the starting text? This cannot be undone.") && workspace.run() }, "Reset your box"),
   [h("div", { class: "about" },
     h("details", { class: "disclaimer" }, h("summary", {}, "Disclaimer"), h("p", {}, linked(disclaimer))),
     h("details", { class: "glossary" }, h("summary", {}, "Glossary"), h("dl", {}, glossary.map(g => [

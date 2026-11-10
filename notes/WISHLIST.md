@@ -32,5 +32,5 @@ so `HeadSucc(_)` would be given `Head(Succ(n))` and its `_` could be
 "solved by unification", which seems not to settle whether this case
 should work.
 
-The example programs `tests/example_sort.pledge` and
-`tests/example_typesafety.pledge` write such arguments out.
+The example programs `examples/sort.pledge` and
+`examples/typesafety.pledge` write such arguments out.

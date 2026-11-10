@@ -52,8 +52,12 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
 - `src/info.ts`: `infoAt`, `nameAt`, `explainAt`, `evalAt`, and what
   the Scope panel lists.
 - `src/examples.ts`: the `Nat`, `Vec` and `vhead` sources shared by the
-  tutorial and the tests, and the front page's starting program.
-- `src/ui/`: the page (§13) and the tutorial page (§12).
+  tutorial and the tests, the front page's starting program, and the
+  titles its Example menu gives the programs in `examples/`, each taken
+  from the first line of the program's header comment.
+- `src/ui/`: the page (§13) and the tutorial page (§12). `main.ts`
+  bundles every `examples/*.pledge` into the page with Vite's
+  `import.meta.glob`.
 - `src/tutorial/`: the tutorial as data. `pages.ts` has the `Page` type
   and assembles the sections; `start.ts`, `dependent.ts`,
   `recursion.ts`, `evidence.ts`, `relation.ts`, `arithmetic.ts`,
@@ -62,6 +66,8 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
   share; `glossary.ts` holds the glossary.
 - `src/ui/links.ts`: the links that citations of DESIGN.md get, and the
   rendering of prose and messages (code between backticks, citations as links).
+- `examples/`: longer Pledge programs, checked by the tests under
+  phase 2 and offered by the front page's Example menu.
 - `tests/`: Pledge programs the tests check (`.pledge`); `helpers.ts`
   and `tutorial.ts`, which the test files share; and `Beyond.agda`,
   the Agda file the tutorial's page "What Pledge leaves out" quotes.

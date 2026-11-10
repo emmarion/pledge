@@ -13,8 +13,6 @@ interface Box { text: string; key: string | null; holdsQed?: boolean }
 
 interface ProgramSpec { label: string; boxes: number[] }
 
-export interface Reset { label: string; question: string }
-
 const kindOf = (n: NameInfo): NameKind | null => n.kind === "entry" ? null : n.kind;
 
 const kindNames: Record<NameKind, string> = { fn: "fn", type: "type", ctor: "value constructor" };
@@ -208,23 +206,22 @@ export class Workspace {
     fill(this.globals, info && globalsView(info, this.program));
   }
 
-  private reset(question: string): void {
-    const own = this.boxes.flatMap((box, i) => box.key === null ? [] : [{ ...box, key: box.key, i }]);
-    if (own.some(b => this.editors[b.i]!.text !== b.text) && !confirm(question)) return;
+  replace(question: string, text = (box: Box): string => box.text, kept = (box: Box): string[] => [box.text]): boolean {
+    const own = this.boxes.flatMap((box, i) => box.key === null ? [] : [{ box, key: box.key, i }]);
+    if (own.some(b => !kept(b.box).includes(this.editors[b.i]!.text)) && !confirm(question)) return false;
     for (const b of own) {
-      this.editors[b.i]!.area.value = b.text;
-      save(b.key, b.text);
+      this.editors[b.i]!.area.value = text(b.box);
+      save(b.key, text(b.box));
     }
-    this.run();
+    return true;
   }
 
-  mount(header: Child, reset: Reset, intro: Child = null, outro: Child = null, nav: Child = null): void {
+  mount(header: Child, controls: Child, intro: Child = null, outro: Child = null, nav: Child = null): void {
     document.body.append(
       h("header", { class: "top" }, header),
       h("main", { class: nav ? "layout tutorial" : "layout" }, nav,
         h("div", { class: "work" }, intro, this.programs[0]!.members.map(i => this.editors[i]!.root),
-          h("div", { class: "row" }, h("button", { type: "button", onclick: () => this.reset(reset.question) },
-            reset.label)),
+          h("div", { class: "row" }, controls),
           this.status, outro),
         h("aside", { class: "side" }, this.panels)));
     this.run();

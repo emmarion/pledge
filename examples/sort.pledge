@@ -1,3 +1,4 @@
+-- Insertion sort.
 -- Verified insertion sort on lists of Nat. `sort` returns its result together with evidence that the
 -- result is Sorted and a permutation (Perm, built from Insert) of the input; the goal states this.
 -- The evidence is erased, so what runs should be plain insertion sort, with `compare` choosing the branch.

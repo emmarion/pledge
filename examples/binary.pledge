@@ -1,3 +1,4 @@
+-- Binary arithmetic.
 -- Binary naturals (Pos: One, P0(p) = 2p, P1(p) = 2p+1; Bin: BZ or BP(p)) related to unary Nat by Rep.
 -- The file proves that Rep is functional and injective, that every Bin has a Nat (toNat) and every Nat a Bin
 -- (fromNat), and that add (with carry) and mul (shift-and-add) agree with Plus and Times; the goal is mul's.

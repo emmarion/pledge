@@ -30,17 +30,18 @@ const term = (head: string, args: unknown[] | null = []) => ({ head: id(head), a
 const variable = (name: string | null) => ({ kind: "var", name: id(name) });
 const app = (head: string, ...args: unknown[]) => ({ kind: "app", head: id(head), args: args.map(expr => ({ mark: null, expr })) });
 
-test("every tests/*.pledge parses in its phase and every later one", () => {
+test("every tests/*.pledge and examples/*.pledge parses in its phase and every later one", () => {
   assert.ok(pledgeFiles.length >= 10);
-  for (const f of pledgeFiles) for (const phase of /^(phase2|example)_/.test(f) ? [2] as const : [1, 2] as const) {
-    const { error } = parse(file(f), phase);
+  const all = [...pledgeFiles.map(f => ({ f, dir: "tests" })), ...files("", "examples").map(f => ({ f, dir: "examples" }))];
+  for (const { f, dir } of all) for (const phase of dir === "examples" || f.startsWith("phase2_") ? [2] as const : [1, 2] as const) {
+    const { error } = parse(file(f, dir), phase);
     assert.ok(!error, `${f} (phase ${phase}): ${error?.message() ?? ""}`);
   }
 });
 
 test("DESIGN.md's code appears verbatim in tests/*.pledge", () => {
   const design = readFileSync(new URL("../DESIGN.md", import.meta.url), "utf8");
-  const examples = pledgeFiles.map(file);
+  const examples = pledgeFiles.map(f => file(f));
   const blocks = [...design.matchAll(/```\n([\s\S]*?)```/g)].map(m => m[1]!).filter(block => !parse(block, 1).error);
   assert.equal(blocks.length, 7);
   const inline = [

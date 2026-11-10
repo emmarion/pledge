@@ -348,6 +348,7 @@ details.inspect > summary { color: var(--accent); cursor: pointer; font-size: 13
 .verdict.bad { color: var(--bad); }
 
 .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.row select { max-width: 100%; text-overflow: ellipsis; }
 .panel form { margin: 0 0 6px; }
 .panel p { margin: 0; }
 

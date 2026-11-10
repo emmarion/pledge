@@ -20,3 +20,6 @@ export const vheadBy = (mult: string): string => `fn vhead(${mult}A : Type(), ${
 export const example = `${[nat, vec, vheadBy(""), `let x = VCons(Nat(), Zero(), Zero(), VNil(Nat()));
 print vhead(Nat(), Zero(), x);`].join("\n\n")}
 `;
+
+export const titleOf = (file: string, source: string): string =>
+  /^--\s*([^.:(,\n]*[^.:(,\s])/.exec(source)?.[1] ?? file.replace(/^.*\/|\.pledge$/g, "");

@@ -22,9 +22,9 @@ test("the phase 2 example programs check and print erased fields as _", () => {
   assert.deepEqual(verdicts(proof), [false, true, true]);
 });
 
-test("every tests/example_*.pledge checks under phase 2 and proves its goal with no sorry", () => {
-  assert.ok(files("example_").length >= 5);
-  for (const f of files("example_")) assert.deepEqual(verdicts(ok(file(f))), [false, true, true], f);
+test("every examples/*.pledge checks under phase 2 and proves its goal with no sorry", () => {
+  assert.ok(files("", "examples").length >= 5);
+  for (const f of files("", "examples")) assert.deepEqual(verdicts(ok(file(f, "examples"))), [false, true, true], f);
 });
 
 test("every tests/design_*.pledge checks under phase 2 as under phase 1", () => {
