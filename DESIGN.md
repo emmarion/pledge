@@ -578,8 +578,11 @@ shown by a marker giving what kind of entry it is and where it was
 created. Clicking a skeleton
 term, in the source, in the interface or in text typed into it, shows
 its canonical form and a sequence of rewrites with the fewest steps that
-produces it. Each `is` rule a derivation or a sequence of rewrites uses
-links to where its fact was created.
+produces it. Clicking or hovering over a `_` that stands for a
+telescope (§10) or for an erased argument (§16) shows what it stands
+for: the telescope, or the term the `_` is solved to. Each `is` rule a
+derivation or a sequence of rewrites uses links to where its fact was
+created.
 
 In the interface's interactive mode, a type or an expression typed in is
 checked in the scope at the selected position, and its type and `is`
