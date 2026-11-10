@@ -1,0 +1,156 @@
+data Nat() : Type() {
+  Zero() : Nat();
+  Succ(pred : Nat()) : Nat();
+}
+
+data List() : Type() {
+  Nil() : List();
+  Cons(head : Nat(), tail : List()) : List();
+}
+
+data Order() : Type() {
+  Less() : Order();
+  Equal() : Order();
+  Greater() : Order();
+}
+
+data Bool() : Type() {
+  False() : Bool();
+  True() : Bool();
+}
+
+fn compare(subterm a : Nat(), b : Nat()) -> (o : Order()) {
+  match a : (o : Order()) {
+    Zero() => match b : (o : Order()) {
+      Zero() => Equal();
+      Succ(_) => Less();
+    };
+    Succ(a1) => match b : (o : Order()) {
+      Zero() => Greater();
+      Succ(b1) => compare(subterm a1, b1);
+    };
+  }
+}
+
+data Tree(h : Nat()) : Type() {
+  Leaf() : Tree(Zero());
+  Node2(erased h : Nat(), l : Tree(h), k : Nat(), r : Tree(h)) : Tree(Succ(h));
+  Node3(erased h : Nat(), l : Tree(h), k1 : Nat(), m : Tree(h), k2 : Nat(), r : Tree(h)) : Tree(Succ(h));
+}
+
+data Ins(h : Nat()) : Type() {
+  Fits(erased h : Nat(), t : Tree(h)) : Ins(h);
+  Split(erased h : Nat(), l : Tree(h), k : Nat(), r : Tree(h)) : Ins(h);
+}
+
+data Grow(h : Nat(), g : Nat()) : Type() {
+  Stay(erased h : Nat()) : Grow(h, h);
+  Up(erased h : Nat()) : Grow(h, Succ(h));
+}
+
+fn into2L(erased h : Nat(), i : Ins(h), k : Nat(), r : Tree(h)) -> (o : Ins(Succ(h))) {
+  match i : (o : Ins(Succ(h))) {
+    Fits(_, l) => Fits(_, Node2(_, l, k, r));
+    Split(_, a, x, b) => Fits(_, Node3(_, a, x, b, k, r));
+  }
+}
+
+fn into2R(erased h : Nat(), l : Tree(h), k : Nat(), i : Ins(h)) -> (o : Ins(Succ(h))) {
+  match i : (o : Ins(Succ(h))) {
+    Fits(_, r) => Fits(_, Node2(_, l, k, r));
+    Split(_, a, x, b) => Fits(_, Node3(_, l, k, a, x, b));
+  }
+}
+
+fn into3L(erased h : Nat(), i : Ins(h), k1 : Nat(), m : Tree(h), k2 : Nat(), r : Tree(h)) -> (o : Ins(Succ(h))) {
+  match i : (o : Ins(Succ(h))) {
+    Fits(_, l) => Fits(_, Node3(_, l, k1, m, k2, r));
+    Split(_, a, x, b) => Split(_, Node2(_, a, x, b), k1, Node2(_, m, k2, r));
+  }
+}
+
+fn into3M(erased h : Nat(), l : Tree(h), k1 : Nat(), i : Ins(h), k2 : Nat(), r : Tree(h)) -> (o : Ins(Succ(h))) {
+  match i : (o : Ins(Succ(h))) {
+    Fits(_, m) => Fits(_, Node3(_, l, k1, m, k2, r));
+    Split(_, a, x, b) => Split(_, Node2(_, l, k1, a), x, Node2(_, b, k2, r));
+  }
+}
+
+fn into3R(erased h : Nat(), l : Tree(h), k1 : Nat(), m : Tree(h), k2 : Nat(), i : Ins(h)) -> (o : Ins(Succ(h))) {
+  match i : (o : Ins(Succ(h))) {
+    Fits(_, r) => Fits(_, Node3(_, l, k1, m, k2, r));
+    Split(_, a, x, b) => Split(_, Node2(_, l, k1, m), k2, Node2(_, a, x, b));
+  }
+}
+
+fn ins(erased h : Nat(), x : Nat(), subterm t : Tree(h)) -> (o : Ins(h)) {
+  match t : (o : Ins(h)) {
+    Leaf() => Split(_, Leaf(), x, Leaf());
+    Node2(h1, l, k, r) => match compare(x, k) : (o : Ins(h)) {
+      Less() => into2L(_, ins(h1, x, subterm l), k, r);
+      Equal() => Fits(_, t);
+      Greater() => into2R(_, l, k, ins(h1, x, subterm r));
+    };
+    Node3(h1, l, k1, m, k2, r) => match compare(x, k1) : (o : Ins(h)) {
+      Less() => into3L(_, ins(h1, x, subterm l), k1, m, k2, r);
+      Equal() => Fits(_, t);
+      Greater() => match compare(x, k2) : (o : Ins(h)) {
+        Less() => into3M(_, l, k1, ins(h1, x, subterm m), k2, r);
+        Equal() => Fits(_, t);
+        Greater() => into3R(_, l, k1, m, k2, ins(h1, x, subterm r));
+      };
+    };
+  }
+}
+
+fn insert(erased h : Nat(), x : Nat(), t : Tree(h)) -> (erased g : Nat(), erased p : Grow(h, g), u : Tree(g)) {
+  match ins(h, x, t) : (erased g : Nat(), erased p : Grow(h, g), u : Tree(g)) {
+    Fits(_, u) => (h, Stay(h), u);
+    Split(_, l, k, r) => (Succ(h), Up(h), Node2(h, l, k, r));
+  }
+}
+
+fn member(erased h : Nat(), x : Nat(), subterm t : Tree(h)) -> (b : Bool()) {
+  match t : (b : Bool()) {
+    Leaf() => False();
+    Node2(h1, l, k, r) => match compare(x, k) : (b : Bool()) {
+      Less() => member(h1, x, subterm l);
+      Equal() => True();
+      Greater() => member(h1, x, subterm r);
+    };
+    Node3(h1, l, k1, m, k2, r) => match compare(x, k1) : (b : Bool()) {
+      Less() => member(h1, x, subterm l);
+      Equal() => True();
+      Greater() => match compare(x, k2) : (b : Bool()) {
+        Less() => member(h1, x, subterm m);
+        Equal() => True();
+        Greater() => member(h1, x, subterm r);
+      };
+    };
+  }
+}
+
+fn fromList(subterm xs : List()) -> (erased h : Nat(), t : Tree(h)) {
+  match xs : (erased h : Nat(), t : Tree(h)) {
+    Nil() => (Zero(), Leaf());
+    Cons(x, rest) => {
+      let (erased h1, t1) = fromList(subterm rest);
+      let (erased h2, erased _, t2) = insert(h1, x, t1);
+      (h2, t2)
+    };
+  }
+}
+
+goal fn (erased h : Nat(), x : Nat(), t : Tree(h)) -> (erased g : Nat(), erased p : Grow(h, g), u : Tree(g));
+qed insert;
+
+let n1 = Succ(Zero());
+let n2 = Succ(n1);
+let n3 = Succ(n2);
+let n4 = Succ(n3);
+let n5 = Succ(n4);
+let n6 = Succ(n5);
+let (erased h, t) = fromList(Cons(Zero(), Cons(n1, Cons(n2, Cons(n3, Cons(n4, Cons(n5, Cons(n6, Nil()))))))));
+print t;
+print member(_, n4, t);
+print member(_, Succ(n6), t);
