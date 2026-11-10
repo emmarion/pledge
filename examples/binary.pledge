@@ -1,35 +1,84 @@
 -- Binary arithmetic.
--- Binary naturals (Pos: One, P0(p) = 2p, P1(p) = 2p+1; Bin: BZ or BP(p)) related to unary Nat by Rep.
--- The file proves that Rep is functional and injective, that every Bin has a Nat (toNat) and every Nat a Bin
--- (fromNat), and that add (with carry) and mul (shift-and-add) agree with Plus and Times; the goal is mul's.
--- All Nat-level data is erased, so evaluation is meant to do only binary work: the prints below act on
--- numbers whose unary form would presumably be far too large to build.
+-- Addition and multiplication on binary numbers, proved correct against the
+-- simplest definition of numbers there is.
+--
+-- A number can be written in unary, as Succ(Succ(... Zero())) with one Succ per
+-- unit. That form is easy to reason about and hopeless to compute with. Binary
+-- is the other way round. This file defines + and * on the unary form, as the
+-- specification; implements them on the binary form; and proves that the two
+-- agree. The unary numbers are erased, so only the binary arithmetic is meant
+-- to run. The last lines multiply two numbers of about a billion, whose unary
+-- forms should never be built.
+--
+-- Most of the file is small facts about + and * that the main proofs need. Each
+-- has a comment giving the fact. The bodies are the proofs, and can be skipped
+-- on a first read.
+--
+-- The Primality by reflection example starts from these same definitions and
+-- goes further.
+--
+-- If Pledge is new to you:
+--   * `data` declares a type and lists every way to build a value of it.
+--   * A type can take values as parameters. `Plus(m, n, r)` below is a separate
+--     type for each three numbers, and it is written so that a value of it can
+--     be built only when m + n = r. So a value of type `Plus(m, n, r)` is
+--     evidence, a proof, that m + n = r. Most types in this file are like that.
+--   * A function that takes evidence and returns evidence is a proof that one
+--     fact follows from others. The checker only accepts it if it covers every
+--     case.
+--   * `erased` marks what exists only for the checker. Running the program
+--     skips it, so here the proofs cost nothing at run time.
+--   * The Tutorial link at the top of the page teaches all of this in order.
 
+-- Numbers in unary, built by hand: Zero(), then Succ(Zero()) for 1, and so on.
+-- Everything applied is written with parentheses, even with no arguments.
 data Nat() : Type() {
   Zero() : Nat();
   Succ(pred : Nat()) : Nat();
 }
 
+-- Eq(A, x, y) reads "x and y are the same value of type A". Its one
+-- constructor, Refl, only builds Eq(A, x, x), so evidence exists only when the
+-- two sides are the same.
 data Eq(A : Type(), x : A, y : A) : Type() {
   Refl(erased A : Type(), erased x : A) : Eq(A, x, x);
 }
 
+-- A type with no constructors, so it has no values. A function that returns a
+-- False() shows that its arguments cannot all exist together. This is how
+-- "impossible" is said.
 data False() : Type() {}
 
+-- NonZero(n) reads "n is not zero".
 data NonZero(n : Nat()) : Type() {
   NonZeroSucc(erased n : Nat()) : NonZero(Succ(n));
 }
 
+-- Plus(m, n, r) reads "m + n = r". Its two lines are the rules that define
+-- addition: zero plus n is n, and (m + 1) + n = r + 1 whenever m + n = r.
+--
+-- Addition is written as a type because a Pledge type cannot contain a function
+-- call. Another type can mention Plus(m, n, r); it could not mention
+-- plus(m, n).
 data Plus(m : Nat(), n : Nat(), r : Nat()) : Type() {
   PlusZero(erased n : Nat()) : Plus(Zero(), n, n);
-  PlusSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(), p : Plus(m, n, r)) : Plus(Succ(m), n, Succ(r));
+  PlusSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(),
+      p : Plus(m, n, r)) : Plus(Succ(m), n, Succ(r));
 }
 
+-- Times(m, n, r) reads "m * n = r": zero times n is zero, and
+-- (m + 1) * n = r + n whenever m * n = r.
 data Times(m : Nat(), n : Nat(), r : Nat()) : Type() {
   TimesZero(erased n : Nat()) : Times(Zero(), n, Zero());
-  TimesSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(), erased s : Nat(),
-      t : Times(m, n, r), p : Plus(r, n, s)) : Times(Succ(m), n, s);
+  TimesSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(),
+      erased s : Nat(), t : Times(m, n, r), p : Plus(r, n, s))
+    : Times(Succ(m), n, s);
 }
+
+-- A positive number in binary, lowest digit outermost. One() is 1, P0(p) is p
+-- with a 0 written after it (twice p), and P1(p) is p with a 1 written after it
+-- (twice p, plus 1). So 6, binary 110, is P0(P1(One())).
+-- ---- Binary numbers ----
 
 data Pos() : Type() {
   One() : Pos();
@@ -37,27 +86,54 @@ data Pos() : Type() {
   P1(p : Pos()) : Pos();
 }
 
+-- Zero, or a positive number. Keeping zero apart leaves no room for leading
+-- zeros, so a number has only one binary form.
 data Bin() : Type() {
   BZ() : Bin();
   BP(p : Pos()) : Bin();
 }
 
+-- PosRep(p, n) reads "binary p and unary n are the same number". Plus(n, n, d)
+-- is how "d is twice n" is said.
 data PosRep(p : Pos(), n : Nat()) : Type() {
   RepOne() : PosRep(One(), Succ(Zero()));
-  RepP0(erased p : Pos(), erased n : Nat(), erased d : Nat(), r : PosRep(p, n), s : Plus(n, n, d)) : PosRep(P0(p), d);
-  RepP1(erased p : Pos(), erased n : Nat(), erased d : Nat(), r : PosRep(p, n), s : Plus(n, n, d))
-    : PosRep(P1(p), Succ(d));
+  RepP0(erased p : Pos(), erased n : Nat(), erased d : Nat(), r : PosRep(p, n),
+      s : Plus(n, n, d)) : PosRep(P0(p), d);
+  RepP1(erased p : Pos(), erased n : Nat(), erased d : Nat(), r : PosRep(p, n),
+      s : Plus(n, n, d)) : PosRep(P1(p), Succ(d));
 }
 
+-- The same for Bin.
 data Rep(b : Bin(), n : Nat()) : Type() {
   RepZ() : Rep(BZ(), Zero());
   RepP(erased p : Pos(), erased n : Nat(), r : PosRep(p, n)) : Rep(BP(p), n);
 }
 
-goal fn (erased m : Nat(), erased n : Nat(), x : Bin(), y : Bin(), erased px : Rep(x, m), erased py : Rep(y, n))
-    -> (z : Bin(), erased r : Nat(), erased pz : Rep(z, r), erased t : Times(m, n, r));
+-- `goal` states the theorem, here as the signature a function must have: given
+-- binary x and y that stand for the unary numbers m and n, it returns a binary
+-- z and evidence that z stands for m * n. Only x, y and z exist at run time.
+-- `qed mul`, far below, has the checker confirm that mul is such a function.
+-- The page reports whether the goal is proved.
+goal fn (erased m : Nat(), erased n : Nat(), x : Bin(), y : Bin(),
+    erased px : Rep(x, m), erased py : Rep(y, n))
+    -> (z : Bin(), erased r : Nat(), erased pz : Rep(z, r),
+        erased t : Times(m, n, r));
 
-fn plus(subterm m : Nat(), n : Nat()) -> (erased r : Nat(), erased p : Plus(m, n, r)) {
+-- ---- Facts about + ----
+
+-- Adds two unary numbers. The sum is erased: this is for naming a sum inside a
+-- proof, and is not meant to run.
+--
+-- `subterm` is how a recursive function shows that it ends: each recursive call
+-- must pass, for that parameter, a piece of the caller's own argument. Here
+-- that is k, the inside of m = Succ(k). The checker demands this of every
+-- recursive function; one that might loop forever is rejected.
+--
+-- `match m : _` : after the colon comes what the match produces, and `_` leaves
+-- it to the checker, which knows it from the return type. As an argument, `_`
+-- is an erased value the checker can work out for itself.
+fn plus(subterm m : Nat(), n : Nat())
+    -> (erased r : Nat(), erased p : Plus(m, n, r)) {
   match m : _ {
     Zero() => (n, PlusZero(_));
     Succ(k) => {
@@ -67,6 +143,7 @@ fn plus(subterm m : Nat(), n : Nat()) -> (erased r : Nat(), erased p : Plus(m, n
   }
 }
 
+-- n + 0 = n. (The definition only gives 0 + n = n.)
 fn plusZeroRight(subterm n : Nat()) -> (erased p : Plus(n, Zero(), n)) {
   match n : _ {
     Zero() => PlusZero(_);
@@ -74,7 +151,10 @@ fn plusZeroRight(subterm n : Nat()) -> (erased p : Plus(n, Zero(), n)) {
   }
 }
 
-fn plusSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(), subterm p : Plus(m, n, r))
+-- If m + n = r then m + (n + 1) = r + 1. The recursion is on p, the evidence:
+-- evidence is data like any other and can be matched on and recursed over.
+fn plusSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(),
+    subterm p : Plus(m, n, r))
     -> (erased q : Plus(m, Succ(n), Succ(r))) {
   match p : _ {
     PlusZero(_) => PlusZero(_);
@@ -82,7 +162,9 @@ fn plusSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(), subterm p : Pl
   }
 }
 
-fn plusComm(erased m : Nat(), erased n : Nat(), erased r : Nat(), subterm p : Plus(m, n, r))
+-- If m + n = r then n + m = r.
+fn plusComm(erased m : Nat(), erased n : Nat(), erased r : Nat(),
+    subterm p : Plus(m, n, r))
     -> (erased q : Plus(n, m, r)) {
   match p : _ {
     PlusZero(_) => plusZeroRight(n);
@@ -90,44 +172,63 @@ fn plusComm(erased m : Nat(), erased n : Nat(), erased r : Nat(), subterm p : Pl
   }
 }
 
-fn plusAssoc(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased ab : Nat(), erased r : Nat(),
-    subterm p : Plus(a, b, ab), q : Plus(ab, c, r))
-    -> (erased bc : Nat(), erased q1 : Plus(b, c, bc), erased q2 : Plus(a, bc, r)) {
+-- (a + b) + c = a + (b + c). A type cannot contain +, so every sum needs a
+-- name: ab for a + b, bc for b + c. That is why these facts take so many
+-- parameters.
+fn plusAssoc(erased a : Nat(), erased b : Nat(), erased c : Nat(),
+    erased ab : Nat(), erased r : Nat(), subterm p : Plus(a, b, ab),
+    q : Plus(ab, c, r))
+    -> (erased bc : Nat(), erased q1 : Plus(b, c, bc),
+        erased q2 : Plus(a, bc, r)) {
   match p : _ {
     PlusZero(_) => (r, q, PlusZero(_));
     PlusSucc(_, _, _, p1) => {
+      -- A `let` with a constructor on the left takes a value apart. It is
+      -- accepted only when the value can have been built no other way. In this
+      -- branch ab is a Succ, and PlusZero only talks about Zero() + n, so q
+      -- must be a PlusSucc.
       let PlusSucc(_, _, _, q3) = q;
-      let (erased bc, erased s1, erased s2) = plusAssoc(_, _, _, _, _, subterm p1, q3);
+      let (erased bc, erased s1, erased s2) =
+        plusAssoc(_, _, _, _, _, subterm p1, q3);
       (bc, s1, PlusSucc(_, _, _, s2))
     };
   }
 }
 
-fn plusAssocRev(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased bc : Nat(), erased r : Nat(),
-    p : Plus(b, c, bc), subterm q : Plus(a, bc, r))
-    -> (erased ab : Nat(), erased q1 : Plus(a, b, ab), erased q2 : Plus(ab, c, r)) {
+-- The same, read from right to left.
+fn plusAssocRev(erased a : Nat(), erased b : Nat(), erased c : Nat(),
+    erased bc : Nat(), erased r : Nat(), p : Plus(b, c, bc),
+    subterm q : Plus(a, bc, r))
+    -> (erased ab : Nat(), erased q1 : Plus(a, b, ab),
+        erased q2 : Plus(ab, c, r)) {
   match q : _ {
     PlusZero(_) => (b, PlusZero(_), p);
     PlusSucc(_, _, _, q3) => {
-      let (erased ab, erased s1, erased s2) = plusAssocRev(_, _, _, _, _, p, subterm q3);
+      let (erased ab, erased s1, erased s2) =
+        plusAssocRev(_, _, _, _, _, p, subterm q3);
       (Succ(ab), PlusSucc(_, _, _, s1), PlusSucc(_, _, _, s2))
     };
   }
 }
 
-fn exchange(erased w : Nat(), erased y : Nat(), erased x : Nat(), erased z : Nat(), erased wy : Nat(),
-    erased xz : Nat(), erased r : Nat(), p : Plus(w, y, wy), q : Plus(x, z, xz), s : Plus(wy, xz, r))
-    -> (erased wx : Nat(), erased yz : Nat(), erased p1 : Plus(w, x, wx), erased q1 : Plus(y, z, yz),
-        erased s1 : Plus(wx, yz, r)) {
+-- (w + y) + (x + z) = (w + x) + (y + z).
+fn exchange(erased w : Nat(), erased y : Nat(), erased x : Nat(),
+    erased z : Nat(), erased wy : Nat(), erased xz : Nat(), erased r : Nat(),
+    p : Plus(w, y, wy), q : Plus(x, z, xz), s : Plus(wy, xz, r))
+    -> (erased wx : Nat(), erased yz : Nat(), erased p1 : Plus(w, x, wx),
+        erased q1 : Plus(y, z, yz), erased s1 : Plus(wx, yz, r)) {
   let (erased yxz, erased s2, erased s3) = plusAssoc(_, _, _, _, _, p, s);
   let (erased yx, erased s4, erased s5) = plusAssocRev(_, _, _, _, _, q, s2);
-  let (erased yz, erased s7, erased s8) = plusAssoc(_, _, _, _, _, plusComm(_, _, _, s4), s5);
+  let (erased yz, erased s7, erased s8) =
+    plusAssoc(_, _, _, _, _, plusComm(_, _, _, s4), s5);
   let (erased wx, erased s9, erased s10) = plusAssocRev(_, _, _, _, _, s8, s3);
   (wx, yz, s9, s7, s10)
 }
 
-fn plusFunc(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased d : Nat(),
-    subterm p : Plus(a, b, c), q : Plus(a, b, d)) -> (erased e : Eq(Nat(), c, d)) {
+-- A sum has one value: if a + b = c and a + b = d, then c = d.
+fn plusFunc(erased a : Nat(), erased b : Nat(), erased c : Nat(),
+    erased d : Nat(), subterm p : Plus(a, b, c), q : Plus(a, b, d))
+    -> (erased e : Eq(Nat(), c, d)) {
   match p : _ {
     PlusZero(_) => {
       let PlusZero(_) = q;
@@ -135,6 +236,11 @@ fn plusFunc(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased d : Nat
     };
     PlusSucc(_, _, _, p1) => {
       let PlusSucc(_, _, _, q1) = q;
+      -- The recursive call returns evidence that the two smaller sums are
+      -- equal. An equation is used by matching on its evidence: Refl only
+      -- builds Eq(A, x, x), so inside the branch the checker treats the two
+      -- sides as one value. Then c and d are visibly the same, and Refl is
+      -- accepted as the result.
       match erased plusFunc(_, _, _, _, subterm p1, q1) : _ {
         Refl(_, _) => Refl(_, _);
       }
@@ -142,23 +248,31 @@ fn plusFunc(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased d : Nat
   }
 }
 
-fn succBoth(erased a : Nat(), erased b : Nat(), erased c : Nat(), p : Plus(a, b, c))
+-- If a + b = c then (a + 1) + (b + 1) = c + 2.
+fn succBoth(erased a : Nat(), erased b : Nat(), erased c : Nat(),
+    p : Plus(a, b, c))
     -> (erased q : Plus(Succ(a), Succ(b), Succ(Succ(c)))) {
   PlusSucc(_, _, _, plusSucc(_, _, _, p))
 }
 
+-- If (k + 1) + (k + 1) = d, then d is d1 + 2 for the d1 with k + k = d1.
 fn halfStep(erased k : Nat(), erased d : Nat(), p : Plus(Succ(k), Succ(k), d))
-    -> (erased d1 : Nat(), erased e : Eq(Nat(), d, Succ(Succ(d1))), erased q : Plus(k, k, d1)) {
+    -> (erased d1 : Nat(), erased e : Eq(Nat(), d, Succ(Succ(d1))),
+        erased q : Plus(k, k, d1)) {
   let PlusSucc(_, _, _, p1) = p;
   let erased PlusSucc(_, _, d1, q) = plusComm(_, _, _, p1);
   (d1, Refl(_, _), q)
 }
 
-fn doubleSum(erased a : Nat(), erased b : Nat(), erased r : Nat(), erased ma : Nat(), erased nb : Nat(),
-    p : Plus(a, b, r), pa : Plus(a, a, ma), pb : Plus(b, b, nb))
-    -> (erased d : Nat(), erased q : Plus(r, r, d), erased s : Plus(ma, nb, d)) {
+-- If a + b = r then 2a + 2b = 2r.
+fn doubleSum(erased a : Nat(), erased b : Nat(), erased r : Nat(),
+    erased ma : Nat(), erased nb : Nat(), p : Plus(a, b, r),
+    pa : Plus(a, a, ma), pb : Plus(b, b, nb))
+    -> (erased d : Nat(), erased q : Plus(r, r, d),
+        erased s : Plus(ma, nb, d)) {
   let (erased d, erased s) = plus(ma, nb);
-  let (erased wx, erased yz, erased p1, erased p2, erased q) = exchange(_, _, _, _, _, _, _, pa, pb, s);
+  let (erased wx, erased yz, erased p1, erased p2, erased q) =
+    exchange(_, _, _, _, _, _, _, pa, pb, s);
   match erased plusFunc(_, _, _, _, p1, p) : _ {
     Refl(_, _) => match erased plusFunc(_, _, _, _, p2, p) : _ {
       Refl(_, _) => (d, q, s);
@@ -166,13 +280,18 @@ fn doubleSum(erased a : Nat(), erased b : Nat(), erased r : Nat(), erased ma : N
   }
 }
 
-fn halfInj(subterm k : Nat(), l : Nat(), erased d : Nat(), p : Plus(k, k, d), q : Plus(l, l, d))
+-- If 2k = 2l then k = l.
+fn halfInj(subterm k : Nat(), l : Nat(), erased d : Nat(), p : Plus(k, k, d),
+    q : Plus(l, l, d))
     -> (erased e : Eq(Nat(), k, l)) {
   match k : _ {
     Zero() => {
       let PlusZero(_) = p;
       match l : _ {
         Zero() => Refl(_, _);
+        -- A match with no branches says "this cannot happen", and the checker
+        -- has to agree. Here q would say that l + l = 0 for an l that is a
+        -- Succ, and neither rule of Plus builds that.
         Succ(_) => match q : _ {};
       }
     };
@@ -196,7 +315,9 @@ fn halfInj(subterm k : Nat(), l : Nat(), erased d : Nat(), p : Plus(k, k, d), q 
   }
 }
 
-fn notEvenOdd(subterm k : Nat(), l : Nat(), erased d : Nat(), p : Plus(k, k, d), q : Plus(l, l, Succ(d)))
+-- No number is both even and odd: 2k = d and 2l = d + 1 cannot both hold.
+fn notEvenOdd(subterm k : Nat(), l : Nat(), erased d : Nat(), p : Plus(k, k, d),
+    q : Plus(l, l, Succ(d)))
     -> (erased f : False()) {
   match k : _ {
     Zero() => {
@@ -226,7 +347,13 @@ fn notEvenOdd(subterm k : Nat(), l : Nat(), erased d : Nat(), p : Plus(k, k, d),
   }
 }
 
-fn posPos(erased x : Pos(), erased k : Nat(), subterm r : PosRep(x, k)) -> (erased z : NonZero(k)) {
+-- ---- Binary and unary forms match one to one ----
+-- add and mul do not need these. They check that Rep is a sensible way to tie
+-- the two forms together.
+
+-- A Pos never stands for zero.
+fn posPos(erased x : Pos(), erased k : Nat(), subterm r : PosRep(x, k))
+    -> (erased z : NonZero(k)) {
   match r : _ {
     RepOne() => NonZeroSucc(_);
     RepP0(_, _, _, r1, s) => {
@@ -238,7 +365,9 @@ fn posPos(erased x : Pos(), erased k : Nat(), subterm r : PosRep(x, k)) -> (eras
   }
 }
 
-fn posRepFunc(erased x : Pos(), erased m : Nat(), erased n : Nat(), subterm px : PosRep(x, m), py : PosRep(x, n))
+-- A binary number stands for only one unary number.
+fn posRepFunc(erased x : Pos(), erased m : Nat(), erased n : Nat(),
+    subterm px : PosRep(x, m), py : PosRep(x, n))
     -> (erased e : Eq(Nat(), m, n)) {
   match px : _ {
     RepOne() => {
@@ -262,7 +391,9 @@ fn posRepFunc(erased x : Pos(), erased m : Nat(), erased n : Nat(), subterm px :
   }
 }
 
-fn repFunc(erased b : Bin(), erased m : Nat(), erased n : Nat(), px : Rep(b, m), py : Rep(b, n))
+-- The same for Bin.
+fn repFunc(erased b : Bin(), erased m : Nat(), erased n : Nat(), px : Rep(b, m),
+    py : Rep(b, n))
     -> (erased e : Eq(Nat(), m, n)) {
   match px : _ {
     RepZ() => {
@@ -276,7 +407,9 @@ fn repFunc(erased b : Bin(), erased m : Nat(), erased n : Nat(), px : Rep(b, m),
   }
 }
 
-fn posRepInj(erased x : Pos(), erased y : Pos(), erased n : Nat(), subterm px : PosRep(x, n), py : PosRep(y, n))
+-- Only one binary number stands for a given unary number.
+fn posRepInj(erased x : Pos(), erased y : Pos(), erased n : Nat(),
+    subterm px : PosRep(x, n), py : PosRep(y, n))
     -> (erased e : Eq(Pos(), x, y)) {
   match px : _ {
     RepOne() => match py : _ {
@@ -319,7 +452,9 @@ fn posRepInj(erased x : Pos(), erased y : Pos(), erased n : Nat(), subterm px : 
   }
 }
 
-fn repInj(erased b : Bin(), erased c : Bin(), erased n : Nat(), px : Rep(b, n), py : Rep(c, n))
+-- The same for Bin.
+fn repInj(erased b : Bin(), erased c : Bin(), erased n : Nat(), px : Rep(b, n),
+    py : Rep(c, n))
     -> (erased e : Eq(Bin(), b, c)) {
   match px : _ {
     RepZ() => match py : _ {
@@ -335,6 +470,10 @@ fn repInj(erased b : Bin(), erased c : Bin(), erased n : Nat(), px : Rep(b, n), 
   }
 }
 
+-- ---- Converting, and adding one ----
+
+-- Every binary number stands for some unary number. The result is erased: it is
+-- known to exist without being computed.
 fn toNatPos(subterm x : Pos()) -> (erased n : Nat(), erased r : PosRep(x, n)) {
   match x : _ {
     One() => (Succ(Zero()), RepOne());
@@ -351,6 +490,7 @@ fn toNatPos(subterm x : Pos()) -> (erased n : Nat(), erased r : PosRep(x, n)) {
   }
 }
 
+-- The same for Bin.
 fn toNat(b : Bin()) -> (erased n : Nat(), erased r : Rep(b, n)) {
   match b : _ {
     BZ() => (Zero(), RepZ());
@@ -361,6 +501,9 @@ fn toNat(b : Bin()) -> (erased n : Nat(), erased r : Rep(b, n)) {
   }
 }
 
+-- Adds one in binary, with evidence that the result stands for m + 1. In the
+-- last case, 2a + 1 plus one carries: the digit becomes 0 and one is added to
+-- the digits above it.
 fn succPos(erased m : Nat(), subterm x : Pos(), erased px : PosRep(x, m))
     -> (z : Pos(), erased pz : PosRep(z, Succ(m))) {
   match x : _ {
@@ -380,7 +523,9 @@ fn succPos(erased m : Nat(), subterm x : Pos(), erased px : PosRep(x, m))
   }
 }
 
-fn inc(erased n : Nat(), b : Bin(), erased pb : Rep(b, n)) -> (c : Bin(), erased pc : Rep(c, Succ(n))) {
+-- The same for Bin.
+fn inc(erased n : Nat(), b : Bin(), erased pb : Rep(b, n))
+    -> (c : Bin(), erased pc : Rep(c, Succ(n))) {
   match b : _ {
     BZ() => {
       let erased RepZ() = pb;
@@ -394,6 +539,8 @@ fn inc(erased n : Nat(), b : Bin(), erased pb : Rep(b, n)) -> (c : Bin(), erased
   }
 }
 
+-- Unary to binary, by adding one n times. This one runs on the unary number, so
+-- it is only for small numbers.
 fn fromNat(subterm n : Nat()) -> (b : Bin(), erased r : Rep(b, n)) {
   match n : _ {
     Zero() => (BZ(), RepZ());
@@ -404,14 +551,25 @@ fn fromNat(subterm n : Nat()) -> (b : Bin(), erased r : Rep(b, n)) {
   }
 }
 
+-- ---- Addition ----
+
+-- m + 1 is Succ(m).
 fn oneRight(erased m : Nat()) -> (erased p : Plus(m, Succ(Zero()), Succ(m))) {
   plusSucc(_, _, _, plusZeroRight(m))
 }
 
+-- Addition as done on paper: lowest digit first, with a carry. addPos adds x
+-- and y; addCarry adds x, y and a carried 1. Each calls the other, which is
+-- what `mutual` allows.
+--
+-- In every branch the first part of the result is the algorithm, and the rest
+-- is the evidence for it. Take 2a + 1 plus 2b + 1 in addPos: 1 + 1 is 0 carry
+-- 1, so the result is P0 of addCarry on a and b.
 mutual {
   fn addPos(erased m : Nat(), erased n : Nat(), subterm x : Pos(), y : Pos(),
       erased px : PosRep(x, m), erased py : PosRep(y, n))
-      -> (z : Pos(), erased r : Nat(), erased pz : PosRep(z, r), erased s : Plus(m, n, r)) {
+      -> (z : Pos(), erased r : Nat(), erased pz : PosRep(z, r),
+          erased s : Plus(m, n, r)) {
     match x : _ {
       One() => {
         let erased RepOne() = px;
@@ -428,14 +586,18 @@ mutual {
           };
           P0(b) => {
             let erased RepP0(_, _, _, rb, sb) = py;
-            let (z, erased r, erased pz, erased s) = addPos(_, _, subterm a, b, ra, rb);
-            let (erased d, erased q, erased e) = doubleSum(_, _, _, _, _, s, sa, sb);
+            let (z, erased r, erased pz, erased s) =
+              addPos(_, _, subterm a, b, ra, rb);
+            let (erased d, erased q, erased e) =
+              doubleSum(_, _, _, _, _, s, sa, sb);
             (P0(z), d, RepP0(_, _, _, pz, q), e)
           };
           P1(b) => {
             let erased RepP1(_, _, _, rb, sb) = py;
-            let (z, erased r, erased pz, erased s) = addPos(_, _, subterm a, b, ra, rb);
-            let (erased d, erased q, erased e) = doubleSum(_, _, _, _, _, s, sa, sb);
+            let (z, erased r, erased pz, erased s) =
+              addPos(_, _, subterm a, b, ra, rb);
+            let (erased d, erased q, erased e) =
+              doubleSum(_, _, _, _, _, s, sa, sb);
             (P1(z), Succ(d), RepP1(_, _, _, pz, q), plusSucc(_, _, _, e))
           };
         }
@@ -450,15 +612,20 @@ mutual {
           };
           P0(b) => {
             let erased RepP0(_, _, _, rb, sb) = py;
-            let (z, erased r, erased pz, erased s) = addPos(_, _, subterm a, b, ra, rb);
-            let (erased d, erased q, erased e) = doubleSum(_, _, _, _, _, s, sa, sb);
+            let (z, erased r, erased pz, erased s) =
+              addPos(_, _, subterm a, b, ra, rb);
+            let (erased d, erased q, erased e) =
+              doubleSum(_, _, _, _, _, s, sa, sb);
             (P1(z), Succ(d), RepP1(_, _, _, pz, q), PlusSucc(_, _, _, e))
           };
           P1(b) => {
             let erased RepP1(_, _, _, rb, sb) = py;
-            let (z, erased r, erased pz, erased s) = addCarry(_, _, subterm a, b, ra, rb);
-            let (erased d, erased q, erased e) = doubleSum(_, _, _, _, _, s, sa, sb);
-            (P0(z), Succ(Succ(d)), RepP0(_, _, _, pz, succBoth(_, _, _, q)), succBoth(_, _, _, e))
+            let (z, erased r, erased pz, erased s) =
+              addCarry(_, _, subterm a, b, ra, rb);
+            let (erased d, erased q, erased e) =
+              doubleSum(_, _, _, _, _, s, sa, sb);
+            (P0(z), Succ(Succ(d)), RepP0(_, _, _, pz, succBoth(_, _, _, q)),
+                succBoth(_, _, _, e))
           };
         }
       };
@@ -467,7 +634,8 @@ mutual {
 
   fn addCarry(erased m : Nat(), erased n : Nat(), subterm x : Pos(), y : Pos(),
       erased px : PosRep(x, m), erased py : PosRep(y, n))
-      -> (z : Pos(), erased r : Nat(), erased pz : PosRep(z, Succ(r)), erased s : Plus(m, n, r)) {
+      -> (z : Pos(), erased r : Nat(), erased pz : PosRep(z, Succ(r)),
+          erased s : Plus(m, n, r)) {
     match x : _ {
       One() => {
         let erased RepOne() = px;
@@ -486,15 +654,20 @@ mutual {
           };
           P0(b) => {
             let erased RepP0(_, _, _, rb, sb) = py;
-            let (z, erased r, erased pz, erased s) = addPos(_, _, subterm a, b, ra, rb);
-            let (erased d, erased q, erased e) = doubleSum(_, _, _, _, _, s, sa, sb);
+            let (z, erased r, erased pz, erased s) =
+              addPos(_, _, subterm a, b, ra, rb);
+            let (erased d, erased q, erased e) =
+              doubleSum(_, _, _, _, _, s, sa, sb);
             (P1(z), d, RepP1(_, _, _, pz, q), e)
           };
           P1(b) => {
             let erased RepP1(_, _, _, rb, sb) = py;
-            let (z, erased r, erased pz, erased s) = addCarry(_, _, subterm a, b, ra, rb);
-            let (erased d, erased q, erased e) = doubleSum(_, _, _, _, _, s, sa, sb);
-            (P0(z), Succ(d), RepP0(_, _, _, pz, succBoth(_, _, _, q)), plusSucc(_, _, _, e))
+            let (z, erased r, erased pz, erased s) =
+              addCarry(_, _, subterm a, b, ra, rb);
+            let (erased d, erased q, erased e) =
+              doubleSum(_, _, _, _, _, s, sa, sb);
+            (P0(z), Succ(d), RepP0(_, _, _, pz, succBoth(_, _, _, q)),
+                plusSucc(_, _, _, e))
           };
         }
       };
@@ -509,15 +682,21 @@ mutual {
           };
           P0(b) => {
             let erased RepP0(_, _, _, rb, sb) = py;
-            let (z, erased r, erased pz, erased s) = addCarry(_, _, subterm a, b, ra, rb);
-            let (erased d, erased q, erased e) = doubleSum(_, _, _, _, _, s, sa, sb);
-            (P0(z), Succ(d), RepP0(_, _, _, pz, succBoth(_, _, _, q)), PlusSucc(_, _, _, e))
+            let (z, erased r, erased pz, erased s) =
+              addCarry(_, _, subterm a, b, ra, rb);
+            let (erased d, erased q, erased e) =
+              doubleSum(_, _, _, _, _, s, sa, sb);
+            (P0(z), Succ(d), RepP0(_, _, _, pz, succBoth(_, _, _, q)),
+                PlusSucc(_, _, _, e))
           };
           P1(b) => {
             let erased RepP1(_, _, _, rb, sb) = py;
-            let (z, erased r, erased pz, erased s) = addCarry(_, _, subterm a, b, ra, rb);
-            let (erased d, erased q, erased e) = doubleSum(_, _, _, _, _, s, sa, sb);
-            (P1(z), Succ(Succ(d)), RepP1(_, _, _, pz, succBoth(_, _, _, q)), succBoth(_, _, _, e))
+            let (z, erased r, erased pz, erased s) =
+              addCarry(_, _, subterm a, b, ra, rb);
+            let (erased d, erased q, erased e) =
+              doubleSum(_, _, _, _, _, s, sa, sb);
+            (P1(z), Succ(Succ(d)), RepP1(_, _, _, pz, succBoth(_, _, _, q)),
+                succBoth(_, _, _, e))
           };
         }
       };
@@ -525,8 +704,11 @@ mutual {
   }
 }
 
-fn add(erased m : Nat(), erased n : Nat(), x : Bin(), y : Bin(), erased px : Rep(x, m), erased py : Rep(y, n))
-    -> (z : Bin(), erased r : Nat(), erased pz : Rep(z, r), erased s : Plus(m, n, r)) {
+-- Addition on Bin: handles zero and leaves the rest to addPos.
+fn add(erased m : Nat(), erased n : Nat(), x : Bin(), y : Bin(),
+    erased px : Rep(x, m), erased py : Rep(y, n))
+    -> (z : Bin(), erased r : Nat(), erased pz : Rep(z, r),
+        erased s : Plus(m, n, r)) {
   match x : _ {
     BZ() => {
       let erased RepZ() = px;
@@ -547,6 +729,9 @@ fn add(erased m : Nat(), erased n : Nat(), x : Bin(), y : Bin(), erased px : Rep
   }
 }
 
+-- ---- Multiplication ----
+
+-- m * 0 = 0.
 fn timesZeroRight(subterm m : Nat()) -> (erased t : Times(m, Zero(), Zero())) {
   match m : _ {
     Zero() => TimesZero(_);
@@ -554,9 +739,12 @@ fn timesZeroRight(subterm m : Nat()) -> (erased t : Times(m, Zero(), Zero())) {
   }
 }
 
-fn timesPlusLeft(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased n : Nat(), erased ta : Nat(),
-    erased tb : Nat(), erased t : Nat(), subterm p : Plus(a, b, c), t1 : Times(a, n, ta), t2 : Times(b, n, tb),
-    q : Plus(ta, tb, t)) -> (erased u : Times(c, n, t)) {
+-- (a + b) * n = a * n + b * n.
+fn timesPlusLeft(erased a : Nat(), erased b : Nat(), erased c : Nat(),
+    erased n : Nat(), erased ta : Nat(), erased tb : Nat(), erased t : Nat(),
+    subterm p : Plus(a, b, c), t1 : Times(a, n, ta), t2 : Times(b, n, tb),
+    q : Plus(ta, tb, t))
+    -> (erased u : Times(c, n, t)) {
   match p : _ {
     PlusZero(_) => {
       let TimesZero(_) = t1;
@@ -566,22 +754,29 @@ fn timesPlusLeft(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased n 
     PlusSucc(_, _, _, p1) => {
       let TimesSucc(_, _, _, _, t3, s1) = t1;
       let (erased ntb, erased s2, erased s3) = plusAssoc(_, _, _, _, _, s1, q);
-      let (erased x, erased s4, erased s5) = plusAssocRev(_, _, _, _, _, plusComm(_, _, _, s2), s3);
-      TimesSucc(_, _, _, _, timesPlusLeft(_, _, _, _, _, _, _, subterm p1, t3, t2, s4), s5)
+      let (erased x, erased s4, erased s5) =
+        plusAssocRev(_, _, _, _, _, plusComm(_, _, _, s2), s3);
+      TimesSucc(_, _, _, _,
+          timesPlusLeft(_, _, _, _, _, _, _, subterm p1, t3, t2, s4), s5)
     };
   }
 }
 
-fn timesDouble(erased a : Nat(), erased ma : Nat(), erased n : Nat(), erased t : Nat(),
-    sa : Plus(a, a, ma), u : Times(a, n, t))
-    -> (erased d : Nat(), erased q : Plus(t, t, d), erased v : Times(ma, n, d)) {
+-- (2a) * n = 2 * (a * n).
+fn timesDouble(erased a : Nat(), erased ma : Nat(), erased n : Nat(),
+    erased t : Nat(), sa : Plus(a, a, ma), u : Times(a, n, t))
+    -> (erased d : Nat(), erased q : Plus(t, t, d),
+        erased v : Times(ma, n, d)) {
   let (erased d, erased q) = plus(t, t);
   (d, q, timesPlusLeft(_, _, _, _, _, _, _, sa, u, u, q))
 }
 
+-- Shift-and-add multiplication. When x is 2a, x * y is twice a * y: a P0 on the
+-- product. When x is 2a + 1, y is added once more.
 fn mulPos(erased m : Nat(), erased n : Nat(), subterm x : Pos(), y : Pos(),
     erased px : PosRep(x, m), erased py : PosRep(y, n))
-    -> (z : Pos(), erased r : Nat(), erased pz : PosRep(z, r), erased t : Times(m, n, r)) {
+    -> (z : Pos(), erased r : Nat(), erased pz : PosRep(z, r),
+        erased t : Times(m, n, r)) {
   match x : _ {
     One() => {
       let erased RepOne() = px;
@@ -589,22 +784,28 @@ fn mulPos(erased m : Nat(), erased n : Nat(), subterm x : Pos(), y : Pos(),
     };
     P0(a) => {
       let erased RepP0(_, _, _, ra, sa) = px;
-      let (z, erased r, erased pz, erased t) = mulPos(_, _, subterm a, y, ra, py);
+      let (z, erased r, erased pz, erased t) =
+        mulPos(_, _, subterm a, y, ra, py);
       let (erased d, erased q, erased u) = timesDouble(_, _, _, _, sa, t);
       (P0(z), d, RepP0(_, _, _, pz, q), u)
     };
     P1(a) => {
       let erased RepP1(_, _, _, ra, sa) = px;
-      let (z, erased r, erased pz, erased t) = mulPos(_, _, subterm a, y, ra, py);
+      let (z, erased r, erased pz, erased t) =
+        mulPos(_, _, subterm a, y, ra, py);
       let (erased d, erased q, erased u) = timesDouble(_, _, _, _, sa, t);
-      let (w, erased s, erased pw, erased e) = addPos(_, _, P0(z), y, RepP0(_, _, _, pz, q), py);
+      let (w, erased s, erased pw, erased e) =
+        addPos(_, _, P0(z), y, RepP0(_, _, _, pz, q), py);
       (w, s, pw, TimesSucc(_, _, _, _, u, e))
     };
   }
 }
 
-fn mul(erased m : Nat(), erased n : Nat(), x : Bin(), y : Bin(), erased px : Rep(x, m), erased py : Rep(y, n))
-    -> (z : Bin(), erased r : Nat(), erased pz : Rep(z, r), erased t : Times(m, n, r)) {
+-- Multiplication on Bin, the function the goal asks for.
+fn mul(erased m : Nat(), erased n : Nat(), x : Bin(), y : Bin(),
+    erased px : Rep(x, m), erased py : Rep(y, n))
+    -> (z : Bin(), erased r : Nat(), erased pz : Rep(z, r),
+        erased t : Times(m, n, r)) {
   match x : _ {
     BZ() => {
       let erased RepZ() = px;
@@ -627,17 +828,26 @@ fn mul(erased m : Nat(), erased n : Nat(), x : Bin(), y : Bin(), erased px : Rep
 
 qed mul;
 
+-- Code at the top level runs as soon as it is checked. x is 1234567891 and y is
+-- 987654321, lowest digit first, each split in two to keep the lines short.
 let xHigh = P0(P0(P1(P1(P0(P1(P0(P0(P1(P1(P0(P0(P1(P0(P0(One())))))))))))))));
 let x = BP(P1(P1(P0(P0(P1(P0(P1(P1(P0(P1(P0(P0(P0(P0(P0(xHigh))))))))))))))));
 let yHigh = P0(P0(P1(P1(P1(P1(P0(P1(P1(P0(P1(P0(P1(P1(One()))))))))))))));
 let y = BP(P1(P0(P0(P0(P1(P1(P0(P1(P0(P0(P0(P1(P0(P1(P1(yHigh))))))))))))))));
+-- Both results of toNat are erased, so, as we understand it, the call is not
+-- run at all. m would be over a billion Succs deep. It still gives the checker
+-- a name for "the number x stands for".
 let (erased m, erased px) = toNat(x);
 let (erased n, erased py) = toNat(y);
 let (sum, erased r, erased psum, erased s) = add(m, n, x, y, px, py);
+-- `print` shows a value next to the statement. This is x + y, 2222222212.
 print sum;
 let (product, erased t, erased pproduct, erased u) = mul(m, n, x, y, px, py);
+-- x * y, 1219326312114007011.
 print product;
 
+-- A small check that the two forms agree: 3 * 4 worked out in binary prints the
+-- same as 12 converted from unary.
 let three = Succ(Succ(Succ(Zero())));
 let four = Succ(three);
 let twelve = Succ(Succ(Succ(Succ(Succ(Succ(Succ(Succ(four))))))));

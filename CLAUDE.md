@@ -27,14 +27,21 @@ by the owner and apply to every session.
    type-checks or behaves a given way.
 
 4. **Minimal comments.** Do not add comments unless the owner gives
-   explicit permission for that instance. The one standing exception: brief
-   notes explaining a type parameter whose binding site is far from its
-   use — those are welcome without asking.
+   explicit permission for that instance. Two standing exceptions.
+   Brief notes explaining a type parameter whose binding site is far
+   from its use are welcome without asking. The demos in `examples/`
+   are commented for a reader who can program but has never seen
+   Pledge or a dependent type: a comment there gives what that reader
+   cannot get from the code beneath it — what a declaration means in
+   ordinary terms, or why a line is there when they would not expect
+   it — and never restates the code. A line a newcomer would stop at
+   gets a comment; a comment they would not miss is deleted.
 
 5. **Keep code succinct.** Optimize for a small overall codebase. Use
    descriptive names, but aggressively DRY — abstract away repetition
    rather than duplicating variants of similar code. Lines of code are
-   at most 120 columns; test files and the tutorial's prose are exempt.
+   at most 120 columns, and 80 in the demos in `examples/`; test files
+   and the tutorial's prose are exempt.
 
 6. **Don't optimize for performance.** Correctness first, then
    readability. It's fine — expected — for edge cases to drive the core

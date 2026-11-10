@@ -1,23 +1,51 @@
 -- Insertion sort.
--- Verified insertion sort on lists of Nat. `sort` returns its result together with evidence that the
--- result is Sorted and a permutation (Perm, built from Insert) of the input; the goal states this.
--- The evidence is erased, so what runs should be plain insertion sort, with `compare` choosing the branch.
+-- An ordinary insertion sort on lists of numbers. What is unusual is its type,
+-- which says what sorting means: the result is in ascending order and is a
+-- rearrangement of the input. The checker accepts `sort` only because its body
+-- builds evidence of both.
+--
+-- If Pledge is new to you:
+--   * `data` declares a type and lists every way to build a value of it.
+--   * A type can take values as parameters. `Le(m, n)` below is a separate type
+--     for each pair of numbers, and it is written so that a value of it can be
+--     built only when m <= n. So a value of type `Le(m, n)` is evidence, a
+--     proof, that m <= n. Most types in this file are like that.
+--   * `erased` marks what exists only for the checker. Running the program
+--     skips it, so here the proofs cost nothing at run time.
+--   * The Tutorial link at the top of the page teaches all of this in order.
 
+-- Numbers, built by hand: Zero(), then Succ(Zero()) for 1, and so on.
+-- Everything applied is written with parentheses, even with no arguments.
 data Nat() : Type() {
   Zero() : Nat();
   Succ(pred : Nat()) : Nat();
 }
 
+-- Le(m, n) reads "m <= n". Its two lines are the two rules that make it true:
+-- zero is <= every n, and m + 1 <= n + 1 whenever m <= n. There is no way to
+-- build evidence that 2 <= 1.
 data Le(m : Nat(), n : Nat()) : Type() {
   LeZero(erased n : Nat()) : Le(Zero(), n);
-  LeSucc(erased m : Nat(), erased n : Nat(), p : Le(m, n)) : Le(Succ(m), Succ(n));
+  LeSucc(erased m : Nat(), erased n : Nat(), p : Le(m, n))
+    : Le(Succ(m), Succ(n));
 }
 
+-- The answer to "is m <= n or the other way round?", with evidence for
+-- whichever it is. A plain boolean would say which branch was taken but leave
+-- the checker knowing nothing more about m and n.
 data Order(m : Nat(), n : Nat()) : Type() {
   LeOrd(erased m : Nat(), erased n : Nat(), erased p : Le(m, n)) : Order(m, n);
   GeOrd(erased m : Nat(), erased n : Nat(), erased p : Le(n, m)) : Order(m, n);
 }
 
+-- `subterm` is how a recursive function shows that it ends: each recursive call
+-- must pass, for that parameter, a piece of the caller's own argument. Here
+-- that is m1, the inside of m = Succ(m1). The checker demands this of every
+-- recursive function; one that might loop forever is rejected.
+--
+-- `match m : _` : after the colon comes what the match produces, and `_` leaves
+-- it to the checker, which knows it from the return type. As an argument, `_`
+-- is an erased value the checker can work out for itself.
 fn compare(subterm m : Nat(), n : Nat()) -> (o : Order(m, n)) {
   match m : _ {
     Zero() => LeOrd(_, _, LeZero(_));
@@ -36,55 +64,86 @@ data List() : Type() {
   Cons(head : Nat(), tail : List()) : List();
 }
 
+-- Below(x, xs) reads "x <= the first element of xs, if xs has one".
 data Below(x : Nat(), xs : List()) : Type() {
   BelowNil(erased x : Nat()) : Below(x, Nil());
-  BelowCons(erased x : Nat(), erased y : Nat(), erased ys : List(), p : Le(x, y)) : Below(x, Cons(y, ys));
+  BelowCons(erased x : Nat(), erased y : Nat(), erased ys : List(),
+      p : Le(x, y)) : Below(x, Cons(y, ys));
 }
 
+-- Sorted(xs) reads "xs is in ascending order": every element is Below the part
+-- of the list that follows it.
 data Sorted(xs : List()) : Type() {
   SortedNil() : Sorted(Nil());
-  SortedCons(erased x : Nat(), erased xs : List(), b : Below(x, xs), s : Sorted(xs)) : Sorted(Cons(x, xs));
+  SortedCons(erased x : Nat(), erased xs : List(), b : Below(x, xs),
+      s : Sorted(xs)) : Sorted(Cons(x, xs));
 }
 
+-- Insert(x, xs, ys) reads "ys is xs with x put in somewhere": at the front
+-- (InsHere), or further in, past the first element y (InsThere).
 data Insert(x : Nat(), xs : List(), ys : List()) : Type() {
   InsHere(erased x : Nat(), erased xs : List()) : Insert(x, xs, Cons(x, xs));
-  InsThere(erased x : Nat(), erased y : Nat(), erased xs : List(), erased ys : List(), i : Insert(x, xs, ys))
+  InsThere(erased x : Nat(), erased y : Nat(), erased xs : List(),
+      erased ys : List(), i : Insert(x, xs, ys))
     : Insert(x, Cons(y, xs), Cons(y, ys));
 }
 
+-- Perm(xs, ys) reads "ys is a rearrangement of xs": rearrange all of xs but its
+-- first element, then put that element in somewhere.
 data Perm(xs : List(), ys : List()) : Type() {
   PermNil() : Perm(Nil(), Nil());
-  PermCons(erased x : Nat(), erased xs : List(), erased ys : List(), erased zs : List(),
-    p : Perm(xs, ys), i : Insert(x, ys, zs)) : Perm(Cons(x, xs), zs);
+  PermCons(erased x : Nat(), erased xs : List(), erased ys : List(),
+      erased zs : List(), p : Perm(xs, ys), i : Insert(x, ys, zs))
+    : Perm(Cons(x, xs), zs);
 }
 
-fn belowInsert(erased y : Nat(), erased x : Nat(), erased xs : List(), erased ys : List(), p : Le(y, x),
-    b : Below(y, xs), i : Insert(x, xs, ys)) -> (c : Below(y, ys)) {
+-- A helper fact for insert: if y <= x and y is Below xs, then y is still Below
+-- the list once x has been inserted into it.
+fn belowInsert(erased y : Nat(), erased x : Nat(), erased xs : List(),
+    erased ys : List(), p : Le(y, x), b : Below(y, xs), i : Insert(x, xs, ys))
+    -> (c : Below(y, ys)) {
   match i : _ {
     InsHere(_, _) => BelowCons(_, _, _, p);
     InsThere(_, _, _, _, _) => {
+      -- A `let` with a constructor on the left takes a value apart. It is
+      -- accepted only when the value can have been built no other way. Here the
+      -- list is a Cons, and BelowNil only ever talks about Nil(), so b must be
+      -- a BelowCons.
       let BelowCons(_, _, _, q) = b;
       BelowCons(_, _, _, q)
     };
   }
 }
 
+-- Puts x into a sorted list. A function can return several values: here the new
+-- list ys, then two erased ones, evidence that ys is xs with x inserted and
+-- evidence that ys is sorted. The third parameter demands evidence that the
+-- input was sorted, so insert cannot be called on an unsorted list.
 fn insert(x : Nat(), subterm xs : List(), erased s : Sorted(xs))
     -> (ys : List(), erased i : Insert(x, xs, ys), erased t : Sorted(ys)) {
   match xs : _ {
-    Nil() => (Cons(x, Nil()), InsHere(_, _), SortedCons(_, _, BelowNil(_), SortedNil()));
+    Nil() => (Cons(x, Nil()), InsHere(_, _),
+        SortedCons(_, _, BelowNil(_), SortedNil()));
+    -- The branch taken depends on a value that exists at run time, so compare's
+    -- result is not erased. The p inside it is: it only feeds the proofs.
     Cons(y, rest) => match compare(x, y) : _ {
-      LeOrd(_, _, p) => (Cons(x, xs), InsHere(_, _), SortedCons(_, _, BelowCons(_, _, rest, p), s));
+      LeOrd(_, _, p) => (Cons(x, xs), InsHere(_, _),
+          SortedCons(_, _, BelowCons(_, _, rest, p), s));
       GeOrd(_, _, p) => {
+        -- s is erased, so what comes out of it is erased too: `let erased`.
         let erased SortedCons(_, _, b, s1) = s;
         let (zs, erased j, erased t1) = insert(x, subterm rest, s1);
-        (Cons(y, zs), InsThere(_, _, _, _, j), SortedCons(_, _, belowInsert(_, _, _, _, p, b, j), t1))
+        (Cons(y, zs), InsThere(_, _, _, _, j),
+            SortedCons(_, _, belowInsert(_, _, _, _, p, b, j), t1))
       };
     };
   }
 }
 
-fn sort(subterm xs : List()) -> (ys : List(), erased p : Perm(xs, ys), erased s : Sorted(ys)) {
+-- The algorithm itself: sort the rest, then insert the first element. The
+-- second and third results put the evidence together the same way.
+fn sort(subterm xs : List())
+    -> (ys : List(), erased p : Perm(xs, ys), erased s : Sorted(ys)) {
   match xs : _ {
     Nil() => (Nil(), PermNil(), SortedNil());
     Cons(x, rest) => {
@@ -95,12 +154,21 @@ fn sort(subterm xs : List()) -> (ys : List(), erased p : Perm(xs, ys), erased s 
   }
 }
 
-goal fn (xs : List()) -> (ys : List(), erased p : Perm(xs, ys), erased s : Sorted(ys));
+-- `goal` states the theorem, here as the signature a function must have: for
+-- every list xs it returns a list ys, evidence that ys is a rearrangement of
+-- xs, and evidence that ys is sorted. `qed sort` has the checker confirm that
+-- sort is such a function. The page reports whether the goal is proved.
+goal fn (xs : List())
+    -> (ys : List(), erased p : Perm(xs, ys), erased s : Sorted(ys));
 qed sort;
 
+-- Code at the top level runs as soon as it is checked.
 let one = Succ(Zero());
 let two = Succ(one);
 let three = Succ(two);
-let (sorted, erased perm, erased proof) = sort(Cons(three, Cons(one, Cons(two, Cons(Zero(), Cons(one, Nil()))))));
+let (sorted, erased perm, erased proof) =
+  sort(Cons(three, Cons(one, Cons(two, Cons(Zero(), Cons(one, Nil()))))));
+-- `print` shows a value next to the statement. The second one shows
+-- GeOrd(_, _, _): erased fields are not there at run time and print as `_`.
 print sorted;
 print compare(three, one);

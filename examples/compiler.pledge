@@ -1,20 +1,54 @@
 -- Compiler correctness.
--- Compiler correctness for expressions of literals and addition ("Hutton's razor").
--- Code(i, j) takes a stack of depth i to one of depth j, so code that pops an empty stack can't be written.
--- compile works continuation style and returns, alongside the code, erased evidence (Exec) that running
--- it pushes the value the big-step semantics (Eval) gives. The evidence is erased, so only the compiler and
--- machine should run.
+-- A compiler from arithmetic expressions (numbers and +) to instructions for a
+-- stack machine, with a proof that running the compiled code leaves the
+-- expression's value on the stack. This small setting is known as "Hutton's
+-- razor".
+--
+-- Two guarantees are carried by types:
+--   * Code(i, j) is code that takes a stack of i numbers to a stack of j. Code
+--     that would pop from an empty stack has no type, so it cannot be written.
+--   * compile returns its code together with evidence that running it pushes
+--     the value of the expression.
+--
+-- If Pledge is new to you:
+--   * `data` declares a type and lists every way to build a value of it.
+--   * A type can take values as parameters. `Plus(m, n, r)` below is a separate
+--     type for each three numbers, and it is written so that a value of it can
+--     be built only when m + n = r. So a value of type `Plus(m, n, r)` is
+--     evidence, a proof, that m + n = r. Most types in this file are like that.
+--   * `erased` marks what exists only for the checker. Running the program
+--     skips it, so here the proofs cost nothing at run time.
+--   * The Tutorial link at the top of the page teaches all of this in order.
 
+-- Numbers, built by hand: Zero(), then Succ(Zero()) for 1, and so on.
+-- Everything applied is written with parentheses, even with no arguments.
 data Nat() : Type() {
   Zero() : Nat();
   Succ(pred : Nat()) : Nat();
 }
 
+-- Plus(m, n, r) reads "m + n = r". Its two lines are the rules that define
+-- addition: zero plus n is n, and (m + 1) + n = r + 1 whenever m + n = r.
+--
+-- Addition is written as a type because a Pledge type cannot contain a function
+-- call. Eval below can mention Plus(m, n, r); it could not mention plus(m, n).
 data Plus(m : Nat(), n : Nat(), r : Nat()) : Type() {
   PlusZero(erased n : Nat()) : Plus(Zero(), n, n);
-  PlusSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(), p : Plus(m, n, r)) : Plus(Succ(m), n, Succ(r));
+  PlusSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(),
+      p : Plus(m, n, r)) : Plus(Succ(m), n, Succ(r));
 }
 
+-- The function that does the adding. Its second result ties it to the type
+-- above: evidence that what it returns is the sum.
+--
+-- `subterm` is how a recursive function shows that it ends: each recursive call
+-- must pass, for that parameter, a piece of the caller's own argument. Here
+-- that is k, the inside of m = Succ(k). The checker demands this of every
+-- recursive function; one that might loop forever is rejected.
+--
+-- `match m : _` : after the colon comes what the match produces, and `_` leaves
+-- it to the checker, which knows it from the return type. As an argument, `_`
+-- is an erased value the checker can work out for itself.
 fn plus(subterm m : Nat(), n : Nat()) -> (r : Nat(), erased p : Plus(m, n, r)) {
   match m : _ {
     Zero() => (n, PlusZero(_));
@@ -25,17 +59,23 @@ fn plus(subterm m : Nat(), n : Nat()) -> (r : Nat(), erased p : Plus(m, n, r)) {
   }
 }
 
+-- The source language: a number, or the sum of two expressions.
 data Expr() : Type() {
   Lit(n : Nat()) : Expr();
   Add(a : Expr(), b : Expr()) : Expr();
 }
 
+-- Eval(e, n) reads "expression e has the value n". This is the definition of
+-- what expressions mean, and it is what the compiler is judged against.
 data Eval(e : Expr(), n : Nat()) : Type() {
   EvalLit(erased n : Nat()) : Eval(Lit(n), n);
-  EvalAdd(erased a : Expr(), erased b : Expr(), erased m : Nat(), erased n : Nat(), erased r : Nat(),
-      pa : Eval(a, m), pb : Eval(b, n), p : Plus(m, n, r)) : Eval(Add(a, b), r);
+  EvalAdd(erased a : Expr(), erased b : Expr(), erased m : Nat(),
+      erased n : Nat(), erased r : Nat(), pa : Eval(a, m), pb : Eval(b, n),
+      p : Plus(m, n, r)) : Eval(Add(a, b), r);
 }
 
+-- An interpreter. It returns the value with evidence that this is the value
+-- Eval gives the expression.
 fn eval(subterm e : Expr()) -> (n : Nat(), erased p : Eval(e, n)) {
   match e : _ {
     Lit(n) => (n, EvalLit(_));
@@ -48,28 +88,50 @@ fn eval(subterm e : Expr()) -> (n : Nat(), erased p : Eval(e, n)) {
   }
 }
 
+-- The machine's stack. Stack(d) is a stack of exactly d numbers, so the type
+-- says how much there is to pop.
 data Stack(d : Nat()) : Type() {
   SNil() : Stack(Zero());
   SCons(erased d : Nat(), x : Nat(), rest : Stack(d)) : Stack(Succ(d));
 }
 
+-- Machine code. Each instruction holds the code that runs after it. Code(i, j)
+-- reads "started on a stack of i numbers, this ends on a stack of j":
+--   * HALT stops and leaves the stack as it is.
+--   * PUSH puts n on the stack, so the code after it starts one deeper.
+--   * ADD replaces the top two numbers by their sum. Its type starts at
+--     Succ(Succ(d)), a stack of at least two.
 data Code(i : Nat(), j : Nat()) : Type() {
   HALT(erased d : Nat()) : Code(d, d);
-  PUSH(erased d : Nat(), erased j : Nat(), n : Nat(), c : Code(Succ(d), j)) : Code(d, j);
-  ADD(erased d : Nat(), erased j : Nat(), c : Code(Succ(d), j)) : Code(Succ(Succ(d)), j);
+  PUSH(erased d : Nat(), erased j : Nat(), n : Nat(), c : Code(Succ(d), j))
+    : Code(d, j);
+  ADD(erased d : Nat(), erased j : Nat(), c : Code(Succ(d), j))
+    : Code(Succ(Succ(d)), j);
 }
 
-data Exec(i : Nat(), j : Nat(), c : Code(i, j), s : Stack(i), t : Stack(j)) : Type() {
+-- Exec(i, j, c, s, t) reads "running code c on stack s ends with stack t".
+-- There is one rule per instruction, and together they define what the machine
+-- does. In ExecAdd the stack starts with n on top of m, and the rest of the
+-- code runs with their sum r in their place.
+data Exec(i : Nat(), j : Nat(), c : Code(i, j), s : Stack(i),
+    t : Stack(j)) : Type() {
   ExecHalt(erased d : Nat(), erased s : Stack(d)) : Exec(d, d, HALT(d), s, s);
-  ExecPush(erased d : Nat(), erased j : Nat(), erased n : Nat(), erased c : Code(Succ(d), j), erased s : Stack(d),
-      erased t : Stack(j), x : Exec(Succ(d), j, c, SCons(d, n, s), t)) : Exec(d, j, PUSH(d, j, n, c), s, t);
-  ExecAdd(erased d : Nat(), erased j : Nat(), erased c : Code(Succ(d), j), erased m : Nat(), erased n : Nat(),
-      erased r : Nat(), erased s : Stack(d), erased t : Stack(j), p : Plus(m, n, r),
+  ExecPush(erased d : Nat(), erased j : Nat(), erased n : Nat(),
+      erased c : Code(Succ(d), j), erased s : Stack(d), erased t : Stack(j),
+      x : Exec(Succ(d), j, c, SCons(d, n, s), t))
+    : Exec(d, j, PUSH(d, j, n, c), s, t);
+  ExecAdd(erased d : Nat(), erased j : Nat(), erased c : Code(Succ(d), j),
+      erased m : Nat(), erased n : Nat(), erased r : Nat(), erased s : Stack(d),
+      erased t : Stack(j), p : Plus(m, n, r),
       x : Exec(Succ(d), j, c, SCons(d, r, s), t))
-    : Exec(Succ(Succ(d)), j, ADD(d, j, c), SCons(Succ(d), n, SCons(d, m, s)), t);
+    : Exec(Succ(Succ(d)), j, ADD(d, j, c), SCons(Succ(d), n, SCons(d, m, s)),
+        t);
 }
 
-fn exec(erased i : Nat(), erased j : Nat(), subterm c : Code(i, j), s : Stack(i))
+-- The machine. It returns the final stack with evidence that this is the stack
+-- Exec describes.
+fn exec(erased i : Nat(), erased j : Nat(), subterm c : Code(i, j),
+    s : Stack(i))
     -> (t : Stack(j), erased x : Exec(i, j, c, s, t)) {
   match c : _ {
     HALT(_) => (s, ExecHalt(_, _));
@@ -78,6 +140,10 @@ fn exec(erased i : Nat(), erased j : Nat(), subterm c : Code(i, j), s : Stack(i)
       (t, ExecPush(_, _, _, _, _, _, x))
     };
     ADD(_, _, c1) => {
+      -- A `let` with a constructor on the left takes a value apart. It is
+      -- accepted only when the value can have been built no other way. So no
+      -- test for an empty stack is needed: in this branch s has type
+      -- Stack(Succ(Succ(d))), and SNil() only builds a Stack(Zero()).
       let SCons(_, n, s1) = s;
       let SCons(_, m, s2) = s1;
       let (r, erased p) = plus(m, n);
@@ -87,32 +153,63 @@ fn exec(erased i : Nat(), erased j : Nat(), subterm c : Code(i, j), s : Stack(i)
   }
 }
 
-fn compile(subterm e : Expr(), erased n : Nat(), erased pe : Eval(e, n), erased d : Nat(), erased j : Nat(),
-    c : Code(Succ(d), j), erased s : Stack(d), erased t : Stack(j), erased x : Exec(Succ(d), j, c, SCons(d, n, s), t))
+-- The compiler. It is given the code c that should run afterwards, and returns
+-- code that works out e, pushes its value and carries on with c. Only e and c
+-- exist at run time.
+--
+-- The erased parameters and result state what "correct" means. Suppose e has
+-- the value n (pe), and c, run on stack s with n pushed, ends with stack t (x).
+-- Then the returned code k, run on s, ends with t as well (y).
+fn compile(subterm e : Expr(), erased n : Nat(), erased pe : Eval(e, n),
+    erased d : Nat(), erased j : Nat(), c : Code(Succ(d), j),
+    erased s : Stack(d), erased t : Stack(j),
+    erased x : Exec(Succ(d), j, c, SCons(d, n, s), t))
     -> (k : Code(d, j), erased y : Exec(d, j, k, s, t)) {
   match e : _ {
+    -- Matching on evidence tells the checker what the evidence says. pe has
+    -- type Eval(Lit(v), n), and the only rule for a Lit, EvalLit, gives Lit(v)
+    -- the value v. So inside the branch the checker knows that n is v, which is
+    -- what makes "PUSH v" the right code.
     Lit(v) => match erased pe : _ {
       EvalLit(_) => (PUSH(_, _, v, c), ExecPush(_, _, _, _, _, _, x));
     };
+    -- Built from the back. The code for b is told to carry on with ADD and then
+    -- c; the code for a is told to carry on with the code for b. So at run time
+    -- a's value is pushed, then b's, then the two are added.
     Add(a, b) => {
       let erased EvalAdd(_, _, m, n2, _, pa, pb, p) = pe;
-      let (kb, erased yb) = compile(subterm b, _, pb, _, _, ADD(_, _, c), SCons(_, m, s), _,
-        ExecAdd(_, _, _, _, _, _, _, _, p, x));
+      let (kb, erased yb) = compile(subterm b, _, pb, _, _, ADD(_, _, c),
+          SCons(_, m, s), _, ExecAdd(_, _, _, _, _, _, _, _, p, x));
       compile(subterm a, _, pa, _, _, kb, _, _, yb)
     };
   }
 }
 
-fn compileTop(e : Expr(), erased n : Nat(), erased pe : Eval(e, n), erased d : Nat(), erased s : Stack(d))
-    -> (k : Code(d, Succ(d)), erased y : Exec(d, Succ(d), k, s, SCons(d, n, s))) {
+-- A whole program: compile e, then stop.
+fn compileTop(e : Expr(), erased n : Nat(), erased pe : Eval(e, n),
+    erased d : Nat(), erased s : Stack(d))
+    -> (k : Code(d, Succ(d)),
+        erased y : Exec(d, Succ(d), k, s, SCons(d, n, s))) {
   compile(e, _, pe, _, _, HALT(_), _, _, ExecHalt(_, _))
 }
 
-goal fn (e : Expr(), erased n : Nat(), erased pe : Eval(e, n), erased d : Nat(), erased s : Stack(d))
-    -> (k : Code(d, Succ(d)), erased y : Exec(d, Succ(d), k, s, SCons(d, n, s)));
+-- `goal` states the theorem, here as the signature a function must have: for
+-- every expression e with value n and every stack s, it returns code k, and
+-- evidence that k run on s ends with n pushed on top of s. `qed compileTop` has
+-- the checker confirm that compileTop is such a function. The page reports
+-- whether the goal is proved.
+goal fn (e : Expr(), erased n : Nat(), erased pe : Eval(e, n), erased d : Nat(),
+    erased s : Stack(d))
+    -> (k : Code(d, Succ(d)),
+        erased y : Exec(d, Succ(d), k, s, SCons(d, n, s)));
 qed compileTop;
 
-let e = Add(Lit(Succ(Succ(Zero()))), Add(Lit(Succ(Zero())), Lit(Succ(Succ(Succ(Zero()))))));
+-- Code at the top level runs as soon as it is checked. This is 2 + (1 + 3).
+-- `print` shows a value next to the statement: the value 6, then the compiled
+-- code, then the stack after running that code on an empty stack. Erased fields
+-- are not there at run time and print as `_`.
+let e = Add(Lit(Succ(Succ(Zero()))),
+    Add(Lit(Succ(Zero())), Lit(Succ(Succ(Succ(Zero()))))));
 let (n, erased pe) = eval(e);
 print n;
 let (k, erased y) = compileTop(e, _, pe, _, SNil());

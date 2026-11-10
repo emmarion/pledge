@@ -1,9 +1,25 @@
 -- Balanced 2-3 trees.
--- Height-indexed 2-3 trees: balance by construction.
--- Tree(h) records the height in its index, which, as we understand it, keeps every root-to-Leaf path the same length.
--- Insertion either keeps the height or splits; the top-level insert returns erased evidence (Grow)
--- that the height stayed the same or grew by one. Key order is not proved here, only balance.
+-- A 2-3 tree is a search tree where a node has one key and two children, or two
+-- keys and three children, and every leaf is at the same depth. That last
+-- property, balance, keeps lookups fast, and it is the part insertion code
+-- tends to get wrong.
+--
+-- Here the height of a tree is part of its type, Tree(h), and a node only
+-- accepts children of equal height. Insertion code that unbalanced the tree
+-- would not type-check. Only balance is enforced: this file does not prove that
+-- the keys are in order.
+--
+-- If Pledge is new to you:
+--   * `data` declares a type and lists every way to build a value of it.
+--   * A type can take values as parameters. `Tree(h)` below is a separate type
+--     for each height h, and a function can demand a tree of one particular
+--     height.
+--   * `erased` marks what exists only for the checker. Running the program
+--     skips it, so the heights cost nothing at run time.
+--   * The Tutorial link at the top of the page teaches all of this in order.
 
+-- Numbers, built by hand: Zero(), then Succ(Zero()) for 1, and so on.
+-- Everything applied is written with parentheses, even with no arguments.
 data Nat() : Type() {
   Zero() : Nat();
   Succ(pred : Nat()) : Nat();
@@ -25,6 +41,12 @@ data Bool() : Type() {
   True() : Bool();
 }
 
+-- `subterm` is how a recursive function shows that it ends: each recursive call
+-- must pass, for that parameter, a piece of the caller's own argument. Here
+-- that is a1, the inside of a = Succ(a1). The checker demands this of every
+-- recursive function; one that might loop forever is rejected.
+--
+-- After the colon, a `match` says what it produces: here one value, an Order().
 fn compare(subterm a : Nat(), b : Nat()) -> (o : Order()) {
   match a : (o : Order()) {
     Zero() => match b : (o : Order()) {
@@ -38,57 +60,81 @@ fn compare(subterm a : Nat(), b : Nat()) -> (o : Order()) {
   }
 }
 
+-- Tree(h) is a tree of height h. Node2 and Node3 take children that all have
+-- the same height h, and build a tree of height h + 1. So, as far as we can
+-- tell, a tree with leaves at different depths cannot be built at all. The
+-- height is erased: it guides the checker and is not stored in the node.
 data Tree(h : Nat()) : Type() {
   Leaf() : Tree(Zero());
   Node2(erased h : Nat(), l : Tree(h), k : Nat(), r : Tree(h)) : Tree(Succ(h));
-  Node3(erased h : Nat(), l : Tree(h), k1 : Nat(), m : Tree(h), k2 : Nat(), r : Tree(h)) : Tree(Succ(h));
+  Node3(erased h : Nat(), l : Tree(h), k1 : Nat(), m : Tree(h), k2 : Nat(),
+      r : Tree(h)) : Tree(Succ(h));
 }
 
+-- What inserting into a Tree(h) gives back. Either a tree of the same height
+-- (Fits), or, when a node had no room left, two trees of that height and the
+-- key that belongs between them (Split), for the parent to deal with.
 data Ins(h : Nat()) : Type() {
   Fits(erased h : Nat(), t : Tree(h)) : Ins(h);
   Split(erased h : Nat(), l : Tree(h), k : Nat(), r : Tree(h)) : Ins(h);
 }
 
+-- Grow(h, g) reads "g is h or h + 1".
 data Grow(h : Nat(), g : Nat()) : Type() {
   Stay(erased h : Nat()) : Grow(h, h);
   Up(erased h : Nat()) : Grow(h, Succ(h));
 }
 
-fn into2L(erased h : Nat(), i : Ins(h), k : Nat(), r : Tree(h)) -> (o : Ins(Succ(h))) {
+-- Five helpers that put a child's insertion result back into its parent. The
+-- name gives the parent (a 2-node or a 3-node) and the child that was inserted
+-- into (Left, Middle or Right). A 2-node takes in a Split by becoming a 3-node.
+-- A 3-node has no room for that: it splits in two and hands its middle key up.
+-- In each case the checker confirms that the result has height h + 1. The `_`
+-- arguments are erased heights, which the checker works out for itself.
+fn into2L(erased h : Nat(), i : Ins(h), k : Nat(), r : Tree(h))
+    -> (o : Ins(Succ(h))) {
   match i : (o : Ins(Succ(h))) {
     Fits(_, l) => Fits(_, Node2(_, l, k, r));
     Split(_, a, x, b) => Fits(_, Node3(_, a, x, b, k, r));
   }
 }
 
-fn into2R(erased h : Nat(), l : Tree(h), k : Nat(), i : Ins(h)) -> (o : Ins(Succ(h))) {
+fn into2R(erased h : Nat(), l : Tree(h), k : Nat(), i : Ins(h))
+    -> (o : Ins(Succ(h))) {
   match i : (o : Ins(Succ(h))) {
     Fits(_, r) => Fits(_, Node2(_, l, k, r));
     Split(_, a, x, b) => Fits(_, Node3(_, l, k, a, x, b));
   }
 }
 
-fn into3L(erased h : Nat(), i : Ins(h), k1 : Nat(), m : Tree(h), k2 : Nat(), r : Tree(h)) -> (o : Ins(Succ(h))) {
+fn into3L(erased h : Nat(), i : Ins(h), k1 : Nat(), m : Tree(h), k2 : Nat(),
+    r : Tree(h))
+    -> (o : Ins(Succ(h))) {
   match i : (o : Ins(Succ(h))) {
     Fits(_, l) => Fits(_, Node3(_, l, k1, m, k2, r));
     Split(_, a, x, b) => Split(_, Node2(_, a, x, b), k1, Node2(_, m, k2, r));
   }
 }
 
-fn into3M(erased h : Nat(), l : Tree(h), k1 : Nat(), i : Ins(h), k2 : Nat(), r : Tree(h)) -> (o : Ins(Succ(h))) {
+fn into3M(erased h : Nat(), l : Tree(h), k1 : Nat(), i : Ins(h), k2 : Nat(),
+    r : Tree(h))
+    -> (o : Ins(Succ(h))) {
   match i : (o : Ins(Succ(h))) {
     Fits(_, m) => Fits(_, Node3(_, l, k1, m, k2, r));
     Split(_, a, x, b) => Split(_, Node2(_, l, k1, a), x, Node2(_, b, k2, r));
   }
 }
 
-fn into3R(erased h : Nat(), l : Tree(h), k1 : Nat(), m : Tree(h), k2 : Nat(), i : Ins(h)) -> (o : Ins(Succ(h))) {
+fn into3R(erased h : Nat(), l : Tree(h), k1 : Nat(), m : Tree(h), k2 : Nat(),
+    i : Ins(h))
+    -> (o : Ins(Succ(h))) {
   match i : (o : Ins(Succ(h))) {
     Fits(_, r) => Fits(_, Node3(_, l, k1, m, k2, r));
     Split(_, a, x, b) => Split(_, Node2(_, l, k1, m), k2, Node2(_, a, x, b));
   }
 }
 
+-- Insertion below the root. Equal() means the key is already in the tree.
 fn ins(erased h : Nat(), x : Nat(), subterm t : Tree(h)) -> (o : Ins(h)) {
   match t : (o : Ins(h)) {
     Leaf() => Split(_, Leaf(), x, Leaf());
@@ -109,13 +155,19 @@ fn ins(erased h : Nat(), x : Nat(), subterm t : Tree(h)) -> (o : Ins(h)) {
   }
 }
 
-fn insert(erased h : Nat(), x : Nat(), t : Tree(h)) -> (erased g : Nat(), erased p : Grow(h, g), u : Tree(g)) {
+-- Insertion at the root, the one place where a tree gets taller: if the root
+-- splits, a new root goes above the two halves. The new height g is not known
+-- before the call, so it is returned, erased, with evidence that it is h or
+-- h + 1.
+fn insert(erased h : Nat(), x : Nat(), t : Tree(h))
+    -> (erased g : Nat(), erased p : Grow(h, g), u : Tree(g)) {
   match ins(h, x, t) : (erased g : Nat(), erased p : Grow(h, g), u : Tree(g)) {
     Fits(_, u) => (h, Stay(h), u);
     Split(_, l, k, r) => (Succ(h), Up(h), Node2(h, l, k, r));
   }
 }
 
+-- Lookup. There is nothing to prove here; the height is only passed along.
 fn member(erased h : Nat(), x : Nat(), subterm t : Tree(h)) -> (b : Bool()) {
   match t : (b : Bool()) {
     Leaf() => False();
@@ -136,6 +188,8 @@ fn member(erased h : Nat(), x : Nat(), subterm t : Tree(h)) -> (b : Bool()) {
   }
 }
 
+-- Builds a tree by inserting the elements of a list one at a time. The `_` in
+-- the second `let` ignores the Grow evidence.
 fn fromList(subterm xs : List()) -> (erased h : Nat(), t : Tree(h)) {
   match xs : (erased h : Nat(), t : Tree(h)) {
     Nil() => (Zero(), Leaf());
@@ -147,16 +201,25 @@ fn fromList(subterm xs : List()) -> (erased h : Nat(), t : Tree(h)) {
   }
 }
 
-goal fn (erased h : Nat(), x : Nat(), t : Tree(h)) -> (erased g : Nat(), erased p : Grow(h, g), u : Tree(g));
+-- `goal` states the theorem, here as the signature a function must have: given
+-- a tree of height h it returns a tree of height g, with evidence that g is h
+-- or h + 1. `qed insert` has the checker confirm that insert is such a
+-- function. The page reports whether the goal is proved.
+goal fn (erased h : Nat(), x : Nat(), t : Tree(h))
+    -> (erased g : Nat(), erased p : Grow(h, g), u : Tree(g));
 qed insert;
 
+-- Code at the top level runs as soon as it is checked. `print` shows a value
+-- next to the statement: the tree holding 0 to 6, then whether 4 and 7 are in
+-- it. Erased fields are not there at run time and print as `_`.
 let n1 = Succ(Zero());
 let n2 = Succ(n1);
 let n3 = Succ(n2);
 let n4 = Succ(n3);
 let n5 = Succ(n4);
 let n6 = Succ(n5);
-let (erased h, t) = fromList(Cons(Zero(), Cons(n1, Cons(n2, Cons(n3, Cons(n4, Cons(n5, Cons(n6, Nil()))))))));
+let (erased h, t) = fromList(Cons(Zero(),
+    Cons(n1, Cons(n2, Cons(n3, Cons(n4, Cons(n5, Cons(n6, Nil()))))))));
 print t;
 print member(_, n4, t);
 print member(_, Succ(n6), t);

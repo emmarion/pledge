@@ -1,72 +1,136 @@
 -- Primality by reflection.
--- Prime(n) is meant to say that n >= 2 and that no d with 2 <= d < n divides n, where "d does not divide n"
--- is a division with a nonzero remainder (DivMod, NotDivides, NoDivBelow). As a check on that definition, the
--- goal (primeFactor) is that if Prime(n) and a * b = n, then a or b is one.
--- decidePrime works on binary numbers. ascend walks j up to floor(sqrt(n)), keeping the gap n - j * j and
--- subtracting 2j + 1 at each step, with an erased bound on the gap as its termination measure. Each k = j + 1
--- reached is tested against the primes listed so far, smallest first, stopping at the first p with p * p > k
--- (trial); k is added when none divides it (grow). PrimesBelow(l, k) is meant to say that l lists exactly the
--- primes below k; listedPrime and primeListed state its two directions against Prime, and buildPrime that a
--- number m >= 2 with no listed divisor p, p * p <= m, is prime when the list holds every prime up to sqrt(m).
--- Finally n is tested the same way. The result is IsPrime with a proof, Composite with a factor d, 2 <= d < n,
--- or BelowTwo. All Nat-level data and evidence is erased, so evaluation is meant to do only binary work: the
--- comptime let at the end uses it to prove 4999 prime, and the print shows the factor 29 of 899 = 29 * 31.
+-- A program that decides whether a number is prime and returns a proof with its
+-- answer. Running it on 4999 while the file is checked is then a proof that
+-- 4999 is prime, one that nobody wrote by hand. Proving a fact by running a
+-- verified program is called proof by reflection.
+--
+-- The file has four parts:
+--   * What "prime" means, as types over unary numbers, Succ(Succ(... Zero())).
+--     The goal is a check on that definition: if n is prime and a * b = n, then
+--     a or b is 1.
+--   * Facts about +, * and division. Each has a comment giving the fact. The
+--     bodies are the proofs, and can be skipped on a first read.
+--   * Binary subtraction and division, each returning evidence that ties its
+--     result to the unary numbers.
+--   * decidePrime. It counts k up from 2 to the square root of n, keeping a
+--     list of the primes found so far. It tests each k, and at the end n, by
+--     dividing by the listed primes p for which p * p is no bigger than the
+--     number tested.
+--
+-- The unary numbers and all the evidence are erased, so only the binary
+-- arithmetic is meant to run.
+--
+-- The unary and binary numbers, and many of the facts about + and *, are the
+-- same as in the Binary arithmetic example. This file adds to each of them.
+--
+-- If Pledge is new to you:
+--   * `data` declares a type and lists every way to build a value of it.
+--   * A type can take values as parameters. `Plus(m, n, r)` below is a separate
+--     type for each three numbers, and it is written so that a value of it can
+--     be built only when m + n = r. So a value of type `Plus(m, n, r)` is
+--     evidence, a proof, that m + n = r. Most types in this file are like that.
+--   * A function that takes evidence and returns evidence is a proof that one
+--     fact follows from others. The checker only accepts it if it covers every
+--     case.
+--   * `erased` marks what exists only for the checker. Running the program
+--     skips it, so here the proofs cost nothing at run time.
+--   * The Tutorial link at the top of the page teaches all of this in order.
 
+-- Numbers in unary, built by hand: Zero(), then Succ(Zero()) for 1, and so on.
+-- Everything applied is written with parentheses, even with no arguments.
 data Nat() : Type() {
   Zero() : Nat();
   Succ(pred : Nat()) : Nat();
 }
 
+-- Eq(A, x, y) reads "x and y are the same value of type A". Its one
+-- constructor, Refl, only builds Eq(A, x, x), so evidence exists only when the
+-- two sides are the same.
 data Eq(A : Type(), x : A, y : A) : Type() {
   Refl(erased A : Type(), erased x : A) : Eq(A, x, x);
 }
 
+-- A type with no constructors, so it has no values. A function that returns a
+-- False() shows that its arguments cannot all exist together. This is how
+-- "impossible" is said.
 data False() : Type() {}
 
+-- Or(A, B) reads "A or B": evidence of A (Inl) or evidence of B (Inr).
 data Or(A : Type(), B : Type()) : Type() {
   Inl(erased A : Type(), erased B : Type(), x : A) : Or(A, B);
   Inr(erased A : Type(), erased B : Type(), y : B) : Or(A, B);
 }
 
+-- NonZero(n) reads "n is not zero".
 data NonZero(n : Nat()) : Type() {
   NonZeroSucc(erased n : Nat()) : NonZero(Succ(n));
 }
 
+-- Plus(m, n, r) reads "m + n = r". Its two lines are the rules that define
+-- addition: zero plus n is n, and (m + 1) + n = r + 1 whenever m + n = r.
+--
+-- Addition is written as a type because a Pledge type cannot contain a function
+-- call. Another type can mention Plus(m, n, r); it could not mention
+-- plus(m, n).
 data Plus(m : Nat(), n : Nat(), r : Nat()) : Type() {
   PlusZero(erased n : Nat()) : Plus(Zero(), n, n);
-  PlusSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(), p : Plus(m, n, r)) : Plus(Succ(m), n, Succ(r));
+  PlusSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(),
+      p : Plus(m, n, r)) : Plus(Succ(m), n, Succ(r));
 }
 
+-- Times(m, n, r) reads "m * n = r": zero times n is zero, and
+-- (m + 1) * n = r + n whenever m * n = r.
 data Times(m : Nat(), n : Nat(), r : Nat()) : Type() {
   TimesZero(erased n : Nat()) : Times(Zero(), n, Zero());
-  TimesSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(), erased s : Nat(),
-      t : Times(m, n, r), p : Plus(r, n, s)) : Times(Succ(m), n, s);
+  TimesSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(),
+      erased s : Nat(), t : Times(m, n, r), p : Plus(r, n, s))
+    : Times(Succ(m), n, s);
 }
 
+-- Cmp(m, n) says which holds: m >= n (CmpGe) or m < n (CmpLt). There is no
+-- separate type for "less than". "n <= m" is said as Plus(n, k, m), "n plus
+-- some k is m", and "m < n" as Plus(Succ(m), k, n). The whole file reads Plus
+-- this way.
 data Cmp(m : Nat(), n : Nat()) : Type() {
-  CmpGe(erased m : Nat(), erased n : Nat(), erased k : Nat(), p : Plus(n, k, m)) : Cmp(m, n);
-  CmpLt(erased m : Nat(), erased n : Nat(), erased k : Nat(), p : Plus(Succ(m), k, n)) : Cmp(m, n);
+  CmpGe(erased m : Nat(), erased n : Nat(), erased k : Nat(), p : Plus(n, k, m))
+    : Cmp(m, n);
+  CmpLt(erased m : Nat(), erased n : Nat(), erased k : Nat(),
+      p : Plus(Succ(m), k, n)) : Cmp(m, n);
 }
 
+-- DivMod(n, d, q, r) reads "n divided by d is q, remainder r": q * d = t,
+-- t + r = n, and r < d.
 data DivMod(n : Nat(), d : Nat(), q : Nat(), r : Nat()) : Type() {
-  DivModIntro(erased n : Nat(), erased d : Nat(), erased q : Nat(), erased r : Nat(), erased t : Nat(),
-      erased k : Nat(), tq : Times(q, d, t), s : Plus(t, r, n), l : Plus(Succ(r), k, d)) : DivMod(n, d, q, r);
+  DivModIntro(erased n : Nat(), erased d : Nat(), erased q : Nat(),
+      erased r : Nat(), erased t : Nat(), erased k : Nat(), tq : Times(q, d, t),
+      s : Plus(t, r, n), l : Plus(Succ(r), k, d)) : DivMod(n, d, q, r);
 }
 
+-- NotDivides(d, n) reads "d does not divide n": dividing n by d leaves a
+-- remainder that is a Succ, so not zero.
 data NotDivides(d : Nat(), n : Nat()) : Type() {
-  NotDiv(erased d : Nat(), erased n : Nat(), erased q : Nat(), erased r : Nat(), m : DivMod(n, d, q, Succ(r)))
-    : NotDivides(d, n);
+  NotDiv(erased d : Nat(), erased n : Nat(), erased q : Nat(), erased r : Nat(),
+      m : DivMod(n, d, q, Succ(r))) : NotDivides(d, n);
 }
 
+-- NoDivBelow(n, k) reads "no d with 2 <= d < k divides n". For k = 2 there is
+-- nothing to show; each NoDivStep covers one more d.
 data NoDivBelow(n : Nat(), k : Nat()) : Type() {
   NoDivTwo(erased n : Nat()) : NoDivBelow(n, Succ(Succ(Zero())));
-  NoDivStep(erased n : Nat(), erased k : Nat(), rest : NoDivBelow(n, k), nd : NotDivides(k, n))
-    : NoDivBelow(n, Succ(k));
+  NoDivStep(erased n : Nat(), erased k : Nat(), rest : NoDivBelow(n, k),
+      nd : NotDivides(k, n)) : NoDivBelow(n, Succ(k));
 }
 
+-- Prime(n) reads "n is prime": no d with 2 <= d < n divides n. NoDivBelow can
+-- only be built for k >= 2, so n >= 2 is included.
 data Prime(n : Nat()) : Type() {
   PrimeIntro(erased n : Nat(), nd : NoDivBelow(n, n)) : Prime(n);
 }
+
+-- A positive number in binary, lowest digit outermost. One() is 1, P0(p) is p
+-- with a 0 written after it (twice p), and P1(p) is p with a 1 written after it
+-- (twice p, plus 1). So 6, binary 110, is P0(P1(One())).
+-- ---- Binary numbers, and the types the search uses ----
 
 data Pos() : Type() {
   One() : Pos();
@@ -74,88 +138,143 @@ data Pos() : Type() {
   P1(p : Pos()) : Pos();
 }
 
+-- Zero, or a positive number. Keeping zero apart leaves no room for leading
+-- zeros, so a number has only one binary form.
 data Bin() : Type() {
   BZ() : Bin();
   BP(p : Pos()) : Bin();
 }
 
+-- PosRep(p, n) reads "binary p and unary n are the same number". Plus(n, n, d)
+-- is how "d is twice n" is said.
 data PosRep(p : Pos(), n : Nat()) : Type() {
   RepOne() : PosRep(One(), Succ(Zero()));
-  RepP0(erased p : Pos(), erased n : Nat(), erased d : Nat(), r : PosRep(p, n), s : Plus(n, n, d)) : PosRep(P0(p), d);
-  RepP1(erased p : Pos(), erased n : Nat(), erased d : Nat(), r : PosRep(p, n), s : Plus(n, n, d))
-    : PosRep(P1(p), Succ(d));
+  RepP0(erased p : Pos(), erased n : Nat(), erased d : Nat(), r : PosRep(p, n),
+      s : Plus(n, n, d)) : PosRep(P0(p), d);
+  RepP1(erased p : Pos(), erased n : Nat(), erased d : Nat(), r : PosRep(p, n),
+      s : Plus(n, n, d)) : PosRep(P1(p), Succ(d));
 }
 
+-- The same for Bin.
 data Rep(b : Bin(), n : Nat()) : Type() {
   RepZ() : Rep(BZ(), Zero());
   RepP(erased p : Pos(), erased n : Nat(), r : PosRep(p, n)) : Rep(BP(p), n);
 }
 
+-- The result of subtracting n from m in binary. Above holds the difference z, a
+-- binary number that stands for the k with n + k = m. Below says that m < n,
+-- and holds nothing at run time.
 data Diff(m : Nat(), n : Nat()) : Type() {
-  Above(z : Bin(), erased m : Nat(), erased n : Nat(), erased k : Nat(), erased r : Rep(z, k),
-      erased p : Plus(n, k, m)) : Diff(m, n);
-  Below(erased m : Nat(), erased n : Nat(), erased k : Nat(), erased p : Plus(Succ(m), k, n)) : Diff(m, n);
+  Above(z : Bin(), erased m : Nat(), erased n : Nat(), erased k : Nat(),
+      erased r : Rep(z, k), erased p : Plus(n, k, m)) : Diff(m, n);
+  Below(erased m : Nat(), erased n : Nat(), erased k : Nat(),
+      erased p : Plus(Succ(m), k, n)) : Diff(m, n);
 }
 
+-- A list of unary numbers.
 data NatList() : Type() {
   NNil() : NatList();
   NCons(head : Nat(), tail : NatList()) : NatList();
 }
 
+-- Mem(x, l) reads "x is an element of l".
 data Mem(x : Nat(), l : NatList()) : Type() {
   Here(erased x : Nat(), erased l : NatList()) : Mem(x, NCons(x, l));
-  There(erased x : Nat(), erased y : Nat(), erased l : NatList(), m : Mem(x, l)) : Mem(x, NCons(y, l));
+  There(erased x : Nat(), erased y : Nat(), erased l : NatList(), m : Mem(x, l))
+    : Mem(x, NCons(y, l));
 }
 
+-- Factor(d, n) reads "d is a proper factor of n": q * d = n for some q, with
+-- 2 <= d and d < n.
 data Factor(d : Nat(), n : Nat()) : Type() {
-  FactorIntro(erased d : Nat(), erased n : Nat(), erased q : Nat(), erased a : Nat(), erased b : Nat(),
-      t : Times(q, d, n), lo : Plus(Succ(Succ(Zero())), a, d), hi : Plus(Succ(d), b, n)) : Factor(d, n);
+  FactorIntro(erased d : Nat(), erased n : Nat(), erased q : Nat(),
+      erased a : Nat(), erased b : Nat(), t : Times(q, d, n),
+      lo : Plus(Succ(Succ(Zero())), a, d), hi : Plus(Succ(d), b, n))
+    : Factor(d, n);
 }
 
+-- PrimesBelow(l, k) is meant to read "l holds exactly the primes below k",
+-- newest first. It is built one k at a time: k is added with evidence that it
+-- is prime, or skipped with evidence that it has a proper factor.
 data PrimesBelow(l : NatList(), k : Nat()) : Type() {
   PrimesTwo() : PrimesBelow(NNil(), Succ(Succ(Zero())));
-  PrimesAdd(erased l : NatList(), erased k : Nat(), rest : PrimesBelow(l, k), p : Prime(k))
-    : PrimesBelow(NCons(k, l), Succ(k));
-  PrimesSkip(erased l : NatList(), erased k : Nat(), erased d : Nat(), rest : PrimesBelow(l, k), f : Factor(d, k))
-    : PrimesBelow(l, Succ(k));
+  PrimesAdd(erased l : NatList(), erased k : Nat(), rest : PrimesBelow(l, k),
+      p : Prime(k)) : PrimesBelow(NCons(k, l), Succ(k));
+  PrimesSkip(erased l : NatList(), erased k : Nat(), erased d : Nat(),
+      rest : PrimesBelow(l, k), f : Factor(d, k)) : PrimesBelow(l, Succ(k));
 }
 
+-- BelowSquare(m, k) reads "m < k * k".
 data BelowSquare(m : Nat(), k : Nat()) : Type() {
-  BelowSquareIntro(erased m : Nat(), erased k : Nat(), erased kk : Nat(), erased w : Nat(), t : Times(k, k, kk),
-      p : Plus(Succ(m), w, kk)) : BelowSquare(m, k);
+  BelowSquareIntro(erased m : Nat(), erased k : Nat(), erased kk : Nat(),
+      erased w : Nat(), t : Times(k, k, kk), p : Plus(Succ(m), w, kk))
+    : BelowSquare(m, k);
 }
 
+-- Checked(l, m) reads "each p in l does not divide m, or is too big to matter:
+-- m < p * p".
 data Checked(l : NatList(), m : Nat()) : Type() {
   CheckedNil(erased m : Nat()) : Checked(NNil(), m);
-  CheckedCons(erased p : Nat(), erased l : NatList(), erased m : Nat(), rest : Checked(l, m),
-      o : Or(NotDivides(p, m), BelowSquare(m, p))) : Checked(NCons(p, l), m);
+  CheckedCons(erased p : Nat(), erased l : NatList(), erased m : Nat(),
+      rest : Checked(l, m), o : Or(NotDivides(p, m), BelowSquare(m, p)))
+    : Checked(NCons(p, l), m);
 }
 
+-- The list that exists at run time: the same primes in binary. Erased evidence
+-- ties each to its entry in the erased unary list l.
 data PList(l : NatList()) : Type() {
   PNil() : PList(NNil());
-  PCons(p : Pos(), erased n : Nat(), erased r : PosRep(p, n), erased l : NatList(), rest : PList(l))
-    : PList(NCons(n, l));
+  PCons(p : Pos(), erased n : Nat(), erased r : PosRep(p, n),
+      erased l : NatList(), rest : PList(l)) : PList(NCons(n, l));
 }
 
+-- The result of trying the listed primes on m. Found: a factor d. Pass: every
+-- prime on the list was checked. Stop: the same, and also m < k * k, so no
+-- larger prime needs trying.
 data Trial(l : NatList(), m : Nat(), k : Nat()) : Type() {
-  Found(erased l : NatList(), erased m : Nat(), erased k : Nat(), d : Bin(), erased e : Nat(), erased r : Rep(d, e),
-      erased f : Factor(e, m)) : Trial(l, m, k);
-  Pass(erased l : NatList(), erased m : Nat(), erased k : Nat(), erased c : Checked(l, m)) : Trial(l, m, k);
-  Stop(erased l : NatList(), erased m : Nat(), erased k : Nat(), erased c : Checked(l, m), erased u : BelowSquare(m, k))
+  Found(erased l : NatList(), erased m : Nat(), erased k : Nat(), d : Bin(),
+      erased e : Nat(), erased r : Rep(d, e), erased f : Factor(e, m))
     : Trial(l, m, k);
+  Pass(erased l : NatList(), erased m : Nat(), erased k : Nat(),
+      erased c : Checked(l, m)) : Trial(l, m, k);
+  Stop(erased l : NatList(), erased m : Nat(), erased k : Nat(),
+      erased c : Checked(l, m), erased u : BelowSquare(m, k)) : Trial(l, m, k);
 }
 
+-- decidePrime's answer: prime, with an erased proof; composite, with a factor d
+-- that is there at run time; or below two.
 data Verdict(n : Nat()) : Type() {
   IsPrime(erased n : Nat(), erased p : Prime(n)) : Verdict(n);
-  Composite(erased n : Nat(), d : Bin(), erased e : Nat(), erased r : Rep(d, e), erased f : Factor(e, n)) : Verdict(n);
-  BelowTwo(erased n : Nat(), erased k : Nat(), erased p : Plus(Succ(n), k, Succ(Succ(Zero())))) : Verdict(n);
+  Composite(erased n : Nat(), d : Bin(), erased e : Nat(), erased r : Rep(d, e),
+      erased f : Factor(e, n)) : Verdict(n);
+  BelowTwo(erased n : Nat(), erased k : Nat(),
+      erased p : Plus(Succ(n), k, Succ(Succ(Zero())))) : Verdict(n);
 }
 
 
-goal fn (erased n : Nat(), erased a : Nat(), erased b : Nat(), erased p : Prime(n), erased t : Times(a, b, n))
+-- `goal` states the theorem, here as the signature a function must have: given
+-- evidence that n is prime and that a * b = n, it returns evidence that a = 1
+-- or b = 1. `qed primeFactor`, further down, has the checker confirm that
+-- primeFactor is such a function. The page reports whether the goal is proved.
+goal fn (erased n : Nat(), erased a : Nat(), erased b : Nat(),
+    erased p : Prime(n), erased t : Times(a, b, n))
     -> (erased o : Or(Eq(Nat(), a, Succ(Zero())), Eq(Nat(), b, Succ(Zero()))));
 
-fn plus(subterm m : Nat(), n : Nat()) -> (erased r : Nat(), erased p : Plus(m, n, r)) {
+-- ---- Facts about + ----
+
+-- Adds two unary numbers. The sum is erased: this is for naming a sum inside a
+-- proof, and is not meant to run.
+--
+-- `subterm` is how a recursive function shows that it ends: each recursive call
+-- must pass, for that parameter, a piece of the caller's own argument. Here
+-- that is k, the inside of m = Succ(k). The checker demands this of every
+-- recursive function; one that might loop forever is rejected.
+--
+-- `match m : _` : after the colon comes what the match produces, and `_` leaves
+-- it to the checker, which knows it from the return type. As an argument, `_`
+-- is an erased value the checker can work out for itself.
+fn plus(subterm m : Nat(), n : Nat())
+    -> (erased r : Nat(), erased p : Plus(m, n, r)) {
   match m : _ {
     Zero() => (n, PlusZero(_));
     Succ(k) => {
@@ -165,6 +284,7 @@ fn plus(subterm m : Nat(), n : Nat()) -> (erased r : Nat(), erased p : Plus(m, n
   }
 }
 
+-- n + 0 = n. (The definition only gives 0 + n = n.)
 fn plusZeroRight(subterm n : Nat()) -> (erased p : Plus(n, Zero(), n)) {
   match n : _ {
     Zero() => PlusZero(_);
@@ -172,7 +292,10 @@ fn plusZeroRight(subterm n : Nat()) -> (erased p : Plus(n, Zero(), n)) {
   }
 }
 
-fn plusSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(), subterm p : Plus(m, n, r))
+-- If m + n = r then m + (n + 1) = r + 1. The recursion is on p, the evidence:
+-- evidence is data like any other and can be matched on and recursed over.
+fn plusSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(),
+    subterm p : Plus(m, n, r))
     -> (erased q : Plus(m, Succ(n), Succ(r))) {
   match p : _ {
     PlusZero(_) => PlusZero(_);
@@ -180,7 +303,9 @@ fn plusSucc(erased m : Nat(), erased n : Nat(), erased r : Nat(), subterm p : Pl
   }
 }
 
-fn plusComm(erased m : Nat(), erased n : Nat(), erased r : Nat(), subterm p : Plus(m, n, r))
+-- If m + n = r then n + m = r.
+fn plusComm(erased m : Nat(), erased n : Nat(), erased r : Nat(),
+    subterm p : Plus(m, n, r))
     -> (erased q : Plus(n, m, r)) {
   match p : _ {
     PlusZero(_) => plusZeroRight(n);
@@ -188,44 +313,63 @@ fn plusComm(erased m : Nat(), erased n : Nat(), erased r : Nat(), subterm p : Pl
   }
 }
 
-fn plusAssoc(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased ab : Nat(), erased r : Nat(),
-    subterm p : Plus(a, b, ab), q : Plus(ab, c, r))
-    -> (erased bc : Nat(), erased q1 : Plus(b, c, bc), erased q2 : Plus(a, bc, r)) {
+-- (a + b) + c = a + (b + c). A type cannot contain +, so every sum needs a
+-- name: ab for a + b, bc for b + c. That is why these facts take so many
+-- parameters.
+fn plusAssoc(erased a : Nat(), erased b : Nat(), erased c : Nat(),
+    erased ab : Nat(), erased r : Nat(), subterm p : Plus(a, b, ab),
+    q : Plus(ab, c, r))
+    -> (erased bc : Nat(), erased q1 : Plus(b, c, bc),
+        erased q2 : Plus(a, bc, r)) {
   match p : _ {
     PlusZero(_) => (r, q, PlusZero(_));
     PlusSucc(_, _, _, p1) => {
+      -- A `let` with a constructor on the left takes a value apart. It is
+      -- accepted only when the value can have been built no other way. In this
+      -- branch ab is a Succ, and PlusZero only talks about Zero() + n, so q
+      -- must be a PlusSucc.
       let PlusSucc(_, _, _, q3) = q;
-      let (erased bc, erased s1, erased s2) = plusAssoc(_, _, _, _, _, subterm p1, q3);
+      let (erased bc, erased s1, erased s2) =
+        plusAssoc(_, _, _, _, _, subterm p1, q3);
       (bc, s1, PlusSucc(_, _, _, s2))
     };
   }
 }
 
-fn plusAssocRev(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased bc : Nat(), erased r : Nat(),
-    p : Plus(b, c, bc), subterm q : Plus(a, bc, r))
-    -> (erased ab : Nat(), erased q1 : Plus(a, b, ab), erased q2 : Plus(ab, c, r)) {
+-- The same, read from right to left.
+fn plusAssocRev(erased a : Nat(), erased b : Nat(), erased c : Nat(),
+    erased bc : Nat(), erased r : Nat(), p : Plus(b, c, bc),
+    subterm q : Plus(a, bc, r))
+    -> (erased ab : Nat(), erased q1 : Plus(a, b, ab),
+        erased q2 : Plus(ab, c, r)) {
   match q : _ {
     PlusZero(_) => (b, PlusZero(_), p);
     PlusSucc(_, _, _, q3) => {
-      let (erased ab, erased s1, erased s2) = plusAssocRev(_, _, _, _, _, p, subterm q3);
+      let (erased ab, erased s1, erased s2) =
+        plusAssocRev(_, _, _, _, _, p, subterm q3);
       (Succ(ab), PlusSucc(_, _, _, s1), PlusSucc(_, _, _, s2))
     };
   }
 }
 
-fn exchange(erased w : Nat(), erased y : Nat(), erased x : Nat(), erased z : Nat(), erased wy : Nat(),
-    erased xz : Nat(), erased r : Nat(), p : Plus(w, y, wy), q : Plus(x, z, xz), s : Plus(wy, xz, r))
-    -> (erased wx : Nat(), erased yz : Nat(), erased p1 : Plus(w, x, wx), erased q1 : Plus(y, z, yz),
-        erased s1 : Plus(wx, yz, r)) {
+-- (w + y) + (x + z) = (w + x) + (y + z).
+fn exchange(erased w : Nat(), erased y : Nat(), erased x : Nat(),
+    erased z : Nat(), erased wy : Nat(), erased xz : Nat(), erased r : Nat(),
+    p : Plus(w, y, wy), q : Plus(x, z, xz), s : Plus(wy, xz, r))
+    -> (erased wx : Nat(), erased yz : Nat(), erased p1 : Plus(w, x, wx),
+        erased q1 : Plus(y, z, yz), erased s1 : Plus(wx, yz, r)) {
   let (erased yxz, erased s2, erased s3) = plusAssoc(_, _, _, _, _, p, s);
   let (erased yx, erased s4, erased s5) = plusAssocRev(_, _, _, _, _, q, s2);
-  let (erased yz, erased s7, erased s8) = plusAssoc(_, _, _, _, _, plusComm(_, _, _, s4), s5);
+  let (erased yz, erased s7, erased s8) =
+    plusAssoc(_, _, _, _, _, plusComm(_, _, _, s4), s5);
   let (erased wx, erased s9, erased s10) = plusAssocRev(_, _, _, _, _, s8, s3);
   (wx, yz, s9, s7, s10)
 }
 
-fn plusFunc(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased d : Nat(),
-    subterm p : Plus(a, b, c), q : Plus(a, b, d)) -> (erased e : Eq(Nat(), c, d)) {
+-- A sum has one value: if a + b = c and a + b = d, then c = d.
+fn plusFunc(erased a : Nat(), erased b : Nat(), erased c : Nat(),
+    erased d : Nat(), subterm p : Plus(a, b, c), q : Plus(a, b, d))
+    -> (erased e : Eq(Nat(), c, d)) {
   match p : _ {
     PlusZero(_) => {
       let PlusZero(_) = q;
@@ -233,6 +377,11 @@ fn plusFunc(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased d : Nat
     };
     PlusSucc(_, _, _, p1) => {
       let PlusSucc(_, _, _, q1) = q;
+      -- The recursive call returns evidence that the two smaller sums are
+      -- equal. An equation is used by matching on its evidence: Refl only
+      -- builds Eq(A, x, x), so inside the branch the checker treats the two
+      -- sides as one value. Then c and d are visibly the same, and Refl is
+      -- accepted as the result.
       match erased plusFunc(_, _, _, _, subterm p1, q1) : _ {
         Refl(_, _) => Refl(_, _);
       }
@@ -240,8 +389,10 @@ fn plusFunc(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased d : Nat
   }
 }
 
-fn plusCancel(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased d : Nat(),
-    subterm p : Plus(a, b, c), q : Plus(a, d, c)) -> (erased e : Eq(Nat(), b, d)) {
+-- If a + b = c and a + d = c then b = d.
+fn plusCancel(erased a : Nat(), erased b : Nat(), erased c : Nat(),
+    erased d : Nat(), subterm p : Plus(a, b, c), q : Plus(a, d, c))
+    -> (erased e : Eq(Nat(), b, d)) {
   match p : _ {
     PlusZero(_) => {
       let PlusZero(_) = q;
@@ -254,36 +405,48 @@ fn plusCancel(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased d : N
   }
 }
 
-fn plusMove(erased a : Nat(), erased b : Nat(), erased c : Nat(), p : Plus(Succ(a), b, c))
+-- If (a + 1) + b = c then a + (b + 1) = c.
+fn plusMove(erased a : Nat(), erased b : Nat(), erased c : Nat(),
+    p : Plus(Succ(a), b, c))
     -> (erased q : Plus(a, Succ(b), c)) {
   let PlusSucc(_, _, _, p1) = p;
   plusSucc(_, _, _, p1)
 }
 
-fn plusMoveBack(erased a : Nat(), erased b : Nat(), erased c : Nat(), p : Plus(a, Succ(b), c))
+-- The same, the other way.
+fn plusMoveBack(erased a : Nat(), erased b : Nat(), erased c : Nat(),
+    p : Plus(a, Succ(b), c))
     -> (erased q : Plus(Succ(a), b, c)) {
   let erased PlusSucc(_, _, _, p1) = plusComm(_, _, _, p);
   PlusSucc(_, _, _, plusComm(_, _, _, p1))
 }
 
-fn succBoth(erased a : Nat(), erased b : Nat(), erased c : Nat(), p : Plus(a, b, c))
+-- If a + b = c then (a + 1) + (b + 1) = c + 2.
+fn succBoth(erased a : Nat(), erased b : Nat(), erased c : Nat(),
+    p : Plus(a, b, c))
     -> (erased q : Plus(Succ(a), Succ(b), Succ(Succ(c)))) {
   PlusSucc(_, _, _, plusSucc(_, _, _, p))
 }
 
-fn noGrow(erased a : Nat(), erased b : Nat(), subterm p : Plus(a, Succ(b), a)) -> (erased f : False()) {
+-- a + (b + 1) = a is impossible.
+fn noGrow(erased a : Nat(), erased b : Nat(), subterm p : Plus(a, Succ(b), a))
+    -> (erased f : False()) {
   match p : _ {
     PlusSucc(_, _, _, p1) => noGrow(_, _, subterm p1);
   }
 }
 
-fn antisym(erased a : Nat(), erased b : Nat(), erased i : Nat(), erased w : Nat(), p : Plus(a, i, b),
-    q : Plus(b, Succ(w), a)) -> (erased f : False()) {
+-- a <= b and b < a cannot both hold.
+fn antisym(erased a : Nat(), erased b : Nat(), erased i : Nat(),
+    erased w : Nat(), p : Plus(a, i, b), q : Plus(b, Succ(w), a))
+    -> (erased f : False()) {
   let (erased c, erased p1, erased p2) = plusAssoc(_, _, _, _, _, p, q);
   let erased PlusSucc(_, _, _, _) = plusComm(_, _, _, p1);
   noGrow(_, _, p2)
 }
 
+-- For any m and n, either m >= n or m < n. Everything here is erased: it is
+-- used to split a proof into two cases.
 fn compare(subterm m : Nat(), n : Nat()) -> (erased o : Cmp(m, n)) {
   match m : _ {
     Zero() => match n : _ {
@@ -300,11 +463,14 @@ fn compare(subterm m : Nat(), n : Nat()) -> (erased o : Cmp(m, n)) {
   }
 }
 
-fn dsum(erased a : Nat(), erased b : Nat(), erased r : Nat(), erased ma : Nat(), erased nb : Nat(),
-    erased mr : Nat(), p : Plus(a, b, r), pa : Plus(a, a, ma), pb : Plus(b, b, nb), pr : Plus(r, r, mr))
+-- If a + b = r then 2a + 2b = 2r.
+fn dsum(erased a : Nat(), erased b : Nat(), erased r : Nat(), erased ma : Nat(),
+    erased nb : Nat(), erased mr : Nat(), p : Plus(a, b, r),
+    pa : Plus(a, a, ma), pb : Plus(b, b, nb), pr : Plus(r, r, mr))
     -> (erased q : Plus(ma, nb, mr)) {
   let (erased d, erased s) = plus(ma, nb);
-  let (erased wx, erased yz, erased p1, erased p2, erased q) = exchange(_, _, _, _, _, _, _, pa, pb, s);
+  let (erased wx, erased yz, erased p1, erased p2, erased q) =
+    exchange(_, _, _, _, _, _, _, pa, pb, s);
   match erased plusFunc(_, _, _, _, p1, p) : _ {
     Refl(_, _) => match erased plusFunc(_, _, _, _, p2, p) : _ {
       Refl(_, _) => match erased plusFunc(_, _, _, _, q, pr) : _ {
@@ -314,13 +480,18 @@ fn dsum(erased a : Nat(), erased b : Nat(), erased r : Nat(), erased ma : Nat(),
   }
 }
 
-fn ltDouble(erased a : Nat(), erased b : Nat(), erased k : Nat(), erased a2 : Nat(), erased b2 : Nat(),
-    l : Plus(Succ(a), k, b), sa : Plus(a, a, a2), sb : Plus(b, b, b2))
+-- If a < b then 2a + 2 <= 2b.
+fn ltDouble(erased a : Nat(), erased b : Nat(), erased k : Nat(),
+    erased a2 : Nat(), erased b2 : Nat(), l : Plus(Succ(a), k, b),
+    sa : Plus(a, a, a2), sb : Plus(b, b, b2))
     -> (erased w : Nat(), erased p : Plus(Succ(Succ(a2)), w, b2)) {
   let (erased w, erased sk) = plus(k, k);
   (w, dsum(_, _, _, _, _, _, l, succBoth(_, _, _, sa), sk, sb))
 }
 
+-- ---- Facts about * ----
+
+-- m * 0 = 0.
 fn timesZeroRight(subterm m : Nat()) -> (erased t : Times(m, Zero(), Zero())) {
   match m : _ {
     Zero() => TimesZero(_);
@@ -328,9 +499,12 @@ fn timesZeroRight(subterm m : Nat()) -> (erased t : Times(m, Zero(), Zero())) {
   }
 }
 
-fn timesPlusLeft(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased n : Nat(), erased ta : Nat(),
-    erased tb : Nat(), erased t : Nat(), subterm p : Plus(a, b, c), t1 : Times(a, n, ta), t2 : Times(b, n, tb),
-    q : Plus(ta, tb, t)) -> (erased u : Times(c, n, t)) {
+-- (a + b) * n = a * n + b * n.
+fn timesPlusLeft(erased a : Nat(), erased b : Nat(), erased c : Nat(),
+    erased n : Nat(), erased ta : Nat(), erased tb : Nat(), erased t : Nat(),
+    subterm p : Plus(a, b, c), t1 : Times(a, n, ta), t2 : Times(b, n, tb),
+    q : Plus(ta, tb, t))
+    -> (erased u : Times(c, n, t)) {
   match p : _ {
     PlusZero(_) => {
       let TimesZero(_) = t1;
@@ -340,37 +514,48 @@ fn timesPlusLeft(erased a : Nat(), erased b : Nat(), erased c : Nat(), erased n 
     PlusSucc(_, _, _, p1) => {
       let TimesSucc(_, _, _, _, t3, s1) = t1;
       let (erased ntb, erased s2, erased s3) = plusAssoc(_, _, _, _, _, s1, q);
-      let (erased x, erased s4, erased s5) = plusAssocRev(_, _, _, _, _, plusComm(_, _, _, s2), s3);
-      TimesSucc(_, _, _, _, timesPlusLeft(_, _, _, _, _, _, _, subterm p1, t3, t2, s4), s5)
+      let (erased x, erased s4, erased s5) =
+        plusAssocRev(_, _, _, _, _, plusComm(_, _, _, s2), s3);
+      TimesSucc(_, _, _, _,
+          timesPlusLeft(_, _, _, _, _, _, _, subterm p1, t3, t2, s4), s5)
     };
   }
 }
 
-fn timesDouble(erased a : Nat(), erased ma : Nat(), erased n : Nat(), erased t : Nat(),
-    sa : Plus(a, a, ma), u : Times(a, n, t))
-    -> (erased d : Nat(), erased q : Plus(t, t, d), erased v : Times(ma, n, d)) {
+-- (2a) * n = 2 * (a * n).
+fn timesDouble(erased a : Nat(), erased ma : Nat(), erased n : Nat(),
+    erased t : Nat(), sa : Plus(a, a, ma), u : Times(a, n, t))
+    -> (erased d : Nat(), erased q : Plus(t, t, d),
+        erased v : Times(ma, n, d)) {
   let (erased d, erased q) = plus(t, t);
   (d, q, timesPlusLeft(_, _, _, _, _, _, _, sa, u, u, q))
 }
 
-fn timesSplit(erased a : Nat(), erased k : Nat(), erased a2 : Nat(), erased d : Nat(), erased n : Nat(),
-    subterm p : Plus(a, k, a2), t : Times(a2, d, n))
-    -> (erased x : Nat(), erased y : Nat(), erased tx : Times(a, d, x), erased ty : Times(k, d, y),
-        erased s : Plus(x, y, n)) {
+-- The same fact used the other way: a product (a + k) * d splits into a * d and
+-- k * d.
+fn timesSplit(erased a : Nat(), erased k : Nat(), erased a2 : Nat(),
+    erased d : Nat(), erased n : Nat(), subterm p : Plus(a, k, a2),
+    t : Times(a2, d, n))
+    -> (erased x : Nat(), erased y : Nat(), erased tx : Times(a, d, x),
+        erased ty : Times(k, d, y), erased s : Plus(x, y, n)) {
   match p : _ {
     PlusZero(_) => (Zero(), n, TimesZero(_), t, PlusZero(_));
     PlusSucc(_, _, _, p1) => {
       let TimesSucc(_, _, _, _, t1, q) = t;
-      let (erased x, erased y, erased tx, erased ty, erased s) = timesSplit(_, _, _, _, _, subterm p1, t1);
+      let (erased x, erased y, erased tx, erased ty, erased s) =
+        timesSplit(_, _, _, _, _, subterm p1, t1);
       let (erased yd, erased s2, erased s3) = plusAssoc(_, _, _, _, _, s, q);
-      let (erased x1, erased s4, erased s5) = plusAssocRev(_, _, _, _, _, plusComm(_, _, _, s2), s3);
+      let (erased x1, erased s4, erased s5) =
+        plusAssocRev(_, _, _, _, _, plusComm(_, _, _, s2), s3);
       (x1, y, TimesSucc(_, _, _, _, tx, s4), ty, s5)
     };
   }
 }
 
-fn timesFunc(erased a : Nat(), erased b : Nat(), erased x : Nat(), erased y : Nat(),
-    subterm t : Times(a, b, x), u : Times(a, b, y)) -> (erased e : Eq(Nat(), x, y)) {
+-- A product has one value: if a * b = x and a * b = y, then x = y.
+fn timesFunc(erased a : Nat(), erased b : Nat(), erased x : Nat(),
+    erased y : Nat(), subterm t : Times(a, b, x), u : Times(a, b, y))
+    -> (erased e : Eq(Nat(), x, y)) {
   match t : _ {
     TimesZero(_) => {
       let TimesZero(_) = u;
@@ -385,16 +570,21 @@ fn timesFunc(erased a : Nat(), erased b : Nat(), erased x : Nat(), erased y : Na
   }
 }
 
-fn timesSuccRight(erased a : Nat(), erased b : Nat(), erased n : Nat(), subterm t : Times(a, b, n))
-    -> (erased r : Nat(), erased u : Times(a, Succ(b), r), erased p : Plus(n, a, r)) {
+-- a * (b + 1) = a * b + a.
+fn timesSuccRight(erased a : Nat(), erased b : Nat(), erased n : Nat(),
+    subterm t : Times(a, b, n))
+    -> (erased r : Nat(), erased u : Times(a, Succ(b), r),
+        erased p : Plus(n, a, r)) {
   match t : _ {
     TimesZero(_) => (Zero(), TimesZero(_), PlusZero(_));
     TimesSucc(_, _, _, _, t1, p1) => {
-      let (erased r1, erased u1, erased q1) = timesSuccRight(_, _, _, subterm t1);
+      let (erased r1, erased u1, erased q1) =
+        timesSuccRight(_, _, _, subterm t1);
       let (erased r, erased q2) = plus(r1, Succ(b));
       let (erased x, erased q3, erased q4) = plusAssoc(_, _, _, _, _, q1, q2);
       let erased PlusSucc(_, _, _, q5) = plusComm(_, _, _, q3);
-      let (erased y, erased q6, erased q7) = plusAssocRev(_, _, _, _, _, plusSucc(_, _, _, q5), q4);
+      let (erased y, erased q6, erased q7) =
+        plusAssocRev(_, _, _, _, _, plusSucc(_, _, _, q5), q4);
       match erased plusFunc(_, _, _, _, q6, p1) : _ {
         Refl(_, _) => (r, TimesSucc(_, _, _, _, u1, q2), q7);
       }
@@ -402,12 +592,15 @@ fn timesSuccRight(erased a : Nat(), erased b : Nat(), erased n : Nat(), subterm 
   }
 }
 
-fn timesComm(erased a : Nat(), erased b : Nat(), erased n : Nat(), subterm t : Times(a, b, n))
+-- If a * b = n then b * a = n.
+fn timesComm(erased a : Nat(), erased b : Nat(), erased n : Nat(),
+    subterm t : Times(a, b, n))
     -> (erased u : Times(b, a, n)) {
   match t : _ {
     TimesZero(_) => timesZeroRight(b);
     TimesSucc(_, _, _, _, t1, p1) => {
-      let (erased r, erased u1, erased q1) = timesSuccRight(_, _, _, timesComm(_, _, _, subterm t1));
+      let (erased r, erased u1, erased q1) =
+        timesSuccRight(_, _, _, timesComm(_, _, _, subterm t1));
       match erased plusFunc(_, _, _, _, q1, p1) : _ {
         Refl(_, _) => u1;
       }
@@ -415,26 +608,36 @@ fn timesComm(erased a : Nat(), erased b : Nat(), erased n : Nat(), subterm t : T
   }
 }
 
+-- ---- Division, and the goal ----
+
+-- Any n can be divided by any nonzero d, with a remainder below d. This is
+-- unary and erased: it is for use inside proofs and is not meant to run.
 fn divmod(subterm n : Nat(), d : Nat(), z : NonZero(d))
     -> (erased q : Nat(), erased r : Nat(), erased dm : DivMod(n, d, q, r)) {
   match n : _ {
     Zero() => {
       let NonZeroSucc(d1) = z;
-      (Zero(), Zero(), DivModIntro(_, _, _, _, Zero(), d1, TimesZero(_), PlusZero(_), PlusSucc(_, _, _, PlusZero(_))))
+      (Zero(), Zero(),
+          DivModIntro(_, _, _, _, Zero(), d1, TimesZero(_), PlusZero(_),
+              PlusSucc(_, _, _, PlusZero(_))))
     };
     Succ(n1) => {
       let (erased q, erased r, erased dm) = divmod(subterm n1, d, z);
       let erased DivModIntro(_, _, _, _, t, _, tq, s, l) = dm;
       match erased plusComm(_, _, _, l) : _ {
-        PlusZero(_) => (Succ(q), Zero(), DivModIntro(_, _, _, _, n, r, TimesSucc(_, _, _, _, tq, plusSucc(_, _, _, s)),
-          plusZeroRight(n), PlusSucc(_, _, _, PlusZero(_))));
-        PlusSucc(k1, _, _, l1) => (q, Succ(r), DivModIntro(_, _, _, _, t, k1, tq, plusSucc(_, _, _, s),
-          PlusSucc(_, _, _, plusComm(_, _, _, l1))));
+        PlusZero(_) => (Succ(q), Zero(),
+            DivModIntro(_, _, _, _, n, r,
+                TimesSucc(_, _, _, _, tq, plusSucc(_, _, _, s)),
+                plusZeroRight(n), PlusSucc(_, _, _, PlusZero(_))));
+        PlusSucc(k1, _, _, l1) => (q, Succ(r),
+            DivModIntro(_, _, _, _, t, k1, tq, plusSucc(_, _, _, s),
+                PlusSucc(_, _, _, plusComm(_, _, _, l1))));
       }
     };
   }
 }
 
+-- NoDivBelow(n, k) only exists for k >= 2.
 fn ndTwo(erased n : Nat(), erased k : Nat(), subterm nd : NoDivBelow(n, k))
     -> (erased j : Nat(), erased e : Eq(Nat(), k, Succ(Succ(j)))) {
   match nd : _ {
@@ -448,30 +651,43 @@ fn ndTwo(erased n : Nat(), erased k : Nat(), subterm nd : NoDivBelow(n, k))
   }
 }
 
-fn lookup(erased n : Nat(), erased d : Nat(), erased k : Nat(), erased j : Nat(), subterm nd : NoDivBelow(n, k),
-    p : Plus(Succ(Succ(Succ(d))), j, k)) -> (erased r : NotDivides(Succ(Succ(d)), n)) {
+-- Takes one fact out of NoDivBelow(n, k): a d with 2 <= d < k does not divide
+-- n. The d here is written Succ(Succ(d)).
+fn lookup(erased n : Nat(), erased d : Nat(), erased k : Nat(),
+    erased j : Nat(), subterm nd : NoDivBelow(n, k),
+    p : Plus(Succ(Succ(Succ(d))), j, k))
+    -> (erased r : NotDivides(Succ(Succ(d)), n)) {
   match nd : _ {
     NoDivTwo(_) => {
       let PlusSucc(_, _, _, p1) = p;
       let PlusSucc(_, _, _, p2) = p1;
+      -- A match with no branches says "this cannot happen", and the checker has
+      -- to agree. Here p2 would say that (d + 1) + j = 0, and neither rule of
+      -- Plus builds that.
       match p2 : _ {}
     };
     NoDivStep(_, _, rest, nd1) => {
       let PlusSucc(_, _, _, p1) = p;
       match erased plusComm(_, _, _, p1) : _ {
         PlusZero(_) => nd1;
-        PlusSucc(_, _, _, p2) => lookup(_, _, _, _, subterm rest, PlusSucc(_, _, _, plusComm(_, _, _, p2)));
+        PlusSucc(_, _, _, p2) => lookup(_, _, _, _, subterm rest,
+            PlusSucc(_, _, _, plusComm(_, _, _, p2)));
       }
     };
   }
 }
 
-fn divUniqueFalse(erased n : Nat(), erased d : Nat(), erased q : Nat(), erased r : Nat(), erased a : Nat(),
-    dm : DivMod(n, d, q, Succ(r)), t : Times(a, d, n)) -> (erased f : False()) {
+-- If dividing n by d leaves a remainder that is not zero, then n is not a * d
+-- for any a.
+fn divUniqueFalse(erased n : Nat(), erased d : Nat(), erased q : Nat(),
+    erased r : Nat(), erased a : Nat(), dm : DivMod(n, d, q, Succ(r)),
+    t : Times(a, d, n))
+    -> (erased f : False()) {
   let DivModIntro(_, _, _, _, _, _, tq, s, l) = dm;
   match erased compare(a, q) : _ {
     CmpGe(_, _, _, p) => {
-      let (erased x, erased y, erased tx, erased ty, erased sxy) = timesSplit(_, _, _, _, _, p, t);
+      let (erased x, erased y, erased tx, erased ty, erased sxy) =
+        timesSplit(_, _, _, _, _, p, t);
       match erased timesFunc(_, _, _, _, tq, tx) : _ {
         Refl(_, _) => match erased plusCancel(_, _, _, _, s, sxy) : _ {
           Refl(_, _) => {
@@ -482,11 +698,13 @@ fn divUniqueFalse(erased n : Nat(), erased d : Nat(), erased q : Nat(), erased r
       }
     };
     CmpLt(_, _, _, p) => {
-      let (erased x, erased y, erased tx, erased ty, erased sxy) = timesSplit(_, _, _, _, _, p, tq);
+      let (erased x, erased y, erased tx, erased ty, erased sxy) =
+        timesSplit(_, _, _, _, _, p, tq);
       let erased TimesSucc(_, _, _, _, tu, pu) = tx;
       match erased timesFunc(_, _, _, _, t, tu) : _ {
         Refl(_, _) => {
-          let (erased z, erased p1, erased p2) = plusAssoc(_, _, _, _, _, pu, sxy);
+          let (erased z, erased p1, erased p2) =
+            plusAssoc(_, _, _, _, _, pu, sxy);
           antisym(_, _, _, _, p2, s)
         };
       }
@@ -494,14 +712,20 @@ fn divUniqueFalse(erased n : Nat(), erased d : Nat(), erased q : Nat(), erased r
   }
 }
 
-fn noFactor(erased n : Nat(), erased d : Nat(), erased k : Nat(), erased j : Nat(), erased a : Nat(),
-    nd : NoDivBelow(n, k), p : Plus(Succ(Succ(Succ(d))), j, k), t : Times(a, Succ(Succ(d)), n))
+-- So when NoDivBelow(n, k) holds, no d with 2 <= d < k is a factor of n.
+fn noFactor(erased n : Nat(), erased d : Nat(), erased k : Nat(),
+    erased j : Nat(), erased a : Nat(), nd : NoDivBelow(n, k),
+    p : Plus(Succ(Succ(Succ(d))), j, k), t : Times(a, Succ(Succ(d)), n))
     -> (erased f : False()) {
   let erased NotDiv(_, _, _, _, dm) = lookup(_, _, _, _, nd, p);
   divUniqueFalse(_, _, _, _, _, dm, t)
 }
 
-fn primeFactor(erased n : Nat(), erased a : Nat(), erased b : Nat(), erased p : Prime(n), erased t : Times(a, b, n))
+-- The goal. By cases on b: 0 is impossible, 1 is the answer, and a b from 2 up
+-- is either below n, which Prime(n) rules out, or at least n, which leaves only
+-- a = 1. Each `match ... {}` is a case shown to be impossible.
+fn primeFactor(erased n : Nat(), erased a : Nat(), erased b : Nat(),
+    erased p : Prime(n), erased t : Times(a, b, n))
     -> (erased o : Or(Eq(Nat(), a, Succ(Zero())), Eq(Nat(), b, Succ(Zero())))) {
   let erased PrimeIntro(_, nd) = p;
   let (erased n2, erased e) = ndTwo(_, _, nd);
@@ -511,7 +735,8 @@ fn primeFactor(erased n : Nat(), erased a : Nat(), erased b : Nat(), erased p : 
       Succ(b1) => match erased b1 : _ {
         Zero() => Inr(_, _, Refl(Nat(), b));
         Succ(b2) => match erased compare(b, n) : _ {
-          CmpLt(_, _, _, lt) => match erased noFactor(_, _, _, _, _, nd, lt, t) : _ {};
+          CmpLt(_, _, _, lt) =>
+            match erased noFactor(_, _, _, _, _, nd, lt, t) : _ {};
           CmpGe(_, _, _, ge) => match erased a : _ {
             Zero() => match erased t : _ {};
             Succ(a1) => match erased a1 : _ {
@@ -520,7 +745,8 @@ fn primeFactor(erased n : Nat(), erased a : Nat(), erased b : Nat(), erased p : 
                 let erased TimesSucc(_, _, _, _, t1, p1) = t;
                 let erased TimesSucc(_, _, _, _, _, p2) = t1;
                 let erased PlusSucc(_, _, _, _) = plusComm(_, _, _, p2);
-                match erased antisym(_, _, _, _, ge, plusComm(_, _, _, p1)) : _ {}
+                match erased antisym(_, _, _, _, ge,
+                    plusComm(_, _, _, p1)) : _ {}
               };
             };
           };
@@ -532,7 +758,14 @@ fn primeFactor(erased n : Nat(), erased a : Nat(), erased b : Nat(), erased p : 
 
 qed primeFactor;
 
-fn times(subterm m : Nat(), n : Nat()) -> (erased r : Nat(), erased t : Times(m, n, r)) {
+-- ---- Facts for the search ----
+-- What the proof of decidePrime needs: squares, and how a list of primes rules
+-- out divisors.
+
+-- Multiplies two unary numbers. Erased, like plus: it names a product inside a
+-- proof.
+fn times(subterm m : Nat(), n : Nat())
+    -> (erased r : Nat(), erased t : Times(m, n, r)) {
   match m : _ {
     Zero() => (Zero(), TimesZero(_));
     Succ(k) => {
@@ -543,8 +776,11 @@ fn times(subterm m : Nat(), n : Nat()) -> (erased r : Nat(), erased t : Times(m,
   }
 }
 
-fn timesAssoc(erased q : Nat(), erased j : Nat(), erased m : Nat(), erased q2 : Nat(), erased i : Nat(),
-    subterm t : Times(q, j, m), u : Times(q2, i, j)) -> (erased c : Nat(), erased v : Times(c, i, m)) {
+-- If j divides m and i divides j, then i divides m.
+fn timesAssoc(erased q : Nat(), erased j : Nat(), erased m : Nat(),
+    erased q2 : Nat(), erased i : Nat(), subterm t : Times(q, j, m),
+    u : Times(q2, i, j))
+    -> (erased c : Nat(), erased v : Times(c, i, m)) {
   match t : _ {
     TimesZero(_) => (Zero(), TimesZero(_));
     TimesSucc(_, _, _, _, t1, p1) => {
@@ -555,10 +791,15 @@ fn timesAssoc(erased q : Nat(), erased j : Nat(), erased m : Nat(), erased q2 : 
   }
 }
 
-fn squareMono(erased a : Nat(), erased i : Nat(), erased b : Nat(), erased aa : Nat(), erased bb : Nat(),
-    le : Plus(a, i, b), ta : Times(a, a, aa), tb : Times(b, b, bb)) -> (erased z : Nat(), erased p : Plus(aa, z, bb)) {
-  let (erased x, erased y, erased tx, erased ty, erased s) = timesSplit(_, _, _, _, _, le, tb);
-  let (erased x1, erased y1, erased tx1, erased ty1, erased s1) = timesSplit(_, _, _, _, _, le, timesComm(_, _, _, tx));
+-- If a <= b then a * a <= b * b.
+fn squareMono(erased a : Nat(), erased i : Nat(), erased b : Nat(),
+    erased aa : Nat(), erased bb : Nat(), le : Plus(a, i, b),
+    ta : Times(a, a, aa), tb : Times(b, b, bb))
+    -> (erased z : Nat(), erased p : Plus(aa, z, bb)) {
+  let (erased x, erased y, erased tx, erased ty, erased s) =
+    timesSplit(_, _, _, _, _, le, tb);
+  let (erased x1, erased y1, erased tx1, erased ty1, erased s1) =
+    timesSplit(_, _, _, _, _, le, timesComm(_, _, _, tx));
   match erased timesFunc(_, _, _, _, ta, tx1) : _ {
     Refl(_, _) => {
       let (erased z, erased q1, erased q2) = plusAssoc(_, _, _, _, _, s1, s);
@@ -567,16 +808,22 @@ fn squareMono(erased a : Nat(), erased i : Nat(), erased b : Nat(), erased aa : 
   }
 }
 
-fn squareStep(erased k : Nat(), erased kk : Nat(), erased d : Nat(), erased kk1 : Nat(), t : Times(k, k, kk),
-    dd : Plus(k, k, d), s : Plus(kk, Succ(d), kk1)) -> (erased t1 : Times(Succ(k), Succ(k), kk1)) {
+-- (k + 1) * (k + 1) = k * k + 2k + 1.
+fn squareStep(erased k : Nat(), erased kk : Nat(), erased d : Nat(),
+    erased kk1 : Nat(), t : Times(k, k, kk), dd : Plus(k, k, d),
+    s : Plus(kk, Succ(d), kk1))
+    -> (erased t1 : Times(Succ(k), Succ(k), kk1)) {
   let (erased r, erased u, erased q) = timesSuccRight(_, _, _, t);
-  let (erased ab, erased s1, erased s2) = plusAssocRev(_, _, _, _, _, plusSucc(_, _, _, dd), s);
+  let (erased ab, erased s1, erased s2) =
+    plusAssocRev(_, _, _, _, _, plusSucc(_, _, _, dd), s);
   match erased plusFunc(_, _, _, _, s1, q) : _ {
     Refl(_, _) => TimesSucc(_, _, _, _, u, s2);
   }
 }
 
-fn ltSquare(erased a : Nat(), erased kk : Nat(), t : Times(Succ(Succ(a)), Succ(Succ(a)), kk))
+-- k < k * k for every k >= 2.
+fn ltSquare(erased a : Nat(), erased kk : Nat(),
+    t : Times(Succ(Succ(a)), Succ(Succ(a)), kk))
     -> (erased w : Nat(), erased p : Plus(Succ(Succ(Succ(a))), w, kk)) {
   let TimesSucc(_, _, _, _, t1, p1) = t;
   let TimesSucc(_, _, _, _, _, p2) = t1;
@@ -584,25 +831,33 @@ fn ltSquare(erased a : Nat(), erased kk : Nat(), t : Times(Succ(Succ(a)), Succ(S
   (w, plusMoveBack(_, _, _, plusComm(_, _, _, p1)))
 }
 
-fn succLess(erased t : Nat(), erased r : Nat(), erased m : Nat(), erased k : Nat(), erased p : Nat(), erased x : Nat(),
-    s : Plus(t, r, m), l : Plus(Succ(r), k, p), q : Plus(t, p, x)) -> (erased lt : Plus(Succ(m), k, x)) {
+-- If r < p then t + r < t + p.
+fn succLess(erased t : Nat(), erased r : Nat(), erased m : Nat(),
+    erased k : Nat(), erased p : Nat(), erased x : Nat(), s : Plus(t, r, m),
+    l : Plus(Succ(r), k, p), q : Plus(t, p, x))
+    -> (erased lt : Plus(Succ(m), k, x)) {
   let (erased ab, erased s1, erased s2) = plusAssocRev(_, _, _, _, _, l, q);
   match erased plusFunc(_, _, _, _, s1, plusSucc(_, _, _, s)) : _ {
     Refl(_, _) => s2;
   }
 }
 
-fn belowSquareUp(erased m : Nat(), erased a : Nat(), erased w : Nat(), erased k : Nat(), u : BelowSquare(m, a),
-    lt : Plus(Succ(a), w, k)) -> (erased v : BelowSquare(m, k)) {
+-- If m < a * a and a < k then m < k * k.
+fn belowSquareUp(erased m : Nat(), erased a : Nat(), erased w : Nat(),
+    erased k : Nat(), u : BelowSquare(m, a), lt : Plus(Succ(a), w, k))
+    -> (erased v : BelowSquare(m, k)) {
   let BelowSquareIntro(_, _, _, _, ta, la) = u;
   let (erased kk, erased tk) = times(k, k);
-  let (erased z, erased mono) = squareMono(_, _, _, _, _, plusMove(_, _, _, lt), ta, tk);
+  let (erased z, erased mono) =
+    squareMono(_, _, _, _, _, plusMove(_, _, _, lt), ta, tk);
   let (erased vz, erased q1, erased q2) = plusAssoc(_, _, _, _, _, la, mono);
   BelowSquareIntro(_, _, _, _, tk, q2)
 }
 
-fn notBelowSquare(erased m : Nat(), erased k : Nat(), erased i : Nat(), erased j : Nat(), erased x : Nat(),
-    erased y : Nat(), u : BelowSquare(m, k), le : Plus(k, i, j), tj : Times(j, j, x), s : Plus(x, y, m))
+-- m < k * k, k <= j and j * j <= m cannot all hold.
+fn notBelowSquare(erased m : Nat(), erased k : Nat(), erased i : Nat(),
+    erased j : Nat(), erased x : Nat(), erased y : Nat(), u : BelowSquare(m, k),
+    le : Plus(k, i, j), tj : Times(j, j, x), s : Plus(x, y, m))
     -> (erased f : False()) {
   let BelowSquareIntro(_, _, _, _, tk, lk) = u;
   let (erased z, erased mono) = squareMono(_, _, _, _, _, le, tk, tj);
@@ -610,21 +865,28 @@ fn notBelowSquare(erased m : Nat(), erased k : Nat(), erased i : Nat(), erased j
   antisym(_, _, _, _, q2, plusMove(_, _, _, lk))
 }
 
-fn divBig(erased m : Nat(), erased p : Nat(), erased q : Nat(), erased r : Nat(), erased i : Nat(),
-    dm : DivMod(m, p, q, r), lt : Plus(Succ(q), i, p)) -> (erased u : BelowSquare(m, p)) {
+-- If dividing m by p gives a quotient below p, then m < p * p.
+fn divBig(erased m : Nat(), erased p : Nat(), erased q : Nat(),
+    erased r : Nat(), erased i : Nat(), dm : DivMod(m, p, q, r),
+    lt : Plus(Succ(q), i, p))
+    -> (erased u : BelowSquare(m, p)) {
   let DivModIntro(_, _, _, _, _, _, tq, s, l) = dm;
   let (erased pp, erased tp) = times(p, p);
-  let (erased x, erased y, erased tx, erased ty, erased sxy) = timesSplit(_, _, _, _, _, lt, tp);
+  let (erased x, erased y, erased tx, erased ty, erased sxy) =
+    timesSplit(_, _, _, _, _, lt, tp);
   let TimesSucc(_, _, _, _, t1, p1) = tx;
   match erased timesFunc(_, _, _, _, tq, t1) : _ {
     Refl(_, _) => {
-      let (erased z, erased q1, erased q2) = plusAssoc(_, _, _, _, _, succLess(_, _, _, _, _, _, s, l, p1), sxy);
+      let (erased z, erased q1, erased q2) =
+        plusAssoc(_, _, _, _, _, succLess(_, _, _, _, _, _, s, l, p1), sxy);
       BelowSquareIntro(_, _, _, _, tp, q2)
     };
   }
 }
 
-fn exactTimes(erased m : Nat(), erased d : Nat(), erased q : Nat(), dm : DivMod(m, d, q, Zero()))
+-- A division with remainder zero means q * d = m exactly.
+fn exactTimes(erased m : Nat(), erased d : Nat(), erased q : Nat(),
+    dm : DivMod(m, d, q, Zero()))
     -> (erased t : Times(q, d, m)) {
   let DivModIntro(_, _, _, _, t, _, tq, s, _) = dm;
   match erased plusFunc(_, _, _, _, plusZeroRight(t), s) : _ {
@@ -632,22 +894,31 @@ fn exactTimes(erased m : Nat(), erased d : Nat(), erased q : Nat(), dm : DivMod(
   }
 }
 
-fn factorOf(erased m : Nat(), erased p : Nat(), erased q : Nat(), erased i : Nat(), dm : DivMod(m, p, q, Zero()),
-    ge : Plus(p, i, q), pr : Prime(p)) -> (erased f : Factor(p, m)) {
+-- A prime p that divides m with a quotient of at least p is a proper factor of
+-- m.
+fn factorOf(erased m : Nat(), erased p : Nat(), erased q : Nat(),
+    erased i : Nat(), dm : DivMod(m, p, q, Zero()), ge : Plus(p, i, q),
+    pr : Prime(p))
+    -> (erased f : Factor(p, m)) {
   let PrimeIntro(_, nd) = pr;
   let (erased j, erased e) = ndTwo(_, _, nd);
   match erased e : _ {
     Refl(_, _) => {
       let (erased t) = exactTimes(_, _, _, dm);
-      let (erased x, erased y, erased tx, erased ty, erased s) = timesSplit(_, _, _, _, _, ge, t);
+      let (erased x, erased y, erased tx, erased ty, erased s) =
+        timesSplit(_, _, _, _, _, ge, t);
       let (erased w, erased lt) = ltSquare(_, _, tx);
       let (erased wy, erased q1, erased q2) = plusAssoc(_, _, _, _, _, lt, s);
-      FactorIntro(_, _, _, _, _, t, PlusSucc(_, _, _, PlusSucc(_, _, _, PlusZero(_))), q2)
+      FactorIntro(_, _, _, _, _, t,
+          PlusSucc(_, _, _, PlusSucc(_, _, _, PlusZero(_))), q2)
     };
   }
 }
 
-fn factorNotPrime(erased d : Nat(), erased n : Nat(), f : Factor(d, n), pr : Prime(n)) -> (erased r : False()) {
+-- A number with a proper factor is not prime.
+fn factorNotPrime(erased d : Nat(), erased n : Nat(), f : Factor(d, n),
+    pr : Prime(n))
+    -> (erased r : False()) {
   let FactorIntro(_, _, _, _, _, t, lo, hi) = f;
   let PlusSucc(_, _, _, lo1) = lo;
   let PlusSucc(_, _, _, _) = lo1;
@@ -655,31 +926,40 @@ fn factorNotPrime(erased d : Nat(), erased n : Nat(), f : Factor(d, n), pr : Pri
   noFactor(_, _, _, _, _, nd, hi, t)
 }
 
-fn notDivDivisor(erased i : Nat(), erased m : Nat(), erased q : Nat(), erased j : Nat(), nd : NotDivides(i, m),
-    t : Times(q, j, m)) -> (erased r : NotDivides(i, j)) {
+-- If i does not divide m, it does not divide any j that divides m.
+fn notDivDivisor(erased i : Nat(), erased m : Nat(), erased q : Nat(),
+    erased j : Nat(), nd : NotDivides(i, m), t : Times(q, j, m))
+    -> (erased r : NotDivides(i, j)) {
   let NotDiv(_, _, _, _, dm) = nd;
   let DivModIntro(_, _, _, _, _, _, _, _, l) = dm;
   let PlusSucc(_, _, _, _) = l;
   let (erased q2, erased r2, erased dm2) = divmod(j, i, NonZeroSucc(_));
   match erased r2 : _ {
     Zero() => {
-      let (erased c, erased u) = timesAssoc(_, _, _, _, _, t, exactTimes(_, _, _, dm2));
+      let (erased c, erased u) =
+        timesAssoc(_, _, _, _, _, t, exactTimes(_, _, _, dm2));
       match erased divUniqueFalse(_, _, _, _, _, dm, u) : _ {}
     };
     Succ(_) => NotDiv(_, _, _, _, dm2);
   }
 }
 
-fn noDivDivisor(erased m : Nat(), erased i : Nat(), erased q : Nat(), erased j : Nat(), subterm nd : NoDivBelow(m, i),
-    t : Times(q, j, m)) -> (erased r : NoDivBelow(j, i)) {
+-- The same for everything NoDivBelow covers: if nothing below i divides m,
+-- nothing below i divides a divisor j of m.
+fn noDivDivisor(erased m : Nat(), erased i : Nat(), erased q : Nat(),
+    erased j : Nat(), subterm nd : NoDivBelow(m, i), t : Times(q, j, m))
+    -> (erased r : NoDivBelow(j, i)) {
   match nd : _ {
     NoDivTwo(_) => NoDivTwo(_);
-    NoDivStep(_, _, rest, nd1) =>
-      NoDivStep(_, _, noDivDivisor(_, _, _, _, subterm rest, t), notDivDivisor(_, _, _, _, nd1, t));
+    NoDivStep(_, _, rest, nd1) => NoDivStep(_, _,
+        noDivDivisor(_, _, _, _, subterm rest, t),
+        notDivDivisor(_, _, _, _, nd1, t));
   }
 }
 
-fn listedPrime(erased p : Nat(), erased l : NatList(), erased k : Nat(), m : Mem(p, l), subterm ex : PrimesBelow(l, k))
+-- Everything on the list is prime.
+fn listedPrime(erased p : Nat(), erased l : NatList(), erased k : Nat(),
+    m : Mem(p, l), subterm ex : PrimesBelow(l, k))
     -> (erased r : Prime(p)) {
   match ex : _ {
     PrimesTwo() => match m : _ {};
@@ -691,8 +971,11 @@ fn listedPrime(erased p : Nat(), erased l : NatList(), erased k : Nat(), m : Mem
   }
 }
 
-fn primeListed(erased p : Nat(), erased w : Nat(), erased l : NatList(), erased k : Nat(), pr : Prime(p),
-    lt : Plus(Succ(p), w, k), subterm ex : PrimesBelow(l, k)) -> (erased m : Mem(p, l)) {
+-- Every prime below k is on the list.
+fn primeListed(erased p : Nat(), erased w : Nat(), erased l : NatList(),
+    erased k : Nat(), pr : Prime(p), lt : Plus(Succ(p), w, k),
+    subterm ex : PrimesBelow(l, k))
+    -> (erased m : Mem(p, l)) {
   match ex : _ {
     PrimesTwo() => {
       let PrimeIntro(_, nd) = pr;
@@ -707,17 +990,22 @@ fn primeListed(erased p : Nat(), erased w : Nat(), erased l : NatList(), erased 
     };
     PrimesAdd(_, _, rest, _) => match erased plusComm(_, _, _, lt) : _ {
       PlusZero(_) => Here(_, _);
-      PlusSucc(_, _, _, l1) => There(_, _, _, primeListed(_, _, _, _, pr, plusComm(_, _, _, l1), subterm rest));
+      PlusSucc(_, _, _, l1) => There(_, _, _,
+          primeListed(_, _, _, _, pr, plusComm(_, _, _, l1), subterm rest));
     };
     PrimesSkip(_, _, _, rest, f) => match erased plusComm(_, _, _, lt) : _ {
       PlusZero(_) => match erased factorNotPrime(_, _, f, pr) : _ {};
-      PlusSucc(_, _, _, l1) => primeListed(_, _, _, _, pr, plusComm(_, _, _, l1), subterm rest);
+      PlusSucc(_, _, _, l1) =>
+        primeListed(_, _, _, _, pr, plusComm(_, _, _, l1), subterm rest);
     };
   }
 }
 
-fn tailBelow(erased p : Nat(), erased l : NatList(), erased k : Nat(), subterm ex : PrimesBelow(NCons(p, l), k))
-    -> (erased w : Nat(), erased e : PrimesBelow(l, p), erased lt : Plus(Succ(p), w, k)) {
+-- Dropping the newest prime p from the list leaves the list of primes below p.
+fn tailBelow(erased p : Nat(), erased l : NatList(), erased k : Nat(),
+    subterm ex : PrimesBelow(NCons(p, l), k))
+    -> (erased w : Nat(), erased e : PrimesBelow(l, p),
+        erased lt : Plus(Succ(p), w, k)) {
   match ex : _ {
     PrimesAdd(_, _, rest, _) => (Zero(), rest, plusZeroRight(Succ(p)));
     PrimesSkip(_, _, _, rest, _) => {
@@ -727,9 +1015,12 @@ fn tailBelow(erased p : Nat(), erased l : NatList(), erased k : Nat(), subterm e
   }
 }
 
-fn checkedFalse(erased j : Nat(), erased l : NatList(), erased m : Nat(), erased q : Nat(), erased x : Nat(),
-    erased y : Nat(), subterm mem : Mem(j, l), c : Checked(l, m), t : Times(q, j, m), tx : Times(j, j, x),
-    s : Plus(x, y, m)) -> (erased f : False()) {
+-- A j on the list with j * j <= m, once checked, cannot divide m.
+fn checkedFalse(erased j : Nat(), erased l : NatList(), erased m : Nat(),
+    erased q : Nat(), erased x : Nat(), erased y : Nat(),
+    subterm mem : Mem(j, l), c : Checked(l, m), t : Times(q, j, m),
+    tx : Times(j, j, x), s : Plus(x, y, m))
+    -> (erased f : False()) {
   match mem : _ {
     Here(_, _) => {
       let CheckedCons(_, _, _, _, o) = c;
@@ -738,7 +1029,8 @@ fn checkedFalse(erased j : Nat(), erased l : NatList(), erased m : Nat(), erased
           let NotDiv(_, _, _, _, dm) = nd;
           divUniqueFalse(_, _, _, _, _, dm, t)
         };
-        Inr(_, _, u) => notBelowSquare(_, _, _, _, _, _, u, plusZeroRight(j), tx, s);
+        Inr(_, _, u) =>
+          notBelowSquare(_, _, _, _, _, _, u, plusZeroRight(j), tx, s);
       }
     };
     There(_, _, _, m1) => {
@@ -748,9 +1040,15 @@ fn checkedFalse(erased j : Nat(), erased l : NatList(), erased m : Nat(), erased
   }
 }
 
-fn divisorFalse(erased m : Nat(), erased j : Nat(), erased i : Nat(), erased q : Nat(), erased l : NatList(),
-    erased k : Nat(), nd : NoDivBelow(m, j), cn : Plus(Succ(j), i, m), t : Times(q, j, m), ex : PrimesBelow(l, k),
-    c : Checked(l, m), u : BelowSquare(m, k)) -> (erased f : False()) {
+-- The heart of the proof. Suppose nothing below j divides m, and yet j, smaller
+-- than m, does: q * j = m. If q < j, then q is itself a divisor below j.
+-- Otherwise j * j <= m, and j is prime, because a divisor of j would divide m.
+-- So j is on the list and was checked. Every case is impossible.
+fn divisorFalse(erased m : Nat(), erased j : Nat(), erased i : Nat(),
+    erased q : Nat(), erased l : NatList(), erased k : Nat(),
+    nd : NoDivBelow(m, j), cn : Plus(Succ(j), i, m), t : Times(q, j, m),
+    ex : PrimesBelow(l, k), c : Checked(l, m), u : BelowSquare(m, k))
+    -> (erased f : False()) {
   match erased compare(q, j) : _ {
     CmpLt(_, _, _, lt) => match erased q : _ {
       Zero() => {
@@ -768,20 +1066,27 @@ fn divisorFalse(erased m : Nat(), erased j : Nat(), erased i : Nat(), erased q :
       };
     };
     CmpGe(_, _, _, ge) => {
-      let (erased x, erased y, erased tx, erased ty, erased s) = timesSplit(_, _, _, _, _, ge, t);
+      let (erased x, erased y, erased tx, erased ty, erased s) =
+        timesSplit(_, _, _, _, _, ge, t);
       match erased compare(j, k) : _ {
         CmpGe(_, _, _, kj) => notBelowSquare(_, _, _, _, _, _, u, kj, tx, s);
         CmpLt(_, _, _, jk) => {
           let (erased pr) = PrimeIntro(_, noDivDivisor(_, _, _, _, nd, t));
-          checkedFalse(_, _, _, _, _, _, primeListed(_, _, _, _, pr, jk, ex), c, t, tx, s)
+          checkedFalse(_, _, _, _, _, _, primeListed(_, _, _, _, pr, jk, ex), c,
+              t, tx, s)
         };
       }
     };
   }
 }
 
-fn buildPrime(subterm i : Nat(), erased m : Nat(), erased j : Nat(), erased l : NatList(), erased k : Nat(),
-    nd : NoDivBelow(m, j), p : Plus(j, i, m), ex : PrimesBelow(l, k), c : Checked(l, m), u : BelowSquare(m, k))
+-- Grows "nothing below j divides m" one j at a time until j reaches m, which is
+-- Prime(m). divisorFalse rules out each new j. The loop is unary and erased: it
+-- is the proof, and is not meant to run.
+fn buildPrime(subterm i : Nat(), erased m : Nat(), erased j : Nat(),
+    erased l : NatList(), erased k : Nat(), nd : NoDivBelow(m, j),
+    p : Plus(j, i, m), ex : PrimesBelow(l, k), c : Checked(l, m),
+    u : BelowSquare(m, k))
     -> (erased r : NoDivBelow(m, m)) {
   match i : _ {
     Zero() => match erased plusFunc(_, _, _, _, plusZeroRight(j), p) : _ {
@@ -794,17 +1099,23 @@ fn buildPrime(subterm i : Nat(), erased m : Nat(), erased j : Nat(), erased l : 
         Refl(_, _) => {
           let (erased q, erased r, erased dm) = divmod(m, j, NonZeroSucc(_));
           let (erased nd1) = match erased r : (erased nd1 : NotDivides(j, m)) {
-            Zero() => match erased divisorFalse(_, _, _, _, _, _, nd, cn, exactTimes(_, _, _, dm), ex, c, u) : _ {};
+            Zero() => match erased divisorFalse(_, _, _, _, _, _, nd, cn,
+                exactTimes(_, _, _, dm), ex, c, u) : _ {};
             Succ(_) => NotDiv(_, _, _, _, dm);
           };
-          buildPrime(subterm i1, _, _, _, _, NoDivStep(_, _, nd, nd1), cn, ex, c, u)
+          buildPrime(subterm i1, _, _, _, _, NoDivStep(_, _, nd, nd1), cn, ex,
+              c, u)
         };
       }
     };
   }
 }
 
-fn posPos(erased x : Pos(), erased k : Nat(), subterm r : PosRep(x, k)) -> (erased z : NonZero(k)) {
+-- ---- Binary arithmetic ----
+
+-- A Pos never stands for zero.
+fn posPos(erased x : Pos(), erased k : Nat(), subterm r : PosRep(x, k))
+    -> (erased z : NonZero(k)) {
   match r : _ {
     RepOne() => NonZeroSucc(_);
     RepP0(_, _, _, r1, s) => {
@@ -816,12 +1127,16 @@ fn posPos(erased x : Pos(), erased k : Nat(), subterm r : PosRep(x, k)) -> (eras
   }
 }
 
-fn atLeastTwo(erased b : Pos(), erased nb : Nat(), erased d : Nat(), rb : PosRep(b, nb), sb : Plus(nb, nb, d))
+-- Twice a positive number is at least 2.
+fn atLeastTwo(erased b : Pos(), erased nb : Nat(), erased d : Nat(),
+    rb : PosRep(b, nb), sb : Plus(nb, nb, d))
     -> (erased w : Nat(), erased p : Plus(Succ(Succ(Zero())), w, d)) {
   let erased NonZeroSucc(_) = posPos(_, _, rb);
   ltDouble(_, _, _, _, _, PlusSucc(_, _, _, PlusZero(_)), PlusZero(_), sb)
 }
 
+-- Every binary number stands for some unary number. The result is erased: it is
+-- known to exist without being computed.
 fn toNatPos(subterm x : Pos()) -> (erased n : Nat(), erased r : PosRep(x, n)) {
   match x : _ {
     One() => (Succ(Zero()), RepOne());
@@ -838,6 +1153,7 @@ fn toNatPos(subterm x : Pos()) -> (erased n : Nat(), erased r : PosRep(x, n)) {
   }
 }
 
+-- The same for Bin.
 fn toNat(b : Bin()) -> (erased n : Nat(), erased r : Rep(b, n)) {
   match b : _ {
     BZ() => (Zero(), RepZ());
@@ -848,6 +1164,9 @@ fn toNat(b : Bin()) -> (erased n : Nat(), erased r : Rep(b, n)) {
   }
 }
 
+-- Adds one in binary, with evidence that the result stands for m + 1. In the
+-- last case, 2a + 1 plus one carries: the digit becomes 0 and one is added to
+-- the digits above it.
 fn succPos(erased m : Nat(), subterm x : Pos(), erased px : PosRep(x, m))
     -> (z : Pos(), erased pz : PosRep(z, Succ(m))) {
   match x : _ {
@@ -867,7 +1186,9 @@ fn succPos(erased m : Nat(), subterm x : Pos(), erased px : PosRep(x, m))
   }
 }
 
-fn inc(erased n : Nat(), b : Bin(), erased pb : Rep(b, n)) -> (c : Bin(), erased pc : Rep(c, Succ(n))) {
+-- The same for Bin.
+fn inc(erased n : Nat(), b : Bin(), erased pb : Rep(b, n))
+    -> (c : Bin(), erased pc : Rep(c, Succ(n))) {
   match b : _ {
     BZ() => {
       let erased RepZ() = pb;
@@ -881,7 +1202,9 @@ fn inc(erased n : Nat(), b : Bin(), erased pb : Rep(b, n)) -> (c : Bin(), erased
   }
 }
 
-fn twice(erased k : Nat(), erased d : Nat(), z : Bin(), erased r : Rep(z, k), erased s : Plus(k, k, d))
+-- Doubles a binary number by writing a 0 after it. Zero stays zero.
+fn twice(erased k : Nat(), erased d : Nat(), z : Bin(), erased r : Rep(z, k),
+    erased s : Plus(k, k, d))
     -> (w : Bin(), erased rw : Rep(w, d)) {
   match z : _ {
     BZ() => {
@@ -896,7 +1219,9 @@ fn twice(erased k : Nat(), erased d : Nat(), z : Bin(), erased r : Rep(z, k), er
   }
 }
 
-fn twice1(erased k : Nat(), erased d : Nat(), z : Bin(), erased r : Rep(z, k), erased s : Plus(k, k, d))
+-- Doubles and adds one, by writing a 1 after it.
+fn twice1(erased k : Nat(), erased d : Nat(), z : Bin(), erased r : Rep(z, k),
+    erased s : Plus(k, k, d))
     -> (w : Bin(), erased rw : Rep(w, Succ(d))) {
   match z : _ {
     BZ() => {
@@ -911,8 +1236,13 @@ fn twice1(erased k : Nat(), erased d : Nat(), z : Bin(), erased r : Rep(z, k), e
   }
 }
 
-fn lift00(erased a : Nat(), erased b : Nat(), erased da : Nat(), erased db : Nat(), x : Diff(a, b),
-    erased sa : Plus(a, a, da), erased sb : Plus(b, b, db)) -> (y : Diff(da, db)) {
+-- Subtraction goes digit by digit. Each of these four takes the answer for a -
+-- b and gives the answer once one more digit is written after each number; the
+-- name gives the two digits. This one: 2a - 2b is twice a - b.
+fn lift00(erased a : Nat(), erased b : Nat(), erased da : Nat(),
+    erased db : Nat(), x : Diff(a, b), erased sa : Plus(a, a, da),
+    erased sb : Plus(b, b, db))
+    -> (y : Diff(da, db)) {
   match x : _ {
     Above(z, _, _, k, rz, p) => {
       let (erased dk, erased sk) = plus(k, k);
@@ -926,21 +1256,28 @@ fn lift00(erased a : Nat(), erased b : Nat(), erased da : Nat(), erased db : Nat
   }
 }
 
-fn lift11(erased a : Nat(), erased b : Nat(), erased da : Nat(), erased db : Nat(), x : Diff(a, b),
-    erased sa : Plus(a, a, da), erased sb : Plus(b, b, db)) -> (y : Diff(Succ(da), Succ(db))) {
+-- (2a + 1) - (2b + 1) is the same as 2a - 2b.
+fn lift11(erased a : Nat(), erased b : Nat(), erased da : Nat(),
+    erased db : Nat(), x : Diff(a, b), erased sa : Plus(a, a, da),
+    erased sb : Plus(b, b, db))
+    -> (y : Diff(Succ(da), Succ(db))) {
   match lift00(_, _, _, _, x, sa, sb) : _ {
     Above(z, _, _, k, rz, p) => Above(z, _, _, k, rz, PlusSucc(_, _, _, p));
     Below(_, _, k, p) => Below(_, _, k, PlusSucc(_, _, _, p));
   }
 }
 
-fn lift10(erased a : Nat(), erased b : Nat(), erased da : Nat(), erased db : Nat(), x : Diff(a, b),
-    erased sa : Plus(a, a, da), erased sb : Plus(b, b, db)) -> (y : Diff(Succ(da), db)) {
+-- (2a + 1) - 2b is twice a - b, plus one.
+fn lift10(erased a : Nat(), erased b : Nat(), erased da : Nat(),
+    erased db : Nat(), x : Diff(a, b), erased sa : Plus(a, a, da),
+    erased sb : Plus(b, b, db))
+    -> (y : Diff(Succ(da), db)) {
   match x : _ {
     Above(z, _, _, k, rz, p) => {
       let (erased dk, erased sk) = plus(k, k);
       let (w, erased rw) = twice1(_, _, z, rz, sk);
-      Above(w, _, _, Succ(dk), rw, plusSucc(_, _, _, dsum(_, _, _, _, _, _, p, sb, sk, sa)))
+      Above(w, _, _, Succ(dk), rw,
+          plusSucc(_, _, _, dsum(_, _, _, _, _, _, p, sb, sk, sa)))
     };
     Below(_, _, _, p) => {
       let (erased w, erased q) = ltDouble(_, _, _, _, _, p, sa, sb);
@@ -949,31 +1286,42 @@ fn lift10(erased a : Nat(), erased b : Nat(), erased da : Nat(), erased db : Nat
   }
 }
 
-fn lift01(erased a : Nat(), erased b : Nat(), erased da : Nat(), erased db : Nat(), x : Diff(a, Succ(b)),
-    erased sa : Plus(a, a, da), erased sb : Plus(b, b, db)) -> (y : Diff(da, Succ(db))) {
+-- 2a - (2b + 1) has to borrow. It is worked out from a - (b + 1), which is why
+-- the parameter x is about Succ(b).
+fn lift01(erased a : Nat(), erased b : Nat(), erased da : Nat(),
+    erased db : Nat(), x : Diff(a, Succ(b)), erased sa : Plus(a, a, da),
+    erased sb : Plus(b, b, db))
+    -> (y : Diff(da, Succ(db))) {
   match x : _ {
     Above(z, _, _, k, rz, p) => {
       let (erased dk, erased sk) = plus(k, k);
       let (w, erased rw) = twice1(_, _, z, rz, sk);
-      Above(w, _, _, Succ(dk), rw, plusMove(_, _, _, dsum(_, _, _, _, _, _, p, succBoth(_, _, _, sb), sk, sa)))
+      Above(w, _, _, Succ(dk), rw,
+          plusMove(_, _, _,
+              dsum(_, _, _, _, _, _, p, succBoth(_, _, _, sb), sk, sa)))
     };
     Below(_, _, _, p) => {
-      let (erased w, erased q) = ltDouble(_, _, _, _, _, p, sa, succBoth(_, _, _, sb));
+      let (erased w, erased q) =
+        ltDouble(_, _, _, _, _, p, sa, succBoth(_, _, _, sb));
       let erased PlusSucc(_, _, _, q1) = q;
       Below(_, _, w, q1)
     };
   }
 }
 
-fn sub(erased m : Nat(), erased n : Nat(), subterm x : Pos(), y : Bin(), erased px : PosRep(x, m),
-    erased py : Rep(y, n)) -> (r : Diff(m, n)) {
+-- Binary subtraction m - n for a positive m: the difference, or the fact that
+-- m < n.
+fn sub(erased m : Nat(), erased n : Nat(), subterm x : Pos(), y : Bin(),
+    erased px : PosRep(x, m), erased py : Rep(y, n))
+    -> (r : Diff(m, n)) {
   match x : _ {
     One() => {
       let erased RepOne() = px;
       match y : _ {
         BZ() => {
           let erased RepZ() = py;
-          Above(BP(One()), _, _, Succ(Zero()), RepP(_, _, RepOne()), PlusZero(_))
+          Above(BP(One()), _, _, Succ(Zero()), RepP(_, _, RepOne()),
+              PlusZero(_))
         };
         BP(q) => {
           let erased RepP(_, _, rq) = py;
@@ -1008,11 +1356,14 @@ fn sub(erased m : Nat(), erased n : Nat(), subterm x : Pos(), y : Bin(), erased 
           match q : _ {
             One() => {
               let erased RepOne() = rq;
-              lift01(_, _, _, _, sub(_, _, subterm a, BP(One()), ra, RepP(_, _, RepOne())), sa, PlusZero(_))
+              lift01(_, _, _, _,
+                  sub(_, _, subterm a, BP(One()), ra, RepP(_, _, RepOne())), sa,
+                  PlusZero(_))
             };
             P0(b) => {
               let erased RepP0(_, _, _, rb, sb) = rq;
-              lift00(_, _, _, _, sub(_, _, subterm a, BP(b), ra, RepP(_, _, rb)), sa, sb)
+              lift00(_, _, _, _,
+                  sub(_, _, subterm a, BP(b), ra, RepP(_, _, rb)), sa, sb)
             };
             P1(b) => {
               let erased RepP1(_, _, _, rb, sb) = rq;
@@ -1035,15 +1386,18 @@ fn sub(erased m : Nat(), erased n : Nat(), subterm x : Pos(), y : Bin(), erased 
           match q : _ {
             One() => {
               let erased RepOne() = rq;
-              lift11(_, _, _, _, sub(_, _, subterm a, BZ(), ra, RepZ()), sa, PlusZero(_))
+              lift11(_, _, _, _, sub(_, _, subterm a, BZ(), ra, RepZ()), sa,
+                  PlusZero(_))
             };
             P0(b) => {
               let erased RepP0(_, _, _, rb, sb) = rq;
-              lift10(_, _, _, _, sub(_, _, subterm a, BP(b), ra, RepP(_, _, rb)), sa, sb)
+              lift10(_, _, _, _,
+                  sub(_, _, subterm a, BP(b), ra, RepP(_, _, rb)), sa, sb)
             };
             P1(b) => {
               let erased RepP1(_, _, _, rb, sb) = rq;
-              lift11(_, _, _, _, sub(_, _, subterm a, BP(b), ra, RepP(_, _, rb)), sa, sb)
+              lift11(_, _, _, _,
+                  sub(_, _, subterm a, BP(b), ra, RepP(_, _, rb)), sa, sb)
             };
           }
         };
@@ -1052,7 +1406,9 @@ fn sub(erased m : Nat(), erased n : Nat(), subterm x : Pos(), y : Bin(), erased 
   }
 }
 
-fn subBin(erased m : Nat(), erased n : Nat(), x : Bin(), y : Bin(), erased px : Rep(x, m), erased py : Rep(y, n))
+-- The same when m can be zero.
+fn subBin(erased m : Nat(), erased n : Nat(), x : Bin(), y : Bin(),
+    erased px : Rep(x, m), erased py : Rep(y, n))
     -> (r : Diff(m, n)) {
   match x : _ {
     BZ() => {
@@ -1076,47 +1432,66 @@ fn subBin(erased m : Nat(), erased n : Nat(), x : Bin(), y : Bin(), erased px : 
   }
 }
 
-fn halfBound(erased d : Nat(), erased k : Nat(), erased r2 : Nat(), erased w : Nat(), erased dd : Nat(),
-    p : Plus(d, k, r2), l : Plus(Succ(r2), w, dd), sd : Plus(d, d, dd)) -> (erased q : Plus(Succ(k), w, d)) {
-  let (erased bc, erased q1, erased q2) = plusAssoc(_, _, _, _, _, plusSucc(_, _, _, p), l);
+-- If r2 = d + k and r2 < 2d then k < d.
+fn halfBound(erased d : Nat(), erased k : Nat(), erased r2 : Nat(),
+    erased w : Nat(), erased dd : Nat(), p : Plus(d, k, r2),
+    l : Plus(Succ(r2), w, dd), sd : Plus(d, d, dd))
+    -> (erased q : Plus(Succ(k), w, d)) {
+  let (erased bc, erased q1, erased q2) =
+    plusAssoc(_, _, _, _, _, plusSucc(_, _, _, p), l);
   match erased plusCancel(_, _, _, _, q2, sd) : _ {
     Refl(_, _) => q1;
   }
 }
 
-fn divStep(erased m : Nat(), erased d : Nat(), erased dd : Nat(), erased nq : Nat(), erased nr : Nat(),
-    erased t : Nat(), erased w : Nat(), q : Bin(), r : Bin(), y : Bin(), erased rq : Rep(q, nq),
-    erased rr : Rep(r, nr), erased ry : Rep(y, d), erased tq : Times(nq, d, t), erased s : Plus(t, nr, m),
-    erased l : Plus(Succ(nr), w, dd), erased sd : Plus(d, d, dd))
-    -> (q1 : Bin(), r1 : Bin(), erased nq1 : Nat(), erased nr1 : Nat(), erased rq1 : Rep(q1, nq1),
-        erased rr1 : Rep(r1, nr1), erased dm : DivMod(m, d, nq1, nr1)) {
+-- One step of long division. It is given a quotient q and a remainder r that
+-- may be too big, though below 2d. If d can be subtracted from r, it does so
+-- and adds one to q. The result is a proper division: remainder below d.
+fn divStep(erased m : Nat(), erased d : Nat(), erased dd : Nat(),
+    erased nq : Nat(), erased nr : Nat(), erased t : Nat(), erased w : Nat(),
+    q : Bin(), r : Bin(), y : Bin(), erased rq : Rep(q, nq),
+    erased rr : Rep(r, nr), erased ry : Rep(y, d), erased tq : Times(nq, d, t),
+    erased s : Plus(t, nr, m), erased l : Plus(Succ(nr), w, dd),
+    erased sd : Plus(d, d, dd))
+    -> (q1 : Bin(), r1 : Bin(), erased nq1 : Nat(), erased nr1 : Nat(),
+        erased rq1 : Rep(q1, nq1), erased rr1 : Rep(r1, nr1),
+        erased dm : DivMod(m, d, nq1, nr1)) {
   match subBin(_, _, r, y, rr, ry) : _ {
     Above(z, _, _, k, rz, p) => {
       let (q2, erased rq2) = inc(_, q, rq);
       let (erased u, erased s1, erased s2) = plusAssocRev(_, _, _, _, _, p, s);
       (q2, z, Succ(nq), k, rq2, rz,
-        DivModIntro(_, _, _, _, u, _, TimesSucc(_, _, _, _, tq, s1), s2, halfBound(_, _, _, _, _, p, l, sd)))
+          DivModIntro(_, _, _, _, u, _, TimesSucc(_, _, _, _, tq, s1), s2,
+              halfBound(_, _, _, _, _, p, l, sd)))
     };
-    Below(_, _, k, p) => (q, r, nq, nr, rq, rr, DivModIntro(_, _, _, _, t, k, tq, s, p));
+    Below(_, _, k, p) =>
+      (q, r, nq, nr, rq, rr, DivModIntro(_, _, _, _, t, k, tq, s, p));
   }
 }
 
-fn divPos(erased m : Nat(), erased d : Nat(), subterm x : Pos(), y : Bin(), erased px : PosRep(x, m),
-    erased py : Rep(y, d), erased z : NonZero(d))
-    -> (q : Bin(), r : Bin(), erased nq : Nat(), erased nr : Nat(), erased rq : Rep(q, nq),
-        erased rr : Rep(r, nr), erased dm : DivMod(m, d, nq, nr)) {
+-- Binary long division of x by y, highest digit first: divide the digits above
+-- the lowest one, double the quotient and remainder, bring in the lowest digit,
+-- and repair the remainder with divStep. It returns q and r with evidence that
+-- they are the division DivMod describes.
+fn divPos(erased m : Nat(), erased d : Nat(), subterm x : Pos(), y : Bin(),
+    erased px : PosRep(x, m), erased py : Rep(y, d), erased z : NonZero(d))
+    -> (q : Bin(), r : Bin(), erased nq : Nat(), erased nr : Nat(),
+        erased rq : Rep(q, nq), erased rr : Rep(r, nr),
+        erased dm : DivMod(m, d, nq, nr)) {
   let (erased dd, erased sd) = plus(d, d);
   match x : _ {
     One() => {
       let erased RepOne() = px;
       let erased NonZeroSucc(_) = z;
-      let (erased w, erased l) = ltDouble(_, _, _, _, _, PlusSucc(_, _, _, PlusZero(_)), PlusZero(_), sd);
-      divStep(_, _, _, _, _, _, _, BZ(), BP(One()), y, RepZ(), RepP(_, _, RepOne()), py, TimesZero(_),
-        PlusZero(_), l, sd)
+      let (erased w, erased l) = ltDouble(_, _, _, _, _,
+          PlusSucc(_, _, _, PlusZero(_)), PlusZero(_), sd);
+      divStep(_, _, _, _, _, _, _, BZ(), BP(One()), y, RepZ(),
+          RepP(_, _, RepOne()), py, TimesZero(_), PlusZero(_), l, sd)
     };
     P0(a) => {
       let erased RepP0(_, _, _, ra, sa) = px;
-      let (q, r, erased nq, erased nr, erased rq, erased rr, erased dm) = divPos(_, _, subterm a, y, ra, py, z);
+      let (q, r, erased nq, erased nr, erased rq, erased rr, erased dm) =
+        divPos(_, _, subterm a, y, ra, py, z);
       let erased DivModIntro(_, _, _, _, t, _, tq, s, l) = dm;
       let (erased nq2, erased sq) = plus(nq, nq);
       let (erased nr2, erased sr) = plus(nr, nr);
@@ -1124,12 +1499,13 @@ fn divPos(erased m : Nat(), erased d : Nat(), subterm x : Pos(), y : Bin(), eras
       let (r2, erased rr2) = twice(_, _, r, rr, sr);
       let (erased t2, erased st, erased tq2) = timesDouble(_, _, _, _, sq, tq);
       let (erased w, erased l2) = ltDouble(_, _, _, _, _, l, sr, sd);
-      divStep(_, _, _, _, _, _, _, q2, r2, y, rq2, rr2, py, tq2, dsum(_, _, _, _, _, _, s, st, sr, sa),
-        plusMove(_, _, _, l2), sd)
+      divStep(_, _, _, _, _, _, _, q2, r2, y, rq2, rr2, py, tq2,
+          dsum(_, _, _, _, _, _, s, st, sr, sa), plusMove(_, _, _, l2), sd)
     };
     P1(a) => {
       let erased RepP1(_, _, _, ra, sa) = px;
-      let (q, r, erased nq, erased nr, erased rq, erased rr, erased dm) = divPos(_, _, subterm a, y, ra, py, z);
+      let (q, r, erased nq, erased nr, erased rq, erased rr, erased dm) =
+        divPos(_, _, subterm a, y, ra, py, z);
       let erased DivModIntro(_, _, _, _, t, _, tq, s, l) = dm;
       let (erased nq2, erased sq) = plus(nq, nq);
       let (erased nr2, erased sr) = plus(nr, nr);
@@ -1138,20 +1514,30 @@ fn divPos(erased m : Nat(), erased d : Nat(), subterm x : Pos(), y : Bin(), eras
       let (erased t2, erased st, erased tq2) = timesDouble(_, _, _, _, sq, tq);
       let (erased w, erased l2) = ltDouble(_, _, _, _, _, l, sr, sd);
       divStep(_, _, _, _, _, _, _, q2, r2, y, rq2, rr2, py, tq2,
-        plusSucc(_, _, _, dsum(_, _, _, _, _, _, s, st, sr, sa)), l2, sd)
+          plusSucc(_, _, _, dsum(_, _, _, _, _, _, s, st, sr, sa)), l2, sd)
     };
   }
 }
 
-fn trial(x : Pos(), erased m : Nat(), erased px : PosRep(x, m), erased l : NatList(), subterm ps : PList(l),
-    erased k : Nat(), erased ex : PrimesBelow(l, k)) -> (o : Trial(l, m, k)) {
+-- ---- The decision procedure ----
+
+-- Tries the listed primes on x, smallest first. The list is kept largest first,
+-- so the recursive call comes before the test of p. For p: if x divided by p is
+-- less than p, stop, since p * p > x. If the remainder is zero, p is a factor.
+-- Otherwise p is checked and the next prime gets its turn.
+fn trial(x : Pos(), erased m : Nat(), erased px : PosRep(x, m),
+    erased l : NatList(), subterm ps : PList(l), erased k : Nat(),
+    erased ex : PrimesBelow(l, k))
+    -> (o : Trial(l, m, k)) {
   match ps : _ {
     PNil() => Pass(_, _, _, CheckedNil(_));
     PCons(p, _, rp, _, rest) => {
       let (erased w, erased ex1, erased lt) = tailBelow(_, _, _, ex);
       match trial(x, _, px, _, subterm rest, _, ex1) : _ {
         Found(_, _, _, d, _, rd, f) => Found(_, _, _, d, _, rd, f);
-        Stop(_, _, _, c, u) => Stop(_, _, _, CheckedCons(_, _, _, c, Inr(_, _, u)), belowSquareUp(_, _, _, _, u, lt));
+        Stop(_, _, _, c, u) => Stop(_, _, _,
+            CheckedCons(_, _, _, c, Inr(_, _, u)),
+            belowSquareUp(_, _, _, _, u, lt));
         Pass(_, _, _, c) => {
           let erased NonZeroSucc(_) = posPos(_, _, rp);
           let (q, r, erased nq, erased nr, erased rq, erased rr, erased dm) =
@@ -1159,18 +1545,21 @@ fn trial(x : Pos(), erased m : Nat(), erased px : PosRep(x, m), erased l : NatLi
           match subBin(_, _, q, BP(p), rq, RepP(_, _, rp)) : _ {
             Below(_, _, _, lq) => {
               let (erased u) = divBig(_, _, _, _, _, dm, lq);
-              Stop(_, _, _, CheckedCons(_, _, _, c, Inr(_, _, u)), belowSquareUp(_, _, _, _, u, lt))
+              Stop(_, _, _, CheckedCons(_, _, _, c, Inr(_, _, u)),
+                  belowSquareUp(_, _, _, _, u, lt))
             };
             Above(_, _, _, _, _, ge) => match r : _ {
               BZ() => {
                 let erased RepZ() = rr;
                 Found(_, _, _, BP(p), _, RepP(_, _, rp),
-                  factorOf(_, _, _, _, dm, ge, listedPrime(_, _, _, Here(_, _), ex)))
+                    factorOf(_, _, _, _, dm, ge,
+                        listedPrime(_, _, _, Here(_, _), ex)))
               };
               BP(r1) => {
                 let erased RepP(_, _, rr1) = rr;
                 let erased NonZeroSucc(_) = posPos(_, _, rr1);
-                Pass(_, _, _, CheckedCons(_, _, _, c, Inl(_, _, NotDiv(_, _, _, _, dm))))
+                Pass(_, _, _,
+                    CheckedCons(_, _, _, c, Inl(_, _, NotDiv(_, _, _, _, dm))))
               };
             };
           }
@@ -1180,23 +1569,37 @@ fn trial(x : Pos(), erased m : Nat(), erased px : PosRep(x, m), erased l : NatLi
   }
 }
 
-fn test(x : Pos(), erased m : Nat(), erased px : PosRep(x, m), erased l : NatList(), ps : PList(l), erased k : Nat(),
-    erased a : Nat(), erased ex : PrimesBelow(l, k), erased u : BelowSquare(m, k),
-    erased two : Plus(Succ(Succ(Zero())), a, m)) -> (v : Verdict(m)) {
+-- Turns the result of trial into a Verdict. When no listed prime divides m,
+-- buildPrime supplies the proof that m is prime. It needs u, evidence that the
+-- list reaches the square root of m.
+fn test(x : Pos(), erased m : Nat(), erased px : PosRep(x, m),
+    erased l : NatList(), ps : PList(l), erased k : Nat(), erased a : Nat(),
+    erased ex : PrimesBelow(l, k), erased u : BelowSquare(m, k),
+    erased two : Plus(Succ(Succ(Zero())), a, m))
+    -> (v : Verdict(m)) {
   match trial(x, _, px, _, ps, _, ex) : _ {
     Found(_, _, _, d, _, rd, f) => Composite(_, d, _, rd, f);
-    Pass(_, _, _, c) => IsPrime(_, PrimeIntro(_, buildPrime(a, _, _, _, _, NoDivTwo(_), two, ex, c, u)));
-    Stop(_, _, _, c, _) => IsPrime(_, PrimeIntro(_, buildPrime(a, _, _, _, _, NoDivTwo(_), two, ex, c, u)));
+    Pass(_, _, _, c) => IsPrime(_,
+        PrimeIntro(_, buildPrime(a, _, _, _, _, NoDivTwo(_), two, ex, c, u)));
+    Stop(_, _, _, c, _) => IsPrime(_,
+        PrimeIntro(_, buildPrime(a, _, _, _, _, NoDivTwo(_), two, ex, c, u)));
   }
 }
 
-fn grow(k : Pos(), erased a : Nat(), erased kk : Nat(), erased pk : PosRep(k, Succ(Succ(a))), erased l : NatList(),
-    ps : PList(l), erased ex : PrimesBelow(l, Succ(Succ(a))), erased t : Times(Succ(Succ(a)), Succ(Succ(a)), kk))
-    -> (erased l2 : NatList(), ps2 : PList(l2), erased ex2 : PrimesBelow(l2, Succ(Succ(Succ(a))))) {
+-- Takes the list from "primes below k" to "primes below k + 1" by testing k,
+-- here written Succ(Succ(a)). The BelowTwo case cannot happen, since k is at
+-- least 2.
+fn grow(k : Pos(), erased a : Nat(), erased kk : Nat(),
+    erased pk : PosRep(k, Succ(Succ(a))), erased l : NatList(), ps : PList(l),
+    erased ex : PrimesBelow(l, Succ(Succ(a))),
+    erased t : Times(Succ(Succ(a)), Succ(Succ(a)), kk))
+    -> (erased l2 : NatList(), ps2 : PList(l2),
+        erased ex2 : PrimesBelow(l2, Succ(Succ(Succ(a))))) {
   let (erased w, erased lt) = ltSquare(_, _, t);
   match test(k, _, pk, _, ps, _, _, ex, BelowSquareIntro(_, _, _, _, t, lt),
       PlusSucc(_, _, _, PlusSucc(_, _, _, PlusZero(_)))) : _ {
-    IsPrime(_, pr) => (NCons(Succ(Succ(a)), l), PCons(k, _, pk, _, ps), PrimesAdd(_, _, ex, pr));
+    IsPrime(_, pr) => (NCons(Succ(Succ(a)), l), PCons(k, _, pk, _, ps),
+        PrimesAdd(_, _, ex, pr));
     Composite(_, _, _, _, f) => (l, ps, PrimesSkip(_, _, _, ex, f));
     BelowTwo(_, _, p) => {
       let erased PlusSucc(_, _, _, p1) = p;
@@ -1206,34 +1609,54 @@ fn grow(k : Pos(), erased a : Nat(), erased kk : Nat(), erased pk : PosRep(k, Su
   }
 }
 
-fn ascend(subterm erased b : Nat(), x : Pos(), j : Pos(), g : Bin(), erased l : NatList(), ps : PList(l),
-    erased n : Nat(), erased nj : Nat(), erased jj : Nat(), erased ng : Nat(), erased e : Nat(), erased a : Nat(),
-    erased px : PosRep(x, n), erased pj : PosRep(j, nj), erased rg : Rep(g, ng), erased ex : PrimesBelow(l, Succ(nj)),
-    erased t : Times(nj, nj, jj), erased s : Plus(jj, ng, n), erased gb : Plus(ng, e, b),
-    erased two : Plus(Succ(Succ(Zero())), a, n)) -> (v : Verdict(n)) {
+-- The main loop. j counts up from 1, and g is the gap between n and j * j, in
+-- binary. Each round tries to take 2j + 1 off the gap. If it cannot,
+-- (j + 1) * (j + 1) > n: the list reaches far enough, and n itself is tested.
+-- If it can, j + 1 is tested, listed if prime, and the loop goes round again.
+--
+-- Nothing that exists at run time gets structurally smaller here, so the
+-- `subterm` parameter is b, an erased unary bound on the gap. It shrinks every
+-- round, which is enough to show that the loop ends.
+fn ascend(subterm erased b : Nat(), x : Pos(), j : Pos(), g : Bin(),
+    erased l : NatList(), ps : PList(l), erased n : Nat(), erased nj : Nat(),
+    erased jj : Nat(), erased ng : Nat(), erased e : Nat(), erased a : Nat(),
+    erased px : PosRep(x, n), erased pj : PosRep(j, nj), erased rg : Rep(g, ng),
+    erased ex : PrimesBelow(l, Succ(nj)), erased t : Times(nj, nj, jj),
+    erased s : Plus(jj, ng, n), erased gb : Plus(ng, e, b),
+    erased two : Plus(Succ(Succ(Zero())), a, n))
+    -> (v : Verdict(n)) {
   let (erased d, erased dd) = plus(nj, nj);
   match subBin(_, _, g, BP(P1(j)), rg, RepP(_, _, RepP1(_, _, _, pj, dd))) : _ {
     Below(_, _, _, lt) => {
       let (erased kk, erased s1) = plus(jj, Succ(d));
       test(x, _, px, _, ps, _, _, ex,
-        BelowSquareIntro(_, _, _, _, squareStep(_, _, _, _, t, dd, s1), succLess(_, _, _, _, _, _, s, lt, s1)), two)
+          BelowSquareIntro(_, _, _, _, squareStep(_, _, _, _, t, dd, s1),
+              succLess(_, _, _, _, _, _, s, lt, s1)),
+          two)
     };
     Above(g1, _, _, _, rg1, p) => {
       let (erased kk, erased s1, erased s2) = plusAssocRev(_, _, _, _, _, p, s);
       let (erased tk) = squareStep(_, _, _, _, t, dd, s1);
       let erased PlusSucc(_, _, _, p1) = p;
       let erased PlusSucc(_, _, b1, gb1) = gb;
-      let (erased de, erased q1, erased q2) = plusAssoc(_, _, _, _, _, plusComm(_, _, _, p1), gb1);
+      let (erased de, erased q1, erased q2) =
+        plusAssoc(_, _, _, _, _, plusComm(_, _, _, p1), gb1);
       let erased NonZeroSucc(_) = posPos(_, _, pj);
       let (k, erased pk) = succPos(_, j, pj);
       let (erased l2, ps2, erased ex2) = grow(k, _, _, pk, _, ps, ex, tk);
-      ascend(subterm b1, x, k, g1, _, ps2, _, _, _, _, _, _, px, pk, rg1, ex2, tk, s2, q2, two)
+      ascend(subterm b1, x, k, g1, _, ps2, _, _, _, _, _, _, px, pk, rg1, ex2,
+          tk, s2, q2, two)
     };
   }
 }
 
-fn decidePrime(x : Bin(), erased n : Nat(), erased rx : Rep(x, n)) -> (v : Verdict(n)) {
-  match subBin(_, _, x, BP(P0(One())), rx, RepP(_, _, RepP0(_, _, _, RepOne(), PlusSucc(_, _, _, PlusZero(_))))) : _ {
+-- The entry point. Below 2 the answer is BelowTwo. Otherwise the loop starts at
+-- j = 1 with the gap n - 1 and an empty list.
+fn decidePrime(x : Bin(), erased n : Nat(), erased rx : Rep(x, n))
+    -> (v : Verdict(n)) {
+  match subBin(_, _, x, BP(P0(One())), rx,
+      RepP(_, _,
+          RepP0(_, _, _, RepOne(), PlusSucc(_, _, _, PlusZero(_))))) : _ {
     Below(_, _, _, p) => BelowTwo(_, _, p);
     Above(g, _, _, a, rg, two) => match x : _ {
       BZ() => {
@@ -1243,17 +1666,30 @@ fn decidePrime(x : Bin(), erased n : Nat(), erased rx : Rep(x, n)) -> (v : Verdi
       BP(p) => {
         let erased RepP(_, _, rp) = rx;
         let (g1, erased rg1) = inc(_, g, rg);
-        ascend(Succ(a), p, One(), g1, _, PNil(), _, _, _, _, _, _, rp, RepOne(), rg1, PrimesTwo(),
-          TimesSucc(_, _, _, _, TimesZero(_), PlusZero(_)), plusMove(_, _, _, two), plusZeroRight(Succ(a)), two)
+        ascend(Succ(a), p, One(), g1, _, PNil(), _, _, _, _, _, _, rp, RepOne(),
+            rg1, PrimesTwo(), TimesSucc(_, _, _, _, TimesZero(_), PlusZero(_)),
+            plusMove(_, _, _, two), plusZeroRight(Succ(a)), two)
       };
     };
   }
 }
 
+-- Code at the top level runs as soon as it is checked. This is 4999 in binary,
+-- lowest digit first.
 let prime = BP(P1(P1(P1(P0(P0(P0(P0(P1(P1(P1(P0(P0(One())))))))))))));
+-- Both results of toNat are erased, so, as we understand it, the call is not
+-- run. It gives the checker a name, nPrime, for "the number prime stands for".
 let (erased nPrime, erased rPrime) = toNat(prime);
+-- `comptime let` runs decidePrime now, during checking, and requires the answer
+-- to be an IsPrime. From here on primeIsPrime has type Prime(nPrime): a proof
+-- that 4999 is prime, made by running the program. A plain `let` would be
+-- rejected, because without running it the checker cannot tell which Verdict
+-- comes back.
 comptime let IsPrime(_, primeIsPrime) = decidePrime(prime, nPrime, rPrime);
 
+-- 899, which is 29 * 31. The print shows Composite holding the factor 29,
+-- P1(P0(P1(P1(One())))) in binary. Erased fields are not there at run time and
+-- print as `_`.
 let composite = BP(P1(P1(P0(P0(P0(P0(P0(P1(P1(One()))))))))));
 let (erased nComposite, erased rComposite) = toNat(composite);
 print decidePrime(composite, nComposite, rComposite);

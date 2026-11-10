@@ -1,8 +1,32 @@
 -- Type safety.
--- Type safety of the typed arithmetic language of TAPL chapter 8, as we understand it: terms, the typing
--- relation HasType and small-step evaluation Step are data, preservation and progress are proved by structural
--- recursion, and the goal is safety: a well-typed term, after any number of steps, is a value or steps again.
--- Typing and step evidence is erased, so progress runs as a one-step evaluator and eval as a fuel-bounded loop.
+-- The theorem behind the slogan "well-typed programs don't go wrong", proved
+-- for a toy language of booleans and numbers. It is the language of chapter 8
+-- of Pierce's "Types and Programming Languages", as we understand it.
+--
+-- The toy language's syntax, its type system and its evaluation rules are each
+-- a `data` declaration below. Two facts are proved about them. Preservation: a
+-- step of evaluation keeps a term's type. Progress: a well-typed term is
+-- finished or can take a step. Together they give the goal, safety: a
+-- well-typed term never gets stuck, however many steps it has taken.
+--
+-- Mind the names. True(), Zero(), Succ(...), Bool() and Nat() in this file are
+-- pieces of the toy language, declared below. Pledge has no booleans or numbers
+-- of its own.
+--
+-- If Pledge is new to you:
+--   * `data` declares a type and lists every way to build a value of it.
+--   * A type can take values as parameters. `HasType(e, t)` below is a separate
+--     type for each term e and type t, and it is written so that a value of it
+--     can be built only when e has type t. So a value of type `HasType(e, t)`
+--     is evidence, a proof, that e has type t. Most types in this file are like
+--     that.
+--   * `erased` marks what exists only for the checker. Running the program
+--     skips it, so here the proofs cost nothing at run time.
+--   * The Tutorial link at the top of the page teaches all of this in order.
+
+-- The toy language's programs, as syntax trees. Everything applied is written
+-- with parentheses, even with no arguments. Nothing here rules out nonsense:
+-- Succ(True()) is a Term too.
 data Term() : Type() {
   True() : Term();
   False() : Term();
@@ -13,60 +37,103 @@ data Term() : Type() {
   IsZero(x : Term()) : Term();
 }
 
+-- The toy language's two types.
 data Ty() : Type() {
   Bool() : Ty();
   Nat() : Ty();
 }
 
+-- HasType(e, t) reads "term e has type t". Each constructor is one rule of the
+-- type system. TIf, for example: the condition has type Bool and the two
+-- branches share a type t, which is then the type of the whole If. No rule fits
+-- Succ(True()), so it has no type.
 data HasType(e : Term(), t : Ty()) : Type() {
   TTrue() : HasType(True(), Bool());
   TFalse() : HasType(False(), Bool());
   TIf(erased c : Term(), erased a : Term(), erased b : Term(), erased t : Ty(),
-    erased dc : HasType(c, Bool()), erased da : HasType(a, t), erased db : HasType(b, t)) : HasType(If(c, a, b), t);
+      erased dc : HasType(c, Bool()), erased da : HasType(a, t),
+      erased db : HasType(b, t)) : HasType(If(c, a, b), t);
   TZero() : HasType(Zero(), Nat());
-  TSucc(erased x : Term(), erased dx : HasType(x, Nat())) : HasType(Succ(x), Nat());
-  TPred(erased x : Term(), erased dx : HasType(x, Nat())) : HasType(Pred(x), Nat());
-  TIsZero(erased x : Term(), erased dx : HasType(x, Nat())) : HasType(IsZero(x), Bool());
+  TSucc(erased x : Term(), erased dx : HasType(x, Nat()))
+    : HasType(Succ(x), Nat());
+  TPred(erased x : Term(), erased dx : HasType(x, Nat()))
+    : HasType(Pred(x), Nat());
+  TIsZero(erased x : Term(), erased dx : HasType(x, Nat()))
+    : HasType(IsZero(x), Bool());
 }
 
+-- NumVal(e) reads "e is a finished number": Zero(), or Succ of one.
 data NumVal(e : Term()) : Type() {
   NVZero() : NumVal(Zero());
   NVSucc(erased x : Term(), erased nv : NumVal(x)) : NumVal(Succ(x));
 }
 
+-- Value(e) reads "e is finished: there is nothing left to evaluate".
 data Value(e : Term()) : Type() {
   VTrue() : Value(True());
   VFalse() : Value(False());
   VNum(erased e : Term(), nv : NumVal(e)) : Value(e);
 }
 
+-- Step(e, e2) reads "one step of evaluation turns e into e2". The rules with no
+-- `s` do some work: EIfTrue picks a branch. The rules with an `s` take a step
+-- inside a part of the term: EIf works on the condition while it is not yet
+-- True() or False().
 data Step(e : Term(), e2 : Term()) : Type() {
   EIfTrue(erased a : Term(), erased b : Term()) : Step(If(True(), a, b), a);
   EIfFalse(erased a : Term(), erased b : Term()) : Step(If(False(), a, b), b);
-  EIf(erased c : Term(), erased c2 : Term(), erased a : Term(), erased b : Term(), erased s : Step(c, c2))
+  EIf(erased c : Term(), erased c2 : Term(), erased a : Term(),
+      erased b : Term(), erased s : Step(c, c2))
     : Step(If(c, a, b), If(c2, a, b));
-  ESucc(erased x : Term(), erased x2 : Term(), erased s : Step(x, x2)) : Step(Succ(x), Succ(x2));
+  ESucc(erased x : Term(), erased x2 : Term(), erased s : Step(x, x2))
+    : Step(Succ(x), Succ(x2));
   EPredZero() : Step(Pred(Zero()), Zero());
   EPredSucc(erased x : Term(), erased nv : NumVal(x)) : Step(Pred(Succ(x)), x);
-  EPred(erased x : Term(), erased x2 : Term(), erased s : Step(x, x2)) : Step(Pred(x), Pred(x2));
+  EPred(erased x : Term(), erased x2 : Term(), erased s : Step(x, x2))
+    : Step(Pred(x), Pred(x2));
   EIsZeroZero() : Step(IsZero(Zero()), True());
-  EIsZeroSucc(erased x : Term(), erased nv : NumVal(x)) : Step(IsZero(Succ(x)), False());
-  EIsZero(erased x : Term(), erased x2 : Term(), erased s : Step(x, x2)) : Step(IsZero(x), IsZero(x2));
+  EIsZeroSucc(erased x : Term(), erased nv : NumVal(x))
+    : Step(IsZero(Succ(x)), False());
+  EIsZero(erased x : Term(), erased x2 : Term(), erased s : Step(x, x2))
+    : Step(IsZero(x), IsZero(x2));
 }
 
+-- Steps(e, e2) reads "zero or more steps turn e into e2".
 data Steps(e : Term(), e2 : Term()) : Type() {
   Stay(erased e : Term()) : Steps(e, e);
-  Then(erased e : Term(), erased e2 : Term(), erased e3 : Term(), erased s : Step(e, e2), erased ss : Steps(e2, e3))
-    : Steps(e, e3);
+  Then(erased e : Term(), erased e2 : Term(), erased e3 : Term(),
+      erased s : Step(e, e2), erased ss : Steps(e2, e3)) : Steps(e, e3);
 }
 
+-- Progress(e) reads "e is finished, or e can take a step". In Next the term e2
+-- is not erased. It is the actual next term, so a function that returns a
+-- Progress(e) is also a one-step evaluator.
 data Progress(e : Term()) : Type() {
   Done(erased e : Term(), v : Value(e)) : Progress(e);
   Next(erased e : Term(), e2 : Term(), erased s : Step(e, e2)) : Progress(e);
 }
 
-fn preservation(erased e : Term(), erased e2 : Term(), subterm erased s : Step(e, e2), erased t : Ty(),
-    erased d : HasType(e, t)) -> (erased d2 : HasType(e2, t)) {
+-- Preservation: if e steps to e2 and e has type t, then e2 has type t.
+--
+-- The recursion is on s, the evidence of the step. Evidence is data like any
+-- other and can be matched on and recursed over. `subterm` is how a recursive
+-- function shows that it ends: each recursive call must pass, for that
+-- parameter, a piece of the caller's own argument, here s1 from inside s. The
+-- checker demands this of every recursive function; one that might loop forever
+-- is rejected.
+--
+-- `match erased` matches on an erased value. After the colon comes what the
+-- match produces, and `_` leaves that to the checker, which knows it from the
+-- return type. As an argument, `_` is an erased value the checker can work out
+-- for itself.
+--
+-- There is one branch per Step rule. A `let` with a constructor on the left
+-- takes a value apart, and is accepted only when the value can have been built
+-- no other way. In the EIfTrue branch e is known to be an If, and TIf is the
+-- only typing rule for an If, so d must be a TIf.
+fn preservation(erased e : Term(), erased e2 : Term(),
+    subterm erased s : Step(e, e2), erased t : Ty(), erased d : HasType(e, t))
+    -> (erased d2 : HasType(e2, t)) {
   match erased s : _ {
     EIfTrue(_, _) => { let erased TIf(_, _, _, _, _, da, _) = d; da };
     EIfFalse(_, _) => { let erased TIf(_, _, _, _, _, _, db) = d; db };
@@ -74,25 +141,47 @@ fn preservation(erased e : Term(), erased e2 : Term(), subterm erased s : Step(e
       let erased TIf(_, _, _, _, dc, da, db) = d;
       TIf(_, _, _, _, preservation(_, _, subterm s1, _, dc), da, db)
     };
-    ESucc(_, _, s1) => { let erased TSucc(_, dx) = d; TSucc(_, preservation(_, _, subterm s1, _, dx)) };
+    ESucc(_, _, s1) => {
+      let erased TSucc(_, dx) = d;
+      TSucc(_, preservation(_, _, subterm s1, _, dx))
+    };
     EPredZero() => { let erased TPred(_, _) = d; TZero() };
-    EPredSucc(_, _) => { let erased TPred(_, dx) = d; let erased TSucc(_, dy) = dx; dy };
-    EPred(_, _, s1) => { let erased TPred(_, dx) = d; TPred(_, preservation(_, _, subterm s1, _, dx)) };
+    EPredSucc(_, _) => {
+      let erased TPred(_, dx) = d;
+      let erased TSucc(_, dy) = dx;
+      dy
+    };
+    EPred(_, _, s1) => {
+      let erased TPred(_, dx) = d;
+      TPred(_, preservation(_, _, subterm s1, _, dx))
+    };
     EIsZeroZero() => { let erased TIsZero(_, _) = d; TTrue() };
     EIsZeroSucc(_, _) => { let erased TIsZero(_, _) = d; TFalse() };
-    EIsZero(_, _, s1) => { let erased TIsZero(_, dx) = d; TIsZero(_, preservation(_, _, subterm s1, _, dx)) };
+    EIsZero(_, _, s1) => {
+      let erased TIsZero(_, dx) = d;
+      TIsZero(_, preservation(_, _, subterm s1, _, dx))
+    };
   }
 }
 
-fn canonNat(erased e : Term(), v : Value(e), erased d : HasType(e, Nat())) -> (nv : NumVal(e)) {
+-- A finished term of type Nat is a finished number.
+fn canonNat(erased e : Term(), v : Value(e), erased d : HasType(e, Nat()))
+    -> (nv : NumVal(e)) {
   match v : _ {
+    -- A match with no branches says "this cannot happen", and the checker has
+    -- to agree. Here d would be evidence that True() has type Nat. No HasType
+    -- rule gives that, so there is no case to write.
     VTrue() => match erased d : _ {};
     VFalse() => match erased d : _ {};
     VNum(_, nv) => nv;
   }
 }
 
-fn progress(subterm e : Term(), erased t : Ty(), erased d : HasType(e, t)) -> (r : Progress(e)) {
+-- Progress: a well-typed term is finished or can take a step. When run, this
+-- performs one step of evaluation. The typing evidence d is erased; its job is
+-- to convince the checker that no case is missing.
+fn progress(subterm e : Term(), erased t : Ty(), erased d : HasType(e, t))
+    -> (r : Progress(e)) {
   match e : _ {
     True() => Done(_, VTrue());
     False() => Done(_, VFalse());
@@ -103,6 +192,10 @@ fn progress(subterm e : Term(), erased t : Ty(), erased d : HasType(e, t)) -> (r
         Done(_, v) => match v : _ {
           VTrue() => Next(_, a, EIfTrue(a, b));
           VFalse() => Next(_, b, EIfFalse(a, b));
+          -- The condition of an If cannot be a number, because dc says it has
+          -- type Bool. The checker cannot use that until it knows which number.
+          -- Once nv is matched, the condition is known to be Zero() or a Succ,
+          -- and no HasType rule gives either of those the type Bool.
           VNum(_, nv) => match erased nv : _ {
             NVZero() => match erased dc : _ {};
             NVSucc(_, _) => match erased dc : _ {};
@@ -123,6 +216,8 @@ fn progress(subterm e : Term(), erased t : Ty(), erased d : HasType(e, t)) -> (r
       match progress(subterm x, _, dx) : _ {
         Done(_, v) => match canonNat(_, v, dx) : _ {
           NVZero() => Next(_, Zero(), EPredZero());
+          -- The match has told the checker that x is a Succ, so this `let` is
+          -- accepted.
           NVSucc(_, nv) => { let Succ(y) = x; Next(_, y, EPredSucc(_, nv)) };
         };
         Next(_, x2, s) => Next(_, Pred(x2), EPred(_, _, s));
@@ -141,54 +236,86 @@ fn progress(subterm e : Term(), erased t : Ty(), erased d : HasType(e, t)) -> (r
   }
 }
 
-fn preservationStar(erased e : Term(), erased e2 : Term(), subterm erased ss : Steps(e, e2), erased t : Ty(),
-    erased d : HasType(e, t)) -> (erased d2 : HasType(e2, t)) {
+-- Preservation again, over any number of steps.
+fn preservationStar(erased e : Term(), erased e2 : Term(),
+    subterm erased ss : Steps(e, e2), erased t : Ty(), erased d : HasType(e, t))
+    -> (erased d2 : HasType(e2, t)) {
   match erased ss : _ {
     Stay(_) => d;
-    Then(_, _, _, s, rest) => preservationStar(_, _, subterm rest, _, preservation(_, _, s, _, d));
+    Then(_, _, _, s, rest) =>
+      preservationStar(_, _, subterm rest, _, preservation(_, _, s, _, d));
   }
 }
 
-goal fn (erased e : Term(), e2 : Term(), erased t : Ty(), erased ss : Steps(e, e2), erased d : HasType(e, t))
-  -> (r : Progress(e2));
+-- `goal` states the theorem, here as the signature a function must have: if e
+-- has type t, and zero or more steps turn e into e2, then e2 is finished or can
+-- take a step. So e2 is never stuck. `qed safety` below has the checker confirm
+-- that safety is such a function. The page reports whether the goal is proved.
+goal fn (erased e : Term(), e2 : Term(), erased t : Ty(),
+    erased ss : Steps(e, e2), erased d : HasType(e, t))
+    -> (r : Progress(e2));
 
-fn safety(erased e : Term(), e2 : Term(), erased t : Ty(), erased ss : Steps(e, e2), erased d : HasType(e, t))
+-- The proof is short: e2 still has type t (preservation), so it is finished or
+-- can take a step (progress).
+fn safety(erased e : Term(), e2 : Term(), erased t : Ty(),
+    erased ss : Steps(e, e2), erased d : HasType(e, t))
     -> (r : Progress(e2)) {
   progress(e2, _, preservationStar(_, _, ss, _, d))
 }
 
 qed safety;
 
+-- The rest of the file is an evaluator built from the two proofs. A recursive
+-- function has to recurse on a piece of one of its arguments, and "the term
+-- after one step" is not a piece of the term. So eval counts down a supply of
+-- allowed steps instead.
 data Fuel() : Type() {
   Empty() : Fuel();
   More(rest : Fuel()) : Fuel();
 }
 
+-- What eval returns: a finished term v with the steps that led to it, or the
+-- term it had reached when the fuel ran out. Either way there is evidence that
+-- the result still has type t.
 data Outcome(e : Term(), t : Ty()) : Type() {
-  Halts(erased e : Term(), erased t : Ty(), v : Term(), erased ss : Steps(e, v), isv : Value(v),
-    erased dv : HasType(v, t)) : Outcome(e, t);
-  OutOfFuel(erased e : Term(), erased t : Ty(), e2 : Term(), erased ss : Steps(e, e2),
-    erased d2 : HasType(e2, t)) : Outcome(e, t);
+  Halts(erased e : Term(), erased t : Ty(), v : Term(), erased ss : Steps(e, v),
+      isv : Value(v), erased dv : HasType(v, t)) : Outcome(e, t);
+  OutOfFuel(erased e : Term(), erased t : Ty(), e2 : Term(),
+      erased ss : Steps(e, e2), erased d2 : HasType(e2, t)) : Outcome(e, t);
 }
 
-fn eval(subterm fuel : Fuel(), e : Term(), erased t : Ty(), erased d : HasType(e, t)) -> (r : Outcome(e, t)) {
+-- Each round takes one step with progress, and uses preservation to bring the
+-- typing evidence up to date for the next round.
+fn eval(subterm fuel : Fuel(), e : Term(), erased t : Ty(),
+    erased d : HasType(e, t))
+    -> (r : Outcome(e, t)) {
   match fuel : _ {
     Empty() => OutOfFuel(_, _, e, Stay(_), d);
     More(f) => match progress(e, _, d) : _ {
       Done(_, v) => Halts(_, _, e, Stay(_), v, d);
-      Next(_, e2, s) => match eval(subterm f, e2, _, preservation(_, _, s, _, d)) : _ {
-        Halts(_, _, v, ss, isv, dv) => Halts(_, _, v, Then(_, _, _, s, ss), isv, dv);
-        OutOfFuel(_, _, e3, ss, d3) => OutOfFuel(_, _, e3, Then(_, _, _, s, ss), d3);
+      Next(_, e2, s) =>
+        match eval(subterm f, e2, _, preservation(_, _, s, _, d)) : _ {
+        Halts(_, _, v, ss, isv, dv) =>
+          Halts(_, _, v, Then(_, _, _, s, ss), isv, dv);
+        OutOfFuel(_, _, e3, ss, d3) =>
+          OutOfFuel(_, _, e3, Then(_, _, _, s, ss), d3);
       };
     };
   }
 }
 
+-- Code at the top level runs as soon as it is checked. The term below is "if
+-- iszero(pred 1) then 2 else pred 0", and `typing` is the evidence, written out
+-- by hand, that it has type Nat.
 let one = Succ(Zero());
 let term = If(IsZero(Pred(one)), Succ(one), Pred(Zero()));
-let erased typing = TIf(_, _, _, _, TIsZero(_, TPred(_, TSucc(_, TZero()))), TSucc(_, TSucc(_, TZero())),
-  TPred(_, TZero()));
+let erased typing = TIf(_, _, _, _, TIsZero(_, TPred(_, TSucc(_, TZero()))),
+    TSucc(_, TSucc(_, TZero())), TPred(_, TZero()));
 let fuel = More(More(More(More(More(Empty())))));
+-- `print` shows a value next to the statement; erased fields are not there at
+-- run time and print as `_`. One step turns "pred 1" into 0. Five units of fuel
+-- are enough to reach the value 2. Two are not, and eval reports the term it
+-- had reached.
 print progress(term, _, typing);
 print eval(fuel, term, _, typing);
 print eval(More(More(Empty())), term, _, typing);
