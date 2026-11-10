@@ -615,7 +615,37 @@ theorem goal_spec {st st' : TopState} {p : Pos} {g : Goal} (h : topItem st (.goa
     simp only [pure, Except.pure, ok_bind, Except.ok.injEq] at h
     exact ⟨_, h.symm, ty, is, tainted, h1, ensure_ok h2, rfl⟩
 
-/-- A `goal` statement keeps the top level's invariant: the goal it sets mentions only top-level entries (§12). -/
+namespace DataTop
+
+mutual
+theorem Term.boundsBelow_of_eval {ρ env : List Value} :
+    ∀ (t : Term) {v : Value}, t.eval ρ env = some v → t.boundsBelow env.length = true
+  | .entry _, _, _ => rfl
+  | .bound i, _, h => by
+    simp only [Term.eval] at h
+    simpa [Term.boundsBelow] using (List.getElem?_eq_some_iff.1 h).1
+  | .app _ as, _, h => by
+    obtain ⟨vs, hvs, -⟩ := Term.eval_app.1 h
+    exact Term.boundsBelowList_of_evalList as hvs
+theorem Term.boundsBelowList_of_evalList {ρ env : List Value} :
+    ∀ (as : List Term) {vs : List Value}, Term.evalList ρ env as = some vs → Term.boundsBelowList env.length as = true
+  | [], _, _ => rfl
+  | a :: as, _, h => by
+    obtain ⟨v, vs, hv, hvs, -⟩ := Term.evalList_cons_eq_some.1 h
+    simp only [Term.boundsBelowList, Term.boundsBelow_of_eval a hv, Term.boundsBelowList_of_evalList as hvs,
+      Bool.and_self]
+end
+
+theorem TopLive.wtermInv {st : TopState} {ρ : List Value} (hI : TopInv st ρ) (L : TopLive st ρ) :
+    WTermInv st.sc st.sc.Γ.length (st.world ρ).Sc ρ :=
+  ⟨L.sat.1, by rw [hI.len]; exact Nat.le_refl _, SigsClose.close hI.noRemoved, hI.sigsOk,
+    by simp [TopState.world, Sigs.find_map_close, hI.noJunk],
+    fun n r hn => let ⟨v, hv, h⟩ := L.names n r hn; ⟨v, hv, h.2.1⟩⟩
+
+end DataTop
+
+/-- A `goal` statement keeps the top level's invariant: the goal it sets mentions only top-level entries (§12), and,
+in an untainted scope, a type goal's type is closed. -/
 theorem goalItem_sound {st st' : TopState} {ρ : List Value} {p : Pos} {g : Goal} (hI : TopInv st ρ)
     (h : topItem st (.goal p g) = .ok st') : (st.world ρ).Le (st'.world ρ) ∧ TopInv st' ρ := by
   obtain ⟨hnone, goal, rfl, hgoal⟩ := goal_spec h
@@ -626,10 +656,13 @@ theorem goalItem_sound {st st' : TopState} {ρ : List Value} {p : Pos} {g : Goal
     cases g with
     | fn hdr =>
       obtain ⟨ps, rs, u, -, h2, rfl⟩ := hgoal
-      exact topLevel_ok h2
+      exact ⟨topLevel_ok h2, fun _ t ht => by cases ht⟩
     | type t =>
-      obtain ⟨ty, is, tainted, -, h2, rfl⟩ := hgoal
-      exact h2
+      obtain ⟨ty, is, tainted, h1, h2, rfl⟩ := hgoal
+      refine ⟨h2, fun hts t' ht' => ?_⟩
+      cases ht'
+      obtain ⟨A, hA⟩ := (annotate_eval (DataTop.TopLive.wtermInv hI (hI.live hts)) h1).1
+      exact DataTop.Term.boundsBelow_of_eval _ hA
   · obtain ⟨g', hg', -⟩ := hI.proved hpr
     rw [hnone] at hg'
     cases hg'
