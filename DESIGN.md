@@ -558,29 +558,38 @@ At any position in a program, the interface shows:
   neither a type nor an `is` clause.
 - **Termination**: the enclosing function's `subterm` parameters, in order,
   and the functions of its group.
-- **Scope**: the local entries, those of the enclosing declaration or,
-  at the top level, the top-level ones, each with its names, which of
-  them are tainted (§12), its type and its `is` rule, and, in phase 2,
-  whether it is erased; and whether the scope is tainted, with the
-  scrutinee that tainted it. An entry with several names (§8) is shown
-  once, with all of them. An entry with no name is shown only when a
-  type or `is` rule shown under Scope or Expected mentions it.
+- **Scope**: every entry in the scope at that position (§7) that is
+  not global, in the order the entries were created, each with its
+  names, which of them are tainted (§12), its type and its `is` rule,
+  and, in phase 2, whether it is erased; and whether the scope is
+  tainted, with the scrutinee that tainted it. An entry with several
+  names (§8) is shown once, with all of them. An entry with no name is
+  listed under its marker, like any other entry. An entry is global
+  when a top-level statement created it, named or not; the global
+  entries are among the Globals. At the top level, where every entry in
+  scope is global, Scope lists none and points to the Globals instead.
 - **Refutations**, at a `match` or pattern `let`: the refuted value
   constructors, and, at an erased match (§16), the absurd branches.
-  Clicking one shows why its forcing fails (§7), as a
-  derivation with the fewest steps: the value constructor as a match
-  branch, then the equations that lead to the
+  Clicking one shows, in a dialog, why its forcing fails (§7), as a
+  derivation with the fewest steps: `suppose`, then the match or
+  pattern `let`, with `erased` or `comptime` as written, as
+  `match s { P => ... }` or `let P = s;`, where `s` is the scrutinee's
+  entry and `P` the value constructor applied to the fresh entries its
+  fields are opened to (§3), then the equations that lead to the
   failure, and the equation that gave each rule one of them is
-  rewritten by. The branch is the one written for it, if any;
-  otherwise each field is shown as `@` and its declared name.
+  rewritten by. Each field's fresh entry is named as in the branch or
+  pattern written for the value constructor, if any; otherwise it is
+  shown as `@` and the field's declared name.
 
-Hidden until the learner opens them, the **Globals** are the top-level
-names in scope at that position: each function, with its parameters and
-returns; each type constructor, with its parameters and its value
-constructors, each with its fields and return; and each top-level
-binding, with its type and `is` rule.
+The **Globals** come in two parts, each hidden until the learner opens
+it. One lists the global entries in scope at that position, each shown
+as under Scope. The other lists the functions and type constructors in
+scope there: each function, with its parameters and returns; and each
+type constructor, with its parameters and its value constructors, each
+with its fields and return.
 
-Types and skeleton terms are shown canonicalized. An anonymous entry is
+Types and skeleton terms are shown canonicalized, except where this
+section says otherwise. An anonymous entry is
 shown by a marker giving where it was
 created: `_@line:column` at the `_` that made or bound it, and
 otherwise `?@line:column`, with a number after the `?` when several
@@ -592,6 +601,49 @@ telescope (§10) or is in place of an argument or inside a type (§20)
 shows what it stands for: the telescope, or the term the `_` is solved to. Each `is` rule a
 derivation or a sequence of rewrites uses links to where its fact was
 created.
+
+Under Expected and Scope, and among the global entries, a type or `is`
+rule has a dialog only when the dialog gives information that its row,
+and its entry's name if it has an entry, do not: when its raw form
+differs from its canonical form, or when it is an entry's `is` rule
+made, or an entry's type defined, somewhere other than where the entry
+was created. A raw form is the term as the checker has it, before
+canonicalizing (§7). An entry's type is defined by the binder the entry
+was opened from (§3); for the entry of an application, by the declared
+return of the value constructor applied, or by the declaration of the
+data type constructor (§5) applied; and otherwise, as for an
+application of `Type`, where the entry was created. The dialog shows:
+
+- the raw form, and, for an entry's `is` rule made, or an entry's type
+  defined, somewhere other than where the entry was created, where it
+  was made or defined;
+- the `is` rules that canonicalizing it applies, numbered, each written
+  `x → e`;
+- the rewriting from the raw form to the canonical form, one rule per
+  step, each step citing its rule's number.
+
+Each rule in the dialog's list can be opened to show how the rule was
+made:
+
+- a rule from forcing: the derivation that gave it, starting with the
+  match or pattern `let` as under Refutations, without `suppose`;
+- a rule from solving a `_` (§20): the derivation that gave it;
+- any other rule: that it is the rule of an application (§7) or of an
+  `is` clause (§6).
+
+Outside the dialog's list, wherever a rule is stated as a fact, it is
+written `x is e`. A derivation, in the dialog or under Refutations,
+shows the entry of an unnamed application by its marker, not as the
+application.
+
+TBD:
+
+- how the derivations are shown when several rules in the list come
+  from one forcing (for now, each in full);
+- whether a rule cited inside a derivation can itself be opened (for
+  now, it cannot);
+- the wording that says a rule is that of an application or of an `is`
+  clause.
 
 In phase 2, the interface sets erased code in italics: every expression
 in an erased position (§16) other than a type, with everything inside
