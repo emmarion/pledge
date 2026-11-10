@@ -8,7 +8,7 @@
 -- specification; implements them on the binary form; and proves that the two
 -- agree. The unary numbers are erased, so only the binary arithmetic is meant
 -- to run. The last lines multiply two numbers of about a billion, whose unary
--- forms should never be built.
+-- forms are never built.
 --
 -- Most of the file is small facts about + and * that the main proofs need. Each
 -- has a comment giving the fact. The bodies are the proofs, and can be skipped
@@ -834,9 +834,9 @@ let xHigh = P0(P0(P1(P1(P0(P1(P0(P0(P1(P1(P0(P0(P1(P0(P0(One())))))))))))))));
 let x = BP(P1(P1(P0(P0(P1(P0(P1(P1(P0(P1(P0(P0(P0(P0(P0(xHigh))))))))))))))));
 let yHigh = P0(P0(P1(P1(P1(P1(P0(P1(P1(P0(P1(P0(P1(P1(One()))))))))))))));
 let y = BP(P1(P0(P0(P0(P1(P1(P0(P1(P0(P0(P0(P1(P0(P1(P1(yHigh))))))))))))))));
--- Both results of toNat are erased, so, as we understand it, the call is not
--- run at all. m would be over a billion Succs deep. It still gives the checker
--- a name for "the number x stands for".
+-- Both results of toNat are erased, so the call is not run at all. m would be
+-- over a billion Succs deep. It still gives the checker a name for "the number
+-- x stands for".
 let (erased m, erased px) = toNat(x);
 let (erased n, erased py) = toNat(y);
 let (sum, erased r, erased psum, erased s) = add(m, n, x, y, px, py);

@@ -61,9 +61,9 @@ fn compare(subterm a : Nat(), b : Nat()) -> (o : Order()) {
 }
 
 -- Tree(h) is a tree of height h. Node2 and Node3 take children that all have
--- the same height h, and build a tree of height h + 1. So, as far as we can
--- tell, a tree with leaves at different depths cannot be built at all. The
--- height is erased: it guides the checker and is not stored in the node.
+-- the same height h, and build a tree of height h + 1. So a tree with leaves
+-- at different depths cannot be built at all. The height is erased: it guides
+-- the checker and is not stored in the node.
 data Tree(h : Nat()) : Type() {
   Leaf() : Tree(Zero());
   Node2(erased h : Nat(), l : Tree(h), k : Nat(), r : Tree(h)) : Tree(Succ(h));

@@ -1,7 +1,7 @@
 -- Type safety.
 -- The theorem behind the slogan "well-typed programs don't go wrong", proved
 -- for a toy language of booleans and numbers. It is the language of chapter 8
--- of Pierce's "Types and Programming Languages", as we understand it.
+-- of Pierce's "Types and Programming Languages".
 --
 -- The toy language's syntax, its type system and its evaluation rules are each
 -- a `data` declaration below. Two facts are proved about them. Preservation: a

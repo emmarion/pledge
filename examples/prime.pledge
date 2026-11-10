@@ -193,9 +193,9 @@ data Factor(d : Nat(), n : Nat()) : Type() {
     : Factor(d, n);
 }
 
--- PrimesBelow(l, k) is meant to read "l holds exactly the primes below k",
--- newest first. It is built one k at a time: k is added with evidence that it
--- is prime, or skipped with evidence that it has a proper factor.
+-- PrimesBelow(l, k) reads "l holds exactly the primes below k", newest first.
+-- It is built one k at a time: k is added with evidence that it is prime, or
+-- skipped with evidence that it has a proper factor.
 data PrimesBelow(l : NatList(), k : Nat()) : Type() {
   PrimesTwo() : PrimesBelow(NNil(), Succ(Succ(Zero())));
   PrimesAdd(erased l : NatList(), erased k : Nat(), rest : PrimesBelow(l, k),
@@ -1677,8 +1677,8 @@ fn decidePrime(x : Bin(), erased n : Nat(), erased rx : Rep(x, n))
 -- Code at the top level runs as soon as it is checked. This is 4999 in binary,
 -- lowest digit first.
 let prime = BP(P1(P1(P1(P0(P0(P0(P0(P1(P1(P1(P0(P0(One())))))))))))));
--- Both results of toNat are erased, so, as we understand it, the call is not
--- run. It gives the checker a name, nPrime, for "the number prime stands for".
+-- Both results of toNat are erased, so the call is not run. It gives the
+-- checker a name, nPrime, for "the number prime stands for".
 let (erased nPrime, erased rPrime) = toNat(prime);
 -- `comptime let` runs decidePrime now, during checking, and requires the answer
 -- to be an IsPrime. From here on primeIsPrime has type Prime(nPrime): a proof
