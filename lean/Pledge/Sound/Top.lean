@@ -118,27 +118,6 @@ theorem topItems_sound {ρ : List Value} : ∀ {st : TopState} {prog : Program},
 
 namespace DataTop
 
-theorem fnGroup_phase {st st' : TopState} {fs : List Fn} (h : fnGroup st fs = .ok st') : st'.phase = st.phase := by
-  unfold fnGroup at h
-  obtain ⟨st0, h0, h⟩ := bind_eq_ok.1 h
-  obtain ⟨⟨st1, heads⟩, h1, h⟩ := bind_eq_ok.1 h
-  obtain ⟨⟨taint, bodies⟩, -, h⟩ := bind_eq_ok.1 h
-  simp only [pure, Except.pure, Except.ok.injEq] at h
-  subst h
-  have e0 := foldlM_induct (fun _ s => s.phase = st.phase) fs [] (fun q x b b' _ hb hf => by
-    obtain ⟨_, -, hf⟩ := bind_eq_ok.1 hf
-    simp only [pure, Except.pure, Except.ok.injEq] at hf
-    rw [← hf]; exact hb) rfl h0
-  exact foldlM_induct (fun _ p => p.1.phase = st.phase) fs [] (fun q x b b' _ hb hf => by
-    obtain ⟨⟨s, hd⟩, hh, hf⟩ := bind_eq_ok.1 hf
-    simp only [pure, Except.pure, Except.ok.injEq] at hf
-    rw [← hf]
-    unfold fnHead at hh
-    obtain ⟨_, -, hh⟩ := bind_eq_ok.1 hh
-    obtain ⟨_, -, hh⟩ := bind_eq_ok.1 hh
-    simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at hh
-    rw [← hh.1]; exact hb) e0 h1
-
 theorem qedFnGoal_phase {st st' : TopState} {ps rs : Telescope} {e : Expr} (h : qedFnGoal st ps rs e = .ok st') :
     st'.phase = st.phase := by
   obtain ⟨_, _, _, -, -, -, -, rfl⟩ := qedFnGoal_spec h
@@ -151,8 +130,8 @@ theorem topItem_phase {st st' : TopState} {t : Top} (h : topItem st t = .ok st')
     rw [hgr.eq]
   · obtain ⟨_, hgr⟩ := dataGroup_group h
     rw [hgr.eq]
-  · exact fnGroup_phase h
-  · exact fnGroup_phase h
+  · exact (fnGroup_keeps h).1
+  · exact (fnGroup_keeps h).1
   · unfold comptimeLet at h
     unwind_ok h
     all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h])
@@ -184,13 +163,54 @@ end DataTop
 theorem topItems_phase (phase : Nat) (prog : Program) : (topItems (.init phase) prog).1.phase = phase :=
   DataTop.topItems_phase _ prog
 
+/-- The goal `g` was proved at a `qed` of `prog`: checking stopped at no error up to that `qed`, which proved `g`, and
+the top-level scope after it was untainted, had every entry `g` mentions, and was satisfied by the first values of
+`ρ`, with the signatures of that scope closed by them. -/
+def ProvedAt (phase : Nat) (prog : Program) (g : CheckedGoal) (ρ : List Value) : Prop :=
+  ∃ pre p e post, prog = pre ++ .qed p e :: post ∧ (topItems (.init phase) (pre ++ [.qed p e])).2 = none ∧
+    let st := (topItems (.init phase) (pre ++ [.qed p e])).1
+    st.proved = true ∧ st.sc.taintedBy = none ∧ st.goal = some g ∧ GoalBelow st.sc.Γ.length g ∧
+      st.sc.Γ.length ≤ ρ.length ∧
+      Sat (st.sc.sigs.map (Sig.close (ρ.take st.sc.Γ.length))) st.sc.Γ (ρ.take st.sc.Γ.length)
+
+/-- The final state's invariant, for a valuation whose first values satisfy the scope at the `qed` if the goal is
+proved. -/
+theorem topItems_final (phase : Nat) (prog : Program) (hp : Program.holeFree prog = true) :
+    ∃ ρ, TopInv (topItems (.init phase) prog).1 ρ ∧ ((topItems (.init phase) prog).2 = none →
+      (topItems (.init phase) prog).1.proved = true → ∀ g, (topItems (.init phase) prog).1.goal = some g →
+        ProvedAt phase prog g ρ) := by
+  by_cases hc : (topItems (.init phase) prog).2 = none ∧ (topItems (.init phase) prog).1.proved = true
+  · obtain ⟨pre, p, e, post, rfl, hn, hpr, ht⟩ := (topItems_proved hc.1 hc.2).resolve_left (by simp [TopState.init])
+    simp only [Program.holeFree, List.all_append, List.all_cons, Bool.and_eq_true] at hp
+    obtain ⟨ρ₀, -, hI₀⟩ := topItems_sound (ρ := []) (prog := pre ++ [.qed p e]) (TopInv.init phase)
+      (by simp [Program.holeFree, hp.1, hp.2.1])
+    simp only [List.nil_append] at hI₀
+    have he := topItems_append post hn
+    simp only [List.append_assoc, List.singleton_append] at he
+    obtain ⟨ρ₂, hle, hI⟩ := topItems_sound (prog := post) hI₀ hp.2.2
+    rw [← he] at hle hI
+    refine ⟨ρ₀ ++ ρ₂, hI, fun hn' _ g hg => ⟨pre, p, e, post, rfl, hn, hpr, ht, ?_⟩⟩
+    obtain ⟨g₀, hg₀, -⟩ := hI₀.proved hpr
+    have hgF := topItems_goal (l := post) (by rw [← he]; exact hn') hg₀
+    rw [← he, hg] at hgF
+    cases hgF
+    have hl := hI₀.len
+    refine ⟨hg₀, (hI₀.goal _ hg₀).1, by simp; omega, ?_⟩
+    have := hle.take
+    simp only [TopState.world] at this
+    rw [← hl, this]
+    exact (hI₀.live ht).sat
+  · obtain ⟨ρ, -, hI⟩ := topItems_sound (ρ := []) (prog := prog) (TopInv.init phase) hp
+    exact ⟨ρ, by simpa using hI, fun hn hpr => absurd ⟨hn, hpr⟩ hc⟩
+
 /-- Soundness of the checker and evaluator, for hole-free programs (no `_` argument, §16, and no type or value
 constructor named `sorry`; `sorry` and multiplicities allowed), under any phase: there is an ideal valuation `W.ρ`
 of the final top-level entries, the program's signatures closed by it typing values, with `W.P` the evaluator's
-view of the program; it satisfies the final scope if that scope is untainted, and is otherwise constrained here only
-by its length; and if the goal is reported proved, it holds there (`GoalHolds`): a type goal's type has a value,
-and the function a `qed` names computes, from run-time arguments related to ideal ones satisfying a function goal's
-parameters, run-time results related to ideal ones satisfying its returns. -/
+view of the program; it satisfies the final scope if that scope is untainted; and if the goal is reported proved,
+the first values of `W.ρ` satisfy the scope at the `qed` that proved it (`ProvedAt`), and the goal holds
+(`GoalHolds`): a type goal's type has a value, and the function a `qed` names computes, from run-time arguments
+related to ideal ones satisfying a function goal's parameters, run-time results related to ideal ones satisfying its
+returns. -/
 theorem runProgram_sound (phase : Nat) (prog : Program) (has : String → Bool) (err : Option (Pos × String))
     (hp : Program.holeFree prog = true) :
     ∃ W : World, W.P = (topItems (.init phase) prog).1.prog ∧
@@ -198,68 +218,80 @@ theorem runProgram_sound (phase : Nat) (prog : Program) (has : String → Bool) 
       W.P.fns = (runProgram phase prog has err).fns ∧ W.ρ.length = (runProgram phase prog has err).entries.length ∧
       ((topItems (.init phase) prog).1.sc.taintedBy = none → Sat W.Sc (runProgram phase prog has err).entries W.ρ) ∧
       ((runProgram phase prog has err).goalProved = some true → ∃ g, (runProgram phase prog has err).goal = some g ∧
-        GoalHolds W phase g (runProgram phase prog has err).qedFn) := by
-  obtain ⟨ρ, -, hI⟩ := topItems_sound (ρ := []) (prog := prog) (TopInv.init phase) hp
-  simp only [List.nil_append] at hI
+        ProvedAt phase prog g W.ρ ∧ GoalHolds W phase g (runProgram phase prog has err).qedFn) := by
+  obtain ⟨ρ, hI, hat⟩ := topItems_final phase prog hp
   refine ⟨(topItems (.init phase) prog).1.world ρ, rfl, rfl, rfl, hI.len, fun ht => (hI.live ht).sat, fun hg => ?_⟩
   simp only [runProgram] at hg ⊢
   split at hg
   · simp only [Option.some.injEq, Bool.and_eq_true] at hg
+    have hn : (topItems (.init phase) prog).2 = none := by
+      cases hf : (topItems (.init phase) prog).2 with
+      | none => rfl
+      | some _ => simp [hf] at hg
     obtain ⟨g, hg', hW⟩ := hI.proved hg.2
-    exact ⟨g, hg', by simpa [topItems_phase] using hW _ (World.Le.refl _)⟩
+    exact ⟨g, hg', hat hn hg.2 g hg', by simpa [topItems_phase] using hW _ (World.Le.refl _)⟩
   · cases hg
 
-/-- A proved type goal has a value: under some valuation `ρ` of the final top-level entries, of which the statement
-fixes only the length, the goal's type `t` evaluates to a type `V`, and some value has type `V` by the program's
+/-- A proved type goal has a value: there is a valuation `ρ` of the final top-level entries, satisfying the final
+scope if that scope is untainted, whose first values satisfy the scope at the `qed` that proved the goal
+(`ProvedAt`), under which the goal's type `t` evaluates to a type `V`, and some value has type `V` by the program's
 signatures closed by `ρ`. -/
 theorem type_goal_inhabited (phase : Nat) (prog : Program) (has : String → Bool) (err : Option (Pos × String))
     (hp : Program.holeFree prog = true) {g : CheckedGoal} {t : Term}
     (hproved : (runProgram phase prog has err).goalProved = some true)
     (hg : (runProgram phase prog has err).goal = some g) (ht : g.kind = .type t) :
     ∃ ρ, ρ.length = (runProgram phase prog has err).entries.length ∧
+      ((topItems (.init phase) prog).1.sc.taintedBy = none →
+        Sat ((runProgram phase prog has err).sigs.map (Sig.close ρ)) (runProgram phase prog has err).entries ρ) ∧
+      ProvedAt phase prog g ρ ∧
       ∃ v V, t.eval ρ [] = some V ∧ HasType ((runProgram phase prog has err).sigs.map (Sig.close ρ)) v V := by
-  obtain ⟨W, -, hSc, -, hl, -, hgoal⟩ := runProgram_sound phase prog has err hp
-  obtain ⟨g', hg', hh⟩ := hgoal hproved
+  obtain ⟨W, -, hSc, -, hl, hsat, hgoal⟩ := runProgram_sound phase prog has err hp
+  obtain ⟨g', hg', hat, hh⟩ := hgoal hproved
   rw [hg] at hg'
   cases hg'
   simp only [GoalHolds, ht] at hh
-  rw [hSc] at hh
-  exact ⟨W.ρ, hl, hh⟩
+  rw [hSc] at hh hsat
+  exact ⟨W.ρ, hl, hsat, hat, hh⟩
 
-/-- A proved function goal holds: under some valuation `ρ` of the final top-level entries, of which the statement
-fixes only the length, the function `n` the
-`qed` names, `d` to the evaluator, takes every list of values satisfying the goal's parameters `ps` to values
-satisfying its returns `rs`: running `d` on those values, or on any run-time values related to them by the
-parameters' multiplicities, returns run-time results related to them by the returns' multiplicities. -/
+/-- A proved function goal holds: there is a valuation `ρ` of the final top-level entries, satisfying the final scope
+if that scope is untainted, whose first values satisfy the scope at the `qed` that proved the goal (`ProvedAt`),
+under which the function `n` the `qed` names, `d` to the evaluator, takes every list of values satisfying the
+goal's parameters `ps` to values satisfying its returns `rs`: running `d` on any run-time values related to them by
+the parameters' multiplicities returns run-time results related to them by the returns' multiplicities. -/
 theorem fn_goal_holds (phase : Nat) (prog : Program) (has : String → Bool) (err : Option (Pos × String))
     (hp : Program.holeFree prog = true) {g : CheckedGoal} {ps rs : Telescope}
     (hproved : (runProgram phase prog has err).goalProved = some true)
     (hg : (runProgram phase prog has err).goal = some g) (hk : g.kind = .fn ps rs) :
     ∃ ρ n d, ρ.length = (runProgram phase prog has err).entries.length ∧
+      ((topItems (.init phase) prog).1.sc.taintedBy = none →
+        Sat ((runProgram phase prog has err).sigs.map (Sig.close ρ)) (runProgram phase prog has err).entries ρ) ∧
+      ProvedAt phase prog g ρ ∧
       (runProgram phase prog has err).qedFn = some n ∧ (runProgram phase prog has err).fns.find n = some d ∧
       ∀ vs, TeleSat ((runProgram phase prog has err).sigs.map (Sig.close ρ)) ρ ps [] vs →
         ∃ ws, TeleSat ((runProgram phase prog has err).sigs.map (Sig.close ρ)) ρ rs vs ws ∧
           ∀ as, MultsRel ((runProgram phase prog has err).sigs.map (Sig.close ρ)) phase (ps.map (·.mult)) as vs →
             ∃ ws', CallRel (topItems (.init phase) prog).1.prog d as ws' ∧
               MultsRel ((runProgram phase prog has err).sigs.map (Sig.close ρ)) phase (rs.map (·.mult)) ws' ws := by
-  obtain ⟨W, hP, hSc, hF, hl, -, hgoal⟩ := runProgram_sound phase prog has err hp
-  obtain ⟨g', hg', hh⟩ := hgoal hproved
+  obtain ⟨W, hP, hSc, hF, hl, hsat, hgoal⟩ := runProgram_sound phase prog has err hp
+  obtain ⟨g', hg', hat, hh⟩ := hgoal hproved
   rw [hg] at hg'
   cases hg'
   simp only [GoalHolds, hk] at hh
   obtain ⟨n, d, hn, hd, hh⟩ := hh
-  rw [hSc] at hh
+  rw [hSc] at hh hsat
   rw [hP] at hh
-  exact ⟨W.ρ, n, d, hl, hn, by rw [← hF]; exact hd, hh⟩
+  exact ⟨W.ρ, n, d, hl, hsat, hat, hn, by rw [← hF]; exact hd, hh⟩
 
-/-- Part of `runProgram_sound`, the closed signatures, the functions and the goal clause, for source text whose
-parsed program is hole-free. -/
+/-- `runProgram_sound` for source text whose parsed program is hole-free. -/
 theorem run_sound (source : String) (phase : Nat) (hp : Program.holeFree (parse source phase).1 = true) :
-    ∃ W : World, W.Sc = (run source phase).sigs.map (Sig.close W.ρ) ∧ W.P.fns = (run source phase).fns ∧
-      ((run source phase).goalProved = some true →
-        ∃ g, (run source phase).goal = some g ∧ GoalHolds W phase g (run source phase).qedFn) := by
-  obtain ⟨W, -, h1, h2, -, -, h3⟩ := runProgram_sound phase _ (hasKeyword source phase) (parse source phase).2 hp
-  exact ⟨W, h1, h2, h3⟩
+    ∃ W : World, W.P = (topItems (.init phase) (parse source phase).1).1.prog ∧
+      W.Sc = (run source phase).sigs.map (Sig.close W.ρ) ∧ W.P.fns = (run source phase).fns ∧
+      W.ρ.length = (run source phase).entries.length ∧
+      ((topItems (.init phase) (parse source phase).1).1.sc.taintedBy = none →
+        Sat W.Sc (run source phase).entries W.ρ) ∧
+      ((run source phase).goalProved = some true → ∃ g, (run source phase).goal = some g ∧
+        ProvedAt phase (parse source phase).1 g W.ρ ∧ GoalHolds W phase g (run source phase).qedFn) :=
+  runProgram_sound phase _ (hasKeyword source phase) (parse source phase).2 hp
 
 /-- The "no `False`" corollary, with `sorry` allowed: a program that declares a data type with no value
 constructors and sets as its goal an application of it is never reported to prove that goal. -/

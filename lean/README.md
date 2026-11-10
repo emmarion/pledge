@@ -139,14 +139,23 @@ tokens) and any syntax error `err`, writing `out` for
   are `out.fns`, and whose valuation `W.ρ` has one value per entry of
   `out.entries`; if the final top-level scope is untainted, `W.ρ`
   satisfies it (`Sat W.Sc out.entries W.ρ`); and if `out.goalProved =
-  some true`, the goal `out.goal` holds in `W` (`GoalHolds`).
+  some true`, the goal `out.goal` holds in `W` (`GoalHolds`), and
+  `ProvedAt` holds of it: `prog` has a `qed` up to which checking stops
+  at no error, the state just after it has the goal proved, an
+  untainted scope and the goal `out.goal`, whose entries are all in
+  that scope (`GoalBelow`), and the first values of `W.ρ` satisfy that
+  scope, typed by its signatures closed by them (`Sat`). The goal is so
+  tied to a valuation satisfying the scope as it stood when the goal
+  was proved, whatever later items do to the scope.
 - `type_goal_inhabited`: if the goal is proved and is the type `t`,
-  there is a valuation `ρ` with one value per entry of `out.entries`
-  under which `t` evaluates to a type `V`, and some value has type `V`
-  by `out.sigs` closed by `ρ`.
+  there is a valuation `ρ` with one value per entry of `out.entries`,
+  satisfying the final scope if it is untainted and, by its first
+  values, the scope at the `qed` (`ProvedAt`), under which `t`
+  evaluates to a type `V`, and some value has type `V` by `out.sigs`
+  closed by `ρ`.
 - `fn_goal_holds`: if the goal is proved and is the function goal with
-  telescopes `ps` and `rs`, there is a valuation `ρ` with one value per
-  entry of `out.entries` such that `out.qedFn` names a function `d` of
+  telescopes `ps` and `rs`, there is a valuation `ρ` as in
+  `type_goal_inhabited` such that `out.qedFn` names a function `d` of
   `out.fns`, and every list of values satisfying `ps` under `ρ` is
   followed by values satisfying `rs`, to which `d`, run on any
   run-time arguments related to the former by `ps`'s multiplicities,
@@ -154,10 +163,9 @@ tokens) and any syntax error `err`, writing `out` for
 - `no_empty_goal`: if the program declares a data type with no value
   constructors and its `goal` is an application of it, the goal is not
   reported proved.
-- `run_sound` and `run_no_empty_goal`: the same for `run source phase`,
-  given that the program `parse source phase` gives is hole-free.
-  `run_sound` keeps only `runProgram_sound`'s statements about `W.Sc`,
-  `W.P.fns` and the goal.
+- `run_sound` and `run_no_empty_goal`: `runProgram_sound` and
+  `no_empty_goal` for `run source phase`, given that the program
+  `parse source phase` gives is hole-free.
 - `reached_eval_ok` and `reached_run_ok`: at any state the checker
   reaches on a hole-free program, while its scope is untainted, an
   expression checked there at the top level, outside an erased
@@ -198,9 +206,10 @@ with `sorry` and 2 phase 2 programs.
 - The definitions the theorems are stated with: `Value`, `Term.eval`,
   `HasType`, `TeleSat`, `WType`, `WSat`, `Sat`, `junkHead`, `Approx`,
   `Sigs.erasedArg`, `Rel`, `MultRel`, `MultsRel`, `Sig.close`,
-  `GoalHolds`, `World`, `Program.holeFree`, the evaluation relation
-  `Eval` and its companions, `CallRel` among them, and the meaning of
-  `runProgram`, `run` and `Outcome`'s fields. That `HasType` captures
+  `GoalHolds`, `GoalBelow`, `ProvedAt`, `World`, `Program.holeFree`,
+  the evaluation relation `Eval` and its companions, `CallRel` among
+  them, and the meaning of `runProgram`, `run`, `topItems` and
+  `Outcome`'s fields. That `HasType` captures
   what a value of a type is rests on SOUNDNESS.md part 2, which it
   follows; that `Rel` and `Approx` capture what erasure and taint may
   remove rests on a reading of §12 and §16.
@@ -279,22 +288,6 @@ items 69 to 75.
 
 The statements are also weaker than they may first read:
 
-- When the top-level scope becomes tainted after the goal is proved
-  (a top-level pattern `let` on `sorry` after the `qed`),
-  `runProgram_sound` still states that the goal holds in the final
-  world `W`, but says nothing of `W.ρ` beyond its length, since `Sat`
-  is asserted only for an untainted final scope.
-- `type_goal_inhabited` and `fn_goal_holds` say nothing of their
-  valuation `ρ` beyond its length, even when the final scope is
-  untainted: they do not state that `ρ` satisfies the final scope, so
-  a goal type that mentions top-level entries is only shown inhabited
-  under some valuation of them. `runProgram_sound` is the statement
-  that ties the goal to a valuation satisfying an untainted final
-  scope.
-- `run_sound` does not state the length of `W.ρ`, that `W.ρ` satisfies
-  an untainted final scope, or that `W.P` is the final state's view of
-  the program beyond its functions; `GoalHolds` for a function goal
-  runs the function in `W.P`, whose `kind` is then unconstrained.
 - `GoalHolds` for a function goal is vacuous when no values satisfy
   the goal's parameters, which seems inherent in a statement of this
   shape.

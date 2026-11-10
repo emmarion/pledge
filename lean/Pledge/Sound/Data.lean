@@ -672,27 +672,30 @@ theorem goalItem_sound {st st' : TopState} {ρ : List Value} {p : Pos} {g : Goal
     rw [hnone] at hg'
     cases hg'
 
-theorem fnGroup_goal {st st' : TopState} {fs : List Fn} (h : fnGroup st fs = .ok st') : st'.goal = st.goal := by
+/-- A group of functions keeps the phase, the goal and whether it is proved. -/
+theorem fnGroup_keeps {st st' : TopState} {fs : List Fn} (h : fnGroup st fs = .ok st') :
+    st'.phase = st.phase ∧ st'.goal = st.goal ∧ st'.proved = st.proved := by
   unfold fnGroup at h
   obtain ⟨st0, h0, h⟩ := bind_eq_ok.1 h
   obtain ⟨⟨st1, heads⟩, h1, h⟩ := bind_eq_ok.1 h
   obtain ⟨⟨taint, bodies⟩, -, h⟩ := bind_eq_ok.1 h
   simp only [pure, Except.pure, Except.ok.injEq] at h
   subst h
-  have e0 := foldlM_induct (fun _ s => s.goal = st.goal) fs [] (fun q x b b' _ hb hf => by
-    obtain ⟨_, -, hf⟩ := bind_eq_ok.1 hf
-    simp only [pure, Except.pure, Except.ok.injEq] at hf
-    rw [← hf]; exact hb) rfl h0
-  have e1 := foldlM_induct (fun _ p => p.1.goal = st.goal) fs [] (fun q x b b' _ hb hf => by
-    obtain ⟨⟨s, hd⟩, hh, hf⟩ := bind_eq_ok.1 hf
-    simp only [pure, Except.pure, Except.ok.injEq] at hf
-    rw [← hf]
-    unfold fnHead at hh
-    obtain ⟨_, -, hh⟩ := bind_eq_ok.1 hh
-    obtain ⟨_, -, hh⟩ := bind_eq_ok.1 hh
-    simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at hh
-    rw [← hh.1]; exact hb) e0 h1
-  exact e1
+  have e0 := foldlM_induct (fun _ s => s.phase = st.phase ∧ s.goal = st.goal ∧ s.proved = st.proved) fs []
+    (fun q x b b' _ hb hf => by
+      obtain ⟨_, -, hf⟩ := bind_eq_ok.1 hf
+      simp only [pure, Except.pure, Except.ok.injEq] at hf
+      rw [← hf]; exact hb) ⟨rfl, rfl, rfl⟩ h0
+  exact foldlM_induct (fun _ p => p.1.phase = st.phase ∧ p.1.goal = st.goal ∧ p.1.proved = st.proved) fs []
+    (fun q x b b' _ hb hf => by
+      obtain ⟨⟨s, hd⟩, hh, hf⟩ := bind_eq_ok.1 hf
+      simp only [pure, Except.pure, Except.ok.injEq] at hf
+      rw [← hf]
+      unfold fnHead at hh
+      obtain ⟨_, -, hh⟩ := bind_eq_ok.1 hh
+      obtain ⟨_, -, hh⟩ := bind_eq_ok.1 hh
+      simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at hh
+      rw [← hh.1]; exact hb) e0 h1
 
 /-- Takes apart a hypothesis `h : x = .ok r` about checking code down to its successful paths. -/
 macro "unwind_ok " h:ident : tactic => `(tactic| repeat' (first
@@ -717,8 +720,8 @@ theorem topItem_goal {st st' : TopState} {t : Top} {g : CheckedGoal}
     rw [hgr.eq]; exact hg
   · obtain ⟨_, hgr⟩ := dataGroup_group h
     rw [hgr.eq]; exact hg
-  · rw [fnGroup_goal h]; exact hg
-  · rw [fnGroup_goal h]; exact hg
+  · rw [(fnGroup_keeps h).2.1]; exact hg
+  · rw [(fnGroup_keeps h).2.1]; exact hg
   · unfold comptimeLet at h
     unwind_ok h
     all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h]; exact hg)
@@ -734,6 +737,62 @@ theorem topItem_goal {st st' : TopState} {t : Top} {g : CheckedGoal}
     all_goals first
       | exact (qedFnGoal_goal (by assumption)).trans hg
       | (simp only [pure, Except.pure, Except.ok.injEq] at *; subst_vars; exact hg)
+
+/-- Only a `qed` proves the goal, and only in a scope it leaves untainted. -/
+theorem topItem_proved {st st' : TopState} {t : Top} (h : topItem st t = .ok st') (hp : st'.proved = true) :
+    st.proved = true ∨ (∃ p e, t = .qed p e) ∧ st'.sc.taintedBy = none := by
+  unfold topItem at h
+  split at h
+  · obtain ⟨_, hgr⟩ := dataGroup_group h
+    rw [hgr.eq] at hp; exact .inl hp
+  · obtain ⟨_, hgr⟩ := dataGroup_group h
+    rw [hgr.eq] at hp; exact .inl hp
+  · rw [(fnGroup_keeps h).2.2] at hp; exact .inl hp
+  · rw [(fnGroup_keeps h).2.2] at hp; exact .inl hp
+  · unfold comptimeLet at h
+    unwind_ok h
+    all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h] at hp; exact .inl hp)
+  · unwind_ok h
+    all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h] at hp; exact .inl hp)
+  · unwind_ok h
+    all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h] at hp; exact .inl hp)
+  · obtain ⟨-, goal, rfl, -⟩ := goal_spec (by unfold topItem; exact h)
+    exact .inl hp
+  · refine .inr ⟨⟨_, _, rfl⟩, ?_⟩
+    unwind_ok h
+    all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h] at hp ⊢)
+    all_goals (simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hp; exact hp.1.2)
+
+/-- Checking items that stop at no error, then more items, is checking them all. -/
+theorem topItems_append : ∀ {st : TopState} {pre : List Top} (post : List Top), (topItems st pre).2 = none →
+    topItems st (pre ++ post) = topItems (topItems st pre).1 post
+  | st, [], post, _ => rfl
+  | st, t :: pre, post, h => by
+    simp only [List.cons_append, topItems] at h ⊢
+    split at h
+    · exact topItems_append post h
+    · simp at h
+
+/-- When checking a program stops at no error with the goal proved, from a state where it was not, some `qed` proved
+it, and checking stopped at no error up to it, in a scope it left untainted. -/
+theorem topItems_proved : ∀ {st : TopState} {prog : Program}, (topItems st prog).2 = none →
+    (topItems st prog).1.proved = true → st.proved = true ∨ ∃ pre p e post, prog = pre ++ .qed p e :: post ∧
+      (topItems st (pre ++ [.qed p e])).2 = none ∧ (topItems st (pre ++ [.qed p e])).1.proved = true ∧
+      (topItems st (pre ++ [.qed p e])).1.sc.taintedBy = none
+  | st, [], _, hp => .inl (by simpa [topItems] using hp)
+  | st, t :: ts, h, hp => by
+    simp only [topItems] at h hp
+    split at h
+    · rename_i st' hs
+      simp only [hs] at hp
+      rcases topItems_proved h hp with hp' | ⟨pre, p, e, post, rfl, h1, h2, h3⟩
+      · rcases topItem_proved hs hp' with hp'' | ⟨⟨p, e, rfl⟩, ht⟩
+        · exact .inl hp''
+        · exact .inr ⟨[], p, e, ts, rfl, by simp [topItems, hs], by simpa [topItems, hs] using hp',
+            by simpa [topItems, hs] using ht⟩
+      · exact .inr ⟨t :: pre, p, e, post, rfl, by simpa [topItems, hs] using h1, by simpa [topItems, hs] using h2,
+          by simpa [topItems, hs] using h3⟩
+    · simp at h
 
 /-- When checking a program stops at no error, each item was checked, from the state the items before it left. -/
 theorem topItems_split : ∀ {st : TopState} {pre post : List Top} {t : Top},
