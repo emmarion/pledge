@@ -1,0 +1,193 @@
+-- Type safety of the typed arithmetic language of TAPL chapter 8, as we understand it: terms, the typing
+-- relation HasType and small-step evaluation Step are data, preservation and progress are proved by structural
+-- recursion, and the goal is safety: a well-typed term, after any number of steps, is a value or steps again.
+-- Typing and step evidence is erased, so progress runs as a one-step evaluator and eval as a fuel-bounded loop.
+data Term() : Type() {
+  True() : Term();
+  False() : Term();
+  If(c : Term(), a : Term(), b : Term()) : Term();
+  Zero() : Term();
+  Succ(x : Term()) : Term();
+  Pred(x : Term()) : Term();
+  IsZero(x : Term()) : Term();
+}
+
+data Ty() : Type() {
+  Bool() : Ty();
+  Nat() : Ty();
+}
+
+data HasType(e : Term(), t : Ty()) : Type() {
+  TTrue() : HasType(True(), Bool());
+  TFalse() : HasType(False(), Bool());
+  TIf(erased c : Term(), erased a : Term(), erased b : Term(), erased t : Ty(),
+    erased dc : HasType(c, Bool()), erased da : HasType(a, t), erased db : HasType(b, t)) : HasType(If(c, a, b), t);
+  TZero() : HasType(Zero(), Nat());
+  TSucc(erased x : Term(), erased dx : HasType(x, Nat())) : HasType(Succ(x), Nat());
+  TPred(erased x : Term(), erased dx : HasType(x, Nat())) : HasType(Pred(x), Nat());
+  TIsZero(erased x : Term(), erased dx : HasType(x, Nat())) : HasType(IsZero(x), Bool());
+}
+
+data NumVal(e : Term()) : Type() {
+  NVZero() : NumVal(Zero());
+  NVSucc(erased x : Term(), erased nv : NumVal(x)) : NumVal(Succ(x));
+}
+
+data Value(e : Term()) : Type() {
+  VTrue() : Value(True());
+  VFalse() : Value(False());
+  VNum(erased e : Term(), nv : NumVal(e)) : Value(e);
+}
+
+data Step(e : Term(), e2 : Term()) : Type() {
+  EIfTrue(erased a : Term(), erased b : Term()) : Step(If(True(), a, b), a);
+  EIfFalse(erased a : Term(), erased b : Term()) : Step(If(False(), a, b), b);
+  EIf(erased c : Term(), erased c2 : Term(), erased a : Term(), erased b : Term(), erased s : Step(c, c2))
+    : Step(If(c, a, b), If(c2, a, b));
+  ESucc(erased x : Term(), erased x2 : Term(), erased s : Step(x, x2)) : Step(Succ(x), Succ(x2));
+  EPredZero() : Step(Pred(Zero()), Zero());
+  EPredSucc(erased x : Term(), erased nv : NumVal(x)) : Step(Pred(Succ(x)), x);
+  EPred(erased x : Term(), erased x2 : Term(), erased s : Step(x, x2)) : Step(Pred(x), Pred(x2));
+  EIsZeroZero() : Step(IsZero(Zero()), True());
+  EIsZeroSucc(erased x : Term(), erased nv : NumVal(x)) : Step(IsZero(Succ(x)), False());
+  EIsZero(erased x : Term(), erased x2 : Term(), erased s : Step(x, x2)) : Step(IsZero(x), IsZero(x2));
+}
+
+data Steps(e : Term(), e2 : Term()) : Type() {
+  Stay(erased e : Term()) : Steps(e, e);
+  Then(erased e : Term(), erased e2 : Term(), erased e3 : Term(), erased s : Step(e, e2), erased ss : Steps(e2, e3))
+    : Steps(e, e3);
+}
+
+data Progress(e : Term()) : Type() {
+  Done(erased e : Term(), v : Value(e)) : Progress(e);
+  Next(erased e : Term(), e2 : Term(), erased s : Step(e, e2)) : Progress(e);
+}
+
+fn preservation(erased e : Term(), erased e2 : Term(), subterm erased s : Step(e, e2), erased t : Ty(),
+    erased d : HasType(e, t)) -> (erased d2 : HasType(e2, t)) {
+  match erased s : _ {
+    EIfTrue(_, _) => { let erased TIf(_, _, _, _, _, da, _) = d; da };
+    EIfFalse(_, _) => { let erased TIf(_, _, _, _, _, _, db) = d; db };
+    EIf(_, _, _, _, s1) => {
+      let erased TIf(_, _, _, _, dc, da, db) = d;
+      TIf(_, _, _, _, preservation(_, _, subterm s1, _, dc), da, db)
+    };
+    ESucc(_, _, s1) => { let erased TSucc(_, dx) = d; TSucc(_, preservation(_, _, subterm s1, _, dx)) };
+    EPredZero() => { let erased TPred(_, _) = d; TZero() };
+    EPredSucc(_, _) => { let erased TPred(_, dx) = d; let erased TSucc(_, dy) = dx; dy };
+    EPred(_, _, s1) => { let erased TPred(_, dx) = d; TPred(_, preservation(_, _, subterm s1, _, dx)) };
+    EIsZeroZero() => { let erased TIsZero(_, _) = d; TTrue() };
+    EIsZeroSucc(_, _) => { let erased TIsZero(_, _) = d; TFalse() };
+    EIsZero(_, _, s1) => { let erased TIsZero(_, dx) = d; TIsZero(_, preservation(_, _, subterm s1, _, dx)) };
+  }
+}
+
+fn canonNat(erased e : Term(), v : Value(e), erased d : HasType(e, Nat())) -> (nv : NumVal(e)) {
+  match v : _ {
+    VTrue() => match erased d : _ {};
+    VFalse() => match erased d : _ {};
+    VNum(_, nv) => nv;
+  }
+}
+
+fn progress(subterm e : Term(), erased t : Ty(), erased d : HasType(e, t)) -> (r : Progress(e)) {
+  match e : _ {
+    True() => Done(_, VTrue());
+    False() => Done(_, VFalse());
+    Zero() => Done(_, VNum(_, NVZero()));
+    If(c, a, b) => {
+      let erased TIf(_, _, _, _, dc, _, _) = d;
+      match progress(subterm c, _, dc) : _ {
+        Done(_, v) => match v : _ {
+          VTrue() => Next(_, a, EIfTrue(a, b));
+          VFalse() => Next(_, b, EIfFalse(a, b));
+          VNum(_, nv) => match erased nv : _ {
+            NVZero() => match erased dc : _ {};
+            NVSucc(_, _) => match erased dc : _ {};
+          };
+        };
+        Next(_, c2, s) => Next(_, If(c2, a, b), EIf(_, _, _, _, s));
+      }
+    };
+    Succ(x) => {
+      let erased TSucc(_, dx) = d;
+      match progress(subterm x, _, dx) : _ {
+        Done(_, v) => Done(_, VNum(_, NVSucc(x, canonNat(_, v, dx))));
+        Next(_, x2, s) => Next(_, Succ(x2), ESucc(_, _, s));
+      }
+    };
+    Pred(x) => {
+      let erased TPred(_, dx) = d;
+      match progress(subterm x, _, dx) : _ {
+        Done(_, v) => match canonNat(_, v, dx) : _ {
+          NVZero() => Next(_, Zero(), EPredZero());
+          NVSucc(_, nv) => { let Succ(y) = x; Next(_, y, EPredSucc(_, nv)) };
+        };
+        Next(_, x2, s) => Next(_, Pred(x2), EPred(_, _, s));
+      }
+    };
+    IsZero(x) => {
+      let erased TIsZero(_, dx) = d;
+      match progress(subterm x, _, dx) : _ {
+        Done(_, v) => match canonNat(_, v, dx) : _ {
+          NVZero() => Next(_, True(), EIsZeroZero());
+          NVSucc(_, nv) => Next(_, False(), EIsZeroSucc(_, nv));
+        };
+        Next(_, x2, s) => Next(_, IsZero(x2), EIsZero(_, _, s));
+      }
+    };
+  }
+}
+
+fn preservationStar(erased e : Term(), erased e2 : Term(), subterm erased ss : Steps(e, e2), erased t : Ty(),
+    erased d : HasType(e, t)) -> (erased d2 : HasType(e2, t)) {
+  match erased ss : _ {
+    Stay(_) => d;
+    Then(_, _, _, s, rest) => preservationStar(_, _, subterm rest, _, preservation(_, _, s, _, d));
+  }
+}
+
+goal fn (erased e : Term(), e2 : Term(), erased t : Ty(), erased ss : Steps(e, e2), erased d : HasType(e, t))
+  -> (r : Progress(e2));
+
+fn safety(erased e : Term(), e2 : Term(), erased t : Ty(), erased ss : Steps(e, e2), erased d : HasType(e, t))
+    -> (r : Progress(e2)) {
+  progress(e2, _, preservationStar(_, _, ss, _, d))
+}
+
+qed safety;
+
+data Fuel() : Type() {
+  Empty() : Fuel();
+  More(rest : Fuel()) : Fuel();
+}
+
+data Outcome(e : Term(), t : Ty()) : Type() {
+  Halts(erased e : Term(), erased t : Ty(), v : Term(), erased ss : Steps(e, v), isv : Value(v),
+    erased dv : HasType(v, t)) : Outcome(e, t);
+  OutOfFuel(erased e : Term(), erased t : Ty(), e2 : Term(), erased ss : Steps(e, e2),
+    erased d2 : HasType(e2, t)) : Outcome(e, t);
+}
+
+fn eval(subterm fuel : Fuel(), e : Term(), erased t : Ty(), erased d : HasType(e, t)) -> (r : Outcome(e, t)) {
+  match fuel : _ {
+    Empty() => OutOfFuel(_, _, e, Stay(_), d);
+    More(f) => match progress(e, _, d) : _ {
+      Done(_, v) => Halts(_, _, e, Stay(_), v, d);
+      Next(_, e2, s) => match eval(subterm f, e2, _, preservation(_, _, s, _, d)) : _ {
+        Halts(_, _, v, ss, isv, dv) => Halts(_, _, v, Then(_, _, _, s, ss), isv, dv);
+        OutOfFuel(_, _, e3, ss, d3) => OutOfFuel(_, _, e3, Then(_, _, _, s, ss), d3);
+      };
+    };
+  }
+}
+
+let one = Succ(Zero());
+let term = If(IsZero(Pred(one)), Succ(one), Pred(Zero()));
+let erased typing = TIf(_, _, _, _, TIsZero(_, TPred(_, TSucc(_, TZero()))), TSucc(_, TSucc(_, TZero())),
+  TPred(_, TZero()));
+let fuel = More(More(More(More(More(Empty())))));
+print progress(term, _, typing);
+print eval(fuel, term, _, typing);
+print eval(More(More(Empty())), term, _, typing);
