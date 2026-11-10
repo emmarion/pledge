@@ -558,7 +558,7 @@ At any position in a program, the interface shows:
   neither a type nor an `is` clause.
 - **Termination**: the enclosing function's `subterm` parameters, in order,
   and the functions of its group.
-- **Scope**: every entry in the scope at that position (§7) that is
+- **Local entries**: every entry in the scope at that position (§7) that is
   not global, in the order the entries were created, each with its
   names, which of them are tainted (§12), its type and its `is` rule,
   and, in phase 2, whether it is erased; and whether the scope is
@@ -567,7 +567,8 @@ At any position in a program, the interface shows:
   listed under its marker, like any other entry. An entry is global
   when a top-level statement created it, named or not; the global
   entries are among the Globals. At the top level, where every entry in
-  scope is global, Scope lists none and points to the Globals instead.
+  scope is global, Local entries lists none and points to the Globals instead. It can be
+  hidden, and starts open.
 - **Refutations**, at a `match` or pattern `let`: the refuted value
   constructors, and, at an erased match (§16), the absurd branches.
   Clicking one shows, in a dialog, why its forcing fails (§7), as a
@@ -583,7 +584,7 @@ At any position in a program, the interface shows:
 
 The **Globals** come in two parts, each hidden until the learner opens
 it. One lists the global entries in scope at that position, each shown
-as under Scope. The other lists the functions and type constructors in
+as under Local entries. The other lists the functions and type constructors in
 scope there: each function, with its parameters and returns; and each
 type constructor, with its parameters and its value constructors, each
 with its fields and return.
@@ -602,7 +603,7 @@ shows what it stands for: the telescope, or the term the `_` is solved to. Each 
 derivation or a sequence of rewrites uses links to where its fact was
 created.
 
-Under Expected and Scope, and among the global entries, a type or `is`
+Under Expected and Local entries, and among the global entries, a type or `is`
 rule has a dialog only when the dialog gives information that its row,
 and its entry's name if it has an entry, do not: when its raw form
 differs from its canonical form, or when it is an entry's `is` rule
@@ -657,7 +658,7 @@ checked in the scope at the selected position, and its type and `is`
 rule are shown, both as inferred and canonicalized.
 
 Functions appear under Termination and among the Globals, never under
-Scope, because they are not first class (§4); they are still in the one
+Local entries, because they are not first class (§4); they are still in the one
 namespace (§2).
 
 The statement `inspect;` reports the same information as text, beside
