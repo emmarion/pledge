@@ -1,7 +1,7 @@
 import type { CheckResult, EntryId, EntryInfo, Explained, PositionInfo } from "../api.ts";
 import { hasKeyword, lex, type Token } from "../lexer.ts";
 import type { Phase, Span } from "../syntax.ts";
-import { lineCol, locate, place, spot, starts } from "../position.ts";
+import { lineCol, locate, position, starts } from "../position.ts";
 import { fill, h, load, save, type Child } from "./dom.ts";
 import { Editor, highlight, type NameKind } from "./editor.ts";
 import { marked } from "./links.ts";
@@ -48,9 +48,9 @@ class Program implements Host {
       end: Math.min(span.end - start, texts[index]!.length) } : null;
   }
 
-  where(offset: number): string { return place(this.texts, offset, n => `box ${n}, `, "line "); }
+  where(offset: number): string { return `line ${position(this.texts.join("\n"))(offset)}`; }
 
-  spot(offset: number): string { return spot(this.texts, offset); }
+  firstLine(box: number): number { return lineCol(this.texts.join("\n"), this.offset(box, 0)).line; }
 
   entry(id: EntryId): EntryInfo | undefined { return this.known.get(id); }
 
@@ -179,7 +179,9 @@ export class Workspace {
       const members = home().members;
       return new Editor(box.key === null ? box.text : load(box.key) ?? box.text, box.key !== null,
         members.length > 1 ? `box ${members.indexOf(i) + 1}` : null, phase,
+        () => this.editors ? home().firstLine(i) : 1,
         () => {
+          for (const e of this.editors) e.paint();
           if (box.key !== null) save(box.key, this.editors[i]!.text);
           const affected = this.programs.filter(p => p.members.includes(i));
           for (const p of affected) p.outdate();

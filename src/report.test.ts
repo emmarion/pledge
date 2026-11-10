@@ -74,7 +74,7 @@ test("Scope inside a function lists only the function's own entries; at the top 
 test("an anonymous entry is listed only when something listed mentions it", () => {
   const source = `${nat}${vec}fn f(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (r : A) {\n  let VCons(_, _, h, _) = v;\n  inspect;\n  h\n}\nprint f(Nat(), Zero(), VCons(Nat(), Zero(), Zero(), VNil(Nat())));\ninspect;\n`;
   const [body, after] = check(source, 1).inspects.map(i => scopeOf(i.info));
-  assert.deepEqual(body, ["A : Type()", "n : Nat()", "v : Vec(A, Succ(n)) is VCons(A, n, h, ?VCons.rest@11:22)", "h : A", "?VCons.rest : Vec(A, n)"]);
+  assert.deepEqual(body, ["A : Type()", "n : Nat()", "v : Vec(A, Succ(n)) is VCons(A, n, h, _@11:22)", "h : A", "_@11:22 : Vec(A, n)"]);
   assert.deepEqual(after, []);
   const sorry = `${nat}let t = sorry(T : Type());\ninspect;\nlet u = { let w = sorry(x : t); Zero() };\ninspect;\n`;
   assert.deepEqual(check(sorry, 1).inspects.map(i => scopeOf(i.info)), [["t : Type()"], ["t : Type()", "u : Nat() is Zero()"]]);
@@ -83,8 +83,8 @@ test("an anonymous entry is listed only when something listed mentions it", () =
     "fn f() -> (r : IsSucc(k)) { sorry(_) }\n";
   const g = check(given, 1), inF = g.infoAt(at(given, "sorry(_)"));
   assert.equal(g.error, null);
-  assert.deepEqual([inF.expected.entries?.[0]?.type?.text.replace(/@[\d:]+/, ""), scopeOf(inF)],
-    ["IsSucc(Succ(?IsSuccHere.m))", ["?IsSuccHere.m : Nat()"]]);
+  assert.deepEqual([inF.expected.entries?.[0]?.type?.text, scopeOf(inF)],
+    ["IsSucc(Succ(_@10:16))", ["_@10:16 : Nat()"]]);
 });
 
 test("nameAt: what each name occurrence refers to", () => {

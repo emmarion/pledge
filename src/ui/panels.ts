@@ -7,7 +7,6 @@ export interface Host {
   goto(offset: number): void;
   entry(id: EntryId): EntryInfo | undefined;
   where(offset: number): string;
-  spot(offset: number): string;
   showErased: boolean;
   globalsOpen: boolean;
 }
@@ -64,8 +63,7 @@ const names = (e: EntryInfo): Child =>
   e.names.map((name, i) => [i > 0 && ", ", name, tag("tainted", e.tainted.includes(name))]);
 
 const entryName = (e: EntryInfo, ctx: Host): Child =>
-  e.names.length ? names(e) : goto(ctx, e.origin.span.start,
-    h("span", { class: "marker" }, `?${e.origin.kind}@${ctx.spot(e.origin.span.start)}`));
+  goto(ctx, e.origin.span.start, e.names.length ? names(e) : h("span", { class: "marker" }, e.marker));
 
 const expectedList = (entries: readonly ExpectedEntry[], ctx: Host): Child =>
   list(entries.map(e => binding(ctx, e.name ?? "_", e, tag("not determined", e.undetermined))), "none");

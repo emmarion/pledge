@@ -1,6 +1,6 @@
 import type { EntryInfo, Rendered, Rewrite } from "./api.ts";
 import { canon, entry, rewrites } from "./terms.ts";
-import type { Binder, EntryId, OpenTerm, Scope, Telescope, Term } from "./terms.ts";
+import type { Binder, Entry, EntryId, OpenTerm, Scope, Telescope, Term } from "./terms.ts";
 
 type Piece = string | Rendered;
 
@@ -18,10 +18,11 @@ export function cat(...pieces: readonly Piece[]): Rendered {
 
 export const join = (items: readonly Piece[], sep: string): Piece[] => items.flatMap((x, i) => i ? [sep, x] : [x]);
 
-export function label(scope: Scope, id: EntryId): string {
-  const e = entry(scope, id);
-  return e.names[0] ?? `?${e.origin.kind}@${scope.where(e.origin.span.start)}`;
-}
+const marker = (scope: Scope, { origin }: Entry): string =>
+  `${origin.blank ? "_" : `?${origin.kind}`}@${scope.where(origin.span.start)}`;
+
+export const label = (scope: Scope, id: EntryId): string =>
+  entry(scope, id).names[0] ?? marker(scope, entry(scope, id));
 
 export function entryRef(scope: Scope, id: EntryId): Rendered {
   const text = label(scope, id);
@@ -51,7 +52,7 @@ export function renderTelescope(scope: Scope, tele: Telescope, outer: readonly (
 export function entryInfo(scope: Scope, id: EntryId, canonical = true): EntryInfo {
   const e = entry(scope, id);
   return {
-    id, names: [...e.names], origin: e.origin,
+    id, names: [...e.names], origin: e.origin, marker: marker(scope, e),
     type: render(scope, e.type, { canonical }),
     rule: e.rule && render(scope, e.rule.term, { canonical }),
     erased: e.erased, tainted: [],

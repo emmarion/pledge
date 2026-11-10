@@ -156,15 +156,15 @@ test("anonymous markers place their origin with the given formatter", () => {
   const source = file("design_vhead.pledge");
   const info = check(source, 1, at => `<${at}>`).infoAt(offset(source, "hd\n}", 1));
   const rest = info.scope.find(e => e.origin.kind === "VCons.rest")!;
-  assert.equal(info.scope.find(e => e.names[0] === "v")?.rule?.text, `VCons(A, n, hd, ?VCons.rest@<${rest.origin.span.start}>)`);
+  assert.equal(info.scope.find(e => e.names[0] === "v")?.rule?.text, `VCons(A, n, hd, _@<${rest.origin.span.start}>)`);
 });
 
 test("infoAt inside vhead's body: scope, expected and termination", () => {
   const source = file("design_vhead.pledge");
   const info = ok(source).infoAt(offset(source, "hd\n}", 1));
   assert.deepEqual(scopeOf(info), [
-    "A : Type()", "n : Nat()", "v : Vec(A, Succ(n)) is VCons(A, n, hd, ?VCons.rest@12:23)", "hd : A",
-    "?VCons.rest : Vec(A, n)",
+    "A : Type()", "n : Nat()", "v : Vec(A, Succ(n)) is VCons(A, n, hd, _@12:23)", "hd : A",
+    "_@12:23 : Vec(A, n)",
   ]);
   assert.deepEqual(info.expected.entries?.map(e => [e.name, e.type?.text, e.undetermined]), [["x", "A", false]]);
   assert.deepEqual(info.termination, { fn: "vhead", subtermParams: [], group: ["vhead"] });
@@ -378,7 +378,7 @@ test("tuple let binders are a telescope, checked against the results they name (
 test("a pattern let's facts and fields survive its block; only its names end there (§7, §10)", () => {
   const source = `${nat}${vec}fn h(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (r : Vec(A, n)) {\n  let (t : Vec(A, n)) = { let VCons(_, _, _, r) = v; r };\n  inspect;\n  t\n}\n`;
   assert.deepEqual(scopeOf(ok(source).inspects[0]!.info), [
-    "A : Type()", "n : Nat()", "v : Vec(A, Succ(n)) is VCons(A, n, ?VCons.head@11:43, t)", "?VCons.head : A",
+    "A : Type()", "n : Nat()", "v : Vec(A, Succ(n)) is VCons(A, n, _@11:43, t)", "_@11:43 : A",
     "t : Vec(A, n)",
   ]);
   err(source.replace("  t\n}", "  r\n}"), "r", /`r` is not in scope/, "  r\n}");

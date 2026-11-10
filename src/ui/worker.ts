@@ -1,7 +1,6 @@
 import type { CheckResult } from "../api.ts";
 import { check } from "../check.ts";
 import { lex } from "../lexer.ts";
-import { spot } from "../position.ts";
 import { LAZY, type Checker, type Reply, type Request } from "./remote.ts";
 
 let result: CheckResult;
@@ -12,7 +11,7 @@ const encode = (v: unknown): unknown => typeof v === "function" ? { [LAZY]: enco
 
 const run: Checker["check"] = (texts, phase) => {
   const source = texts.join("\n");
-  result = check(source, phase, offset => spot(texts, offset));
+  result = check(source, phase);
   const { infoAt, nameAt, explainAt, evalAt, ...summary } = result;
   return { ...summary, kinds: lex(source, phase).flatMap(t => {
     const n = t.kind === "name" && nameAt(t.span.start);

@@ -34,8 +34,8 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
   function's telescopes with a function goal's (§12).
 - `src/render.ts`: display of terms, entries and telescopes as
   `Rendered`.
-- `src/position.ts`: line and column of an offset, and the box, line
-  and column of an offset into several texts joined by newlines.
+- `src/position.ts`: line and column of an offset, and the text an
+  offset falls in among several joined by newlines.
 - `src/context.ts`: shared checker state, the first-error exception,
   the snapshots behind §13, the record of what each name occurrence
   refers to, and the spans of erased code the editor sets in italics.

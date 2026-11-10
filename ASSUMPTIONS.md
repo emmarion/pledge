@@ -105,11 +105,11 @@ and never renumbered (rule 15); a removed item leaves a gap.
     the fewest steps is presumed, not proved. A line does not list a
     rewrite by the anonymous entry of an application written in place,
     or of a `_` already solved.
-20. **Anonymous entries** render as `?kind@line:col`, with the kind the
-    checker gives the entry's origin, and as `?kind@boxN:line:col` on a
-    tutorial page, where the interface supplies the position format;
-    two anonymous entries of the same kind at the same position are not
-    told apart, so the checker chooses distinct kinds.
+20. **Anonymous entries** other than those created where a `_` is
+    written render as `?kind@line:col`, with the kind the checker gives
+    the entry's origin. Two anonymous entries of the same kind at the
+    same position are not told apart, so the checker chooses distinct
+    kinds.
 21. **Forcing two applications with the same head but different
     argument counts**, impossible for well-formed terms, is treated as
     a refutation by different heads rather than an internal error.
@@ -186,8 +186,8 @@ and never renumbered (rule 15); a removed item leaves a gap.
     closed disclosure above the page. Below 1200 the outputs go under
     their box and the panels' column narrows, and it narrows again
     below 1010. Below 955 the panels go under the boxes. On a page
-    with several boxes each box shows its number, since positions cite
-    boxes by number.
+    with several boxes each box shows its number, and line numbers run
+    on from one box to the next.
 68. **Without JavaScript**, each page shows a description of itself and
     links, from a `<noscript>` block, and carries a description for
     link previews. The front page's block repeats the starting example,

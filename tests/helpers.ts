@@ -18,7 +18,7 @@ export const isZero = "data IsZero(n : Nat()) : Type() {\n  IsZeroHere() : IsZer
 export const qedChecks = (r: CheckResult): boolean | null => r.qed === "none" ? null : r.qed === "checks";
 export const verdicts = (r: CheckResult) => [r.containsSorry, qedChecks(r), r.goalProved];
 const entryText = (e: EntryInfo): string =>
-  `${e.names.join(",") || `?${e.origin.kind}`} : ${e.type.text}${e.rule ? ` is ${e.rule.text}` : ""}`;
+  `${e.names.join(",") || e.marker} : ${e.type.text}${e.rule ? ` is ${e.rule.text}` : ""}`;
 export const scopeOf = (info: PositionInfo): string[] => info.scope.map(entryText);
 export const explainTerm = (r: CheckResult, at: number) => {
   const x = r.explainAt(at);

@@ -133,6 +133,7 @@ export class Editor {
   private hoverTimer = 0;
 
   constructor(text: string, editable: boolean, label: string | null, private readonly phase: () => Phase,
+    private readonly firstLine: () => number,
     onEdit: () => void, onCaret: () => void, private readonly describe: (token: Token) => Promise<Child>,
     private readonly kinds: (offset: number, name: string) => NameKind | null | undefined) {
     this.area = h("textarea", {
@@ -183,12 +184,12 @@ export class Editor {
     for (const { line, node } of outputs) byLine.set(line, [...byLine.get(line) ?? [], node]);
     const starts = [...byLine.keys()].sort((a, b) => a - b);
     fill(this.outputs, starts.map((line, i) => h("div", {
-      class: "output", "data-line": `${line}`,
+      class: "output", "data-line": `${this.firstLine() + line - 1}`,
       style: `top: ${padding + (line - 1) * lineHeight}px; --rows: ${(starts[i + 1] ?? lines.length + 1) - line}`,
     }, byLine.get(line)!)));
   }
 
-  private paint(): void {
+  paint(): void {
     const text = this.text;
     const focused = document.activeElement === this.area;
     const caret = focused && this.area.selectionStart === this.area.selectionEnd ? this.caret : null;
@@ -215,7 +216,7 @@ export class Editor {
     const line = (offset: number | null) => offset === null ? 0 : lineCol(text, offset).line;
     const errorLine = line(this.mark && this.mark.start);
     const caretLine = focused ? line(this.area.selectionStart) : 0;
-    const numbers = rows.map((_, i) => ({ text: `${i + 1}`,
+    const first = this.firstLine(), numbers = rows.map((_, i) => ({ text: `${first + i}`,
       cls: [i + 1 === errorLine && "error-line", i + 1 === caretLine && "current"].filter(Boolean).join(" ") }));
     this.numbers = reuse(this.gutter, this.numbers, numbers.map(n => JSON.stringify(n)),
       i => h("span", { class: numbers[i]!.cls }, numbers[i]!.text));

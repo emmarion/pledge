@@ -23,7 +23,7 @@ export const linked = (text: string): Child => text.split(cited).map((part, i) =
   return href ? h("a", { href, target: "_blank", rel: "noopener" }, part) : part;
 });
 
-const marker = /(\?[^\s@(),`]+@(?:box\d+:)?\d+:\d+)/;
+const marker = /((?:\?[^\s@(),`]+|\b_)@\d+:\d+)/;
 
 export const unbroken = (text: string): (HTMLElement | string)[] =>
   text.split(marker).map((part, i) => i % 2 ? h("span", { class: "marker" }, part) : part);

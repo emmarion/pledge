@@ -10,6 +10,7 @@ export interface EntryInfo {
   id: EntryId;
   names: string[];
   origin: { kind: string; span: Span };
+  marker: string;
   type: Rendered;
   rule: Rendered | null;
   erased: boolean;

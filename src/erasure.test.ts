@@ -176,7 +176,7 @@ test("_ is an error for a many parameter and where it cannot be inferred", () =>
 });
 
 test("soundness: unification gives a rule only to the entry of a _", () => {
-  err(`${nat}${vec}${vhead}fn g(n : Nat(), v : Vec(Nat(), n)) -> (r : Nat()) { vhead(_, _, v) }\n`, "_", /cannot be inferred: it would need `Succ\(\?_@\d+:\d+\)` and `n` to be equal/, "_, v)");
+  err(`${nat}${vec}${vhead}fn g(n : Nat(), v : Vec(Nat(), n)) -> (r : Nat()) { vhead(_, _, v) }\n`, "_", /cannot be inferred: it would need `Succ\(_@\d+:\d+\)` and `n` to be equal/, "_, v)");
   err(`${nat}${vec}fn g(n : Nat()) -> (v : Vec(Nat(), n)) { VNil(_) }\n`, "VNil(_)", /return `v` of `g` must have type `Vec\(Nat\(\), n\)`/);
   err(`${nat}${eq}fn bad(a : Nat(), b : Nat()) -> (q : Eq(Nat(), a, b)) { Refl(_, _) }\n`, "Refl(_, _)", /return `q` of `bad` must have type `Eq\(Nat\(\), a, b\)`/);
   err(`${nat}${eq}goal Eq(Nat(), Succ(Zero()), Zero());\nqed Refl(_, _);\n`, "Refl(_, _)", /must have type/);

@@ -222,7 +222,7 @@ function args(ctx: Ctx, local: Local, name: string, params: Telescope, e: App, r
       if (!erasedAt(given, 0)) fail(a.span, () =>
         `\`_\` stands for an erased argument (§16), and ${label()} is not erased`);
       const made = create(local.scope, subst(p.type, env), null,
-        { origin: { kind: HOLE, span: a.span }, erased: true });
+        { origin: { kind: HOLE, span: a.span, blank: true }, erased: true });
       const is = p.is && subst(p.is, env);
       ctx.holes.push({ id: made.id, span: a.span, is, from: ctx.st.explains.length });
       local = { ...local, scope: is ? solveHoles(ctx, made.scope, ref(made.id), is, a.span) : made.scope };
@@ -392,7 +392,8 @@ function forcings(ctx: Ctx, local: Local, id: EntryId, scrutSpan: Span, pats: re
   return ctors.map(({ name, sig }) => {
     const pat = pats.find(p => p.ctor.name === name);
     const forced = force(local.scope, id, sig, pat?.span ?? at, (b, i) =>
-      ({ origin: { kind: `${name}.${b.name ?? i + 1}`, span: pat?.fields[i]?.span ?? at },
+      ({ origin: { kind: `${name}.${b.name ?? i + 1}`, span: pat?.fields[i]?.span ?? at,
+        blank: pat?.fields[i]?.name === null },
       ...(erased ? { erased } : {}) }));
     return { name, forced, pat };
   });
@@ -535,7 +536,8 @@ interface Checked { local: Local; ids: EntryId[]; tele: Telescope; tainted: bool
 function opening(ctx: Ctx, local: Local, b: WrittenBinder, kind: string,
     occurs = true): { local: Local; id: EntryId; tainted: boolean } {
   const a = annotate(ctx, local, b.ann);
-  const made = create(a.local.scope, a.type, a.is, { origin: { kind, span: b.span }, erased: b.mult === "erased" });
+  const made = create(a.local.scope, a.type, a.is, { origin: { kind, span: b.span, blank: b.name.name === null },
+    erased: b.mult === "erased" });
   const bound = bind(occurs ? ctx : null, { ...a.local, scope: made.scope }, [b.name], [made.id]);
   return { local: bound.local, id: made.id, tainted: a.tainted };
 }
