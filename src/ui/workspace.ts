@@ -1,26 +1,32 @@
-import type { CheckResult, EntryId, EntryInfo, NameInfo, PositionInfo } from "../api.ts";
-import { check } from "../check.ts";
+import type { CheckResult, EntryId, EntryInfo, Explained, PositionInfo } from "../api.ts";
 import { hasKeyword, lex, type Token } from "../lexer.ts";
 import type { Phase, Span } from "../syntax.ts";
-import { lineCol } from "../position.ts";
+import { lineCol, locate, place, spot, starts } from "../position.ts";
 import { fill, h, load, save, type Child } from "./dom.ts";
 import { Editor, highlight, type NameKind } from "./editor.ts";
 import { marked } from "./links.ts";
 import { entryTip, evalView, explainTip, explainView, globalsView, globalTip, infoView, inspectView, section,
   statusView, verdict, type Host } from "./panels.ts";
+import { remote, type Remote, type Summary } from "./remote.ts";
 
 interface Box { text: string; key: string | null; holdsQed?: boolean }
 
 interface ProgramSpec { label: string; boxes: number[] }
 
-const kindOf = (n: NameInfo): NameKind | null => n.kind === "entry" ? null : n.kind;
+interface Look { info: PositionInfo; explained: Explained | null; answer: ReturnType<CheckResult["evalAt"]> | null }
+
+const checkingAfter = 300;
 
 const kindNames: Record<NameKind, string> = { fn: "fn", type: "type", ctor: "value constructor" };
 
 class Program implements Host {
-  result: CheckResult | null = null;
   status: Child = null;
-  stale = false;
+  checking = false;
+  private stale = true;
+  private holder: Remote | null = null;
+  private pending: Remote | null = null;
+  private busy = 0;
+  private kindsAt: Map<number, NameKind | null>[] = [];
   private readonly kinds = new Map<string, NameKind | null>([["Type", "type"]]);
   private known = new Map<EntryId, EntryInfo>();
 
@@ -32,91 +38,94 @@ class Program implements Host {
 
   private get editors(): Editor[] { return this.members.map(i => this.ws.editors[i]!); }
 
-  private starts(): number[] {
-    let at = 0;
-    return this.editors.map(e => { const start = at; at += e.text.length + 1; return start; });
-  }
+  private get texts(): string[] { return this.editors.map(e => e.text); }
 
-  offset(box: number, local: number): number { return this.starts()[this.members.indexOf(box)]! + local; }
-
-  private locate(offset: number): { index: number; local: number } {
-    const starts = this.starts();
-    const index = starts.reduce((found, s, i) => s <= offset ? i : found, 0);
-    return { index, local: Math.min(offset - starts[index]!, this.editors[index]!.text.length) };
-  }
+  offset(box: number, local: number): number { return starts(this.texts)[this.members.indexOf(box)]! + local; }
 
   private within(index: number, span: Span): Span | null {
-    const start = this.starts()[index]!;
-    const length = this.editors[index]!.text.length;
-    return this.locate(span.start).index === index ? { start: span.start - start,
-      end: Math.min(span.end - start, length) } : null;
+    const texts = this.texts, start = starts(texts)[index]!;
+    return locate(texts, span.start).index === index ? { start: span.start - start,
+      end: Math.min(span.end - start, texts[index]!.length) } : null;
   }
 
-  private place(offset: number, box: (n: number) => string, line: string): string {
-    const { index, local } = this.locate(offset);
-    const at = lineCol(this.editors[index]!.text, local);
-    return `${this.members.length > 1 ? box(index + 1) : ""}${line}${at.line}:${at.col}`;
-  }
+  where(offset: number): string { return place(this.texts, offset, n => `box ${n}, `, "line "); }
 
-  where(offset: number): string { return this.place(offset, n => `box ${n}, `, "line "); }
-
-  spot(offset: number): string { return this.place(offset, n => `box${n}:`, ""); }
+  spot(offset: number): string { return spot(this.texts, offset); }
 
   entry(id: EntryId): EntryInfo | undefined { return this.known.get(id); }
 
   goto(offset: number): void {
-    const { index, local } = this.locate(offset);
+    const { index, local } = locate(this.texts, offset);
     this.ws.editors[this.members[index]!]!.setCaret(local);
     this.ws.select(this.members[index]!);
   }
 
-  private named(box: number, local: number): NameInfo | null {
-    return this.fresh()?.nameAt(this.offset(box, local)) ?? null;
-  }
-
-  private fresh(): CheckResult | null { return this.stale ? null : this.result; }
-
-  describe(box: number, { kind, span }: Token): Child {
+  async describe(box: number, { kind, span }: Token): Promise<Child> {
+    const r = this.stale ? null : this.holder, at = this.offset(box, span.start), end = this.offset(box, span.end);
+    if (!r) return null;
     if (kind === "underscore") {
-      const x = this.fresh()?.explainAt(this.offset(box, span.start));
-      return x && x.span.end === this.offset(box, span.end) ? explainTip(x, this.showErased) : null;
+      const x = await r.call("explainAt", at);
+      return x && x.span.end === end ? explainTip(x, this.showErased) : null;
     }
-    const n = this.named(box, span.start);
+    const n = await r.call("nameAt", at);
     return !n ? null : n.kind === "entry" ? entryTip(n.entry, this.showErased)
       : globalTip(kindNames[n.kind], n.name, n.signature);
   }
 
   kindAt(box: number, local: number, name: string): NameKind | null | undefined {
-    const n = this.named(box, local);
-    return n ? kindOf(n) : this.kinds.get(name);
+    const kind = this.stale ? undefined : this.kindsAt[this.members.indexOf(box)]!.get(local);
+    return kind === undefined ? this.kinds.get(name) : kind;
   }
 
-  info(offset: number): PositionInfo | null {
-    const info = this.result?.infoAt(offset) ?? null;
-    if (info) this.remember([info]);
-    return info;
+  async look(offset: number, query: string): Promise<Look | null> {
+    const r = this.holder;
+    if (!r) return null;
+    const [info, explained, answer] = await Promise.all([r.call("infoAt", offset), r.call("explainAt", offset),
+      query.trim() ? r.call("evalAt", offset, query) : null]);
+    if (r !== this.holder) return null;
+    this.remember([info]);
+    return { info, explained, answer };
   }
 
   private remember(infos: PositionInfo[]): void {
     for (const info of infos) for (const e of info.scope) this.known.set(e.id, e);
   }
 
+  outdate(): void {
+    this.stale = true;
+    this.pending?.close();
+    this.pending = null;
+    clearTimeout(this.busy);
+  }
+
   run(): void {
-    const phase = this.ws.phase();
-    const source = this.editors.map(e => e.text).join("\n");
-    this.stale = false;
-    try {
-      this.result = check(source, phase, offset => this.spot(offset));
-    } catch (e) {
-      this.result = null;
-      this.status = verdict(false, `Internal error in the checker: ${String(e)}`);
-      return;
-    }
-    const r = this.result;
-    const error = r.error && r.error.message();
-    for (const t of lex(source, phase)) {
-      const n = t.kind === "name" && r.nameAt(t.span.start);
-      if (n) this.kinds.set(t.text, kindOf(n));
+    this.outdate();
+    const phase = this.ws.phase(), texts = this.texts, next = this.pending = remote();
+    this.busy = setTimeout(() => { this.checking = true; this.ws.showStatus(); }, checkingAfter);
+    const settle = (holder: Remote | null, show: () => void) => {
+      if (this.pending !== next) return;
+      this.pending = null;
+      clearTimeout(this.busy);
+      this.holder?.close();
+      this.holder = holder;
+      this.stale = this.checking = false;
+      show();
+      this.ws.refresh();
+    };
+    next.call("check", texts, phase).then(r => settle(next, () => this.show(r, texts, phase)), e => {
+      next.close();
+      settle(null, () => { this.status = verdict(false, `Internal error in the checker: ${String(e)}`); });
+    });
+  }
+
+  private show(r: Summary, texts: string[], phase: Phase): void {
+    const error = r.error && r.error.message(), kinds = new Map(r.kinds);
+    this.kindsAt = texts.map(() => new Map());
+    for (const t of lex(texts.join("\n"), phase)) {
+      const kind = kinds.get(t.span.start), { index, local } = locate(texts, t.span.start);
+      if (kind === undefined) continue;
+      this.kinds.set(t.text, kind);
+      this.kindsAt[index]!.set(local, kind);
     }
     this.known = new Map();
     this.remember(r.inspects.map(i => i.info));
@@ -158,6 +167,7 @@ export class Workspace {
   private program: Program;
   private active: number;
   private timer = 0;
+  private ticket = 0;
   globalsOpen = false;
 
   constructor(readonly boxes: Box[], readonly phase: () => Phase,
@@ -171,9 +181,9 @@ export class Workspace {
         () => {
           if (box.key !== null) save(box.key, this.editors[i]!.text);
           const affected = this.programs.filter(p => p.members.includes(i));
-          for (const p of affected) p.stale = true;
+          for (const p of affected) p.outdate();
           clearTimeout(this.timer);
-          this.timer = setTimeout(() => this.run(affected), 200);
+          this.timer = setTimeout(() => affected.forEach(p => p.run()), 200);
         },
         () => this.select(i), token => home().describe(i, token), (local, name) => home().kindAt(i, local, name));
     });
@@ -191,19 +201,28 @@ export class Workspace {
     this.refresh();
   }
 
-  run(programs = this.programs): void {
-    for (const p of programs) p.run();
-    this.refresh();
+  run(): void {
+    for (const e of this.editors) e.show(null, []);
+    for (const p of this.programs) p.run();
   }
 
-  private refresh(): void {
-    const r = this.program.result, at = this.caret(), info = this.program.info(at);
-    fill(this.status, this.programs.length > 1 && h("span", { class: "describing" },
-      `Describing: ${this.program.label}`), this.program.status);
-    fill(this.info, info && infoView(info, this.program));
-    fill(this.term, r && explainView(r.explainAt(at), this.program));
-    fill(this.answer, r && this.query.value.trim() && evalView(r.evalAt(at, this.query.value), this.program));
-    fill(this.globals, info && globalsView(info, this.program));
+  showStatus(): void {
+    const { label, status, checking } = this.program;
+    fill(this.status, this.programs.length > 1 && h("span", { class: "describing" }, `Describing: ${label}`),
+      checking && h("span", { class: "verdict checking" }, "Checking…"), status);
+    this.status.classList.toggle("outdated", checking);
+  }
+
+  refresh(): void {
+    const p = this.program, ticket = ++this.ticket;
+    this.showStatus();
+    void p.look(this.caret(), this.query.value).then(found => {
+      if (ticket !== this.ticket) return;
+      fill(this.info, found && infoView(found.info, p));
+      fill(this.term, found && explainView(found.explained, p));
+      fill(this.answer, found?.answer && evalView(found.answer, p));
+      fill(this.globals, found && globalsView(found.info, p));
+    });
   }
 
   replace(question: string, text = (box: Box): string => box.text, kept = (box: Box): string[] => [box.text]): boolean {

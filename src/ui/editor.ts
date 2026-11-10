@@ -61,28 +61,43 @@ const columns = (line: string): number => [...line].reduce((col, c) => col + (c 
 
 const segments = (text: string, decorations: Decoration[]): (HTMLElement | string)[] => {
   const cuts = [...new Set([0, text.length, ...decorations.flatMap(d => [d.start, d.end])])].sort((a, b) => a - b);
-  const span = (start: number, covering: (d: Decoration) => boolean, content: string): HTMLElement | string => {
-    const cls = decorations.filter(covering).map(d => d.cls).join(" ");
-    return cls ? h("span", { class: cls, "data-at": `${start}` }, content) : content;
-  };
-  return cuts.flatMap((start, i) => [
-    ...decorations.some(d => d.start === start && d.end === start)
-      ? [span(start, d => d.start === start && d.end === start, " ")] : [],
-    ...i + 1 < cuts.length ? [span(start, d => d.start <= start && cuts[i + 1]! <= d.end,
-      text.slice(start, cuts[i + 1]))] : [],
-  ]);
+  const queue = [...decorations].sort((a, b) => a.start - b.start);
+  let open: Decoration[] = [], taken = 0;
+  const span = (start: number, covering: Decoration[], content: string): HTMLElement | string => covering.length
+    ? h("span", { class: covering.map(d => d.cls).join(" "), "data-at": `${start}` }, content) : content;
+  return cuts.flatMap((start, i) => {
+    while (taken < queue.length && queue[taken]!.start <= start) open.push(queue[taken++]!);
+    open = open.filter(d => d.end > start || d.start === start);
+    const empty = open.filter(d => d.end === start);
+    return [...empty.length ? [span(start, empty, " ")] : [],
+      ...i + 1 < cuts.length ? [span(start, open.filter(d => d.end > start), text.slice(start, cuts[i + 1]))] : []];
+  });
 };
 
-export const highlight = (text: string, tokens: Token[], kinds: Kinds,
-  extra: Decoration[] = []): (HTMLElement | string)[] =>
-  segments(text, [
-    ...tokens.flatMap(t => {
-      const cls = tokenClass(t, kinds);
-      return cls ? [{ ...t.span, cls }] : [];
-    }),
-    ...comments(text, tokens),
-    ...extra,
-  ]);
+const decorate = (text: string, tokens: Token[], kinds: Kinds, extra: Decoration[] = []): Decoration[] => [
+  ...tokens.flatMap(t => {
+    const cls = tokenClass(t, kinds);
+    return cls ? [{ ...t.span, cls }] : [];
+  }),
+  ...comments(text, tokens),
+  ...extra,
+];
+
+export const highlight = (text: string, tokens: Token[], kinds: Kinds): (HTMLElement | string)[] =>
+  segments(text, decorate(text, tokens, kinds));
+
+interface Line { key: string; row: HTMLElement }
+
+function reuse(parent: HTMLElement, old: Line[], keys: string[], build: (i: number) => Child): Line[] {
+  const spare = new Map<string, HTMLElement[]>();
+  for (const { key, row } of old) spare.set(key, [...spare.get(key) ?? [], row]);
+  const lines = keys.map((key, i) => ({ key, row: spare.get(key)?.shift() ?? h("div", {}, build(i)) }));
+  lines.forEach(({ row }, i) => {
+    if (parent.children[i] !== row) parent.insertBefore(row, parent.children[i] ?? null);
+  });
+  while (parent.children.length > lines.length) parent.lastChild!.remove();
+  return lines;
+}
 
 const within = (r: DOMRect, x: number, y: number): boolean => x >= r.left && x < r.right && y >= r.top && y < r.bottom;
 
@@ -90,10 +105,12 @@ export class Editor {
   readonly area: HTMLTextAreaElement;
   readonly root: HTMLElement;
   private readonly gutter = h("div", { class: "gutter", "aria-hidden": "true" });
-  private readonly layer = h("pre", { class: "layer", "aria-hidden": "true" });
+  private readonly layer = h("div", { class: "layer", "aria-hidden": "true" });
   private readonly caretLine = h("div", { class: "caret-line", "aria-hidden": "true" });
   private readonly code = h("div", { class: "code" }, this.caretLine, this.layer);
   private readonly outputs = h("div", { class: "outputs" });
+  private lines: Line[] = [];
+  private numbers: Line[] = [];
   private tokens: Token[] = [];
   private pairs = new Map<Token, Token>();
   private mark: Span | null = null;
@@ -101,7 +118,7 @@ export class Editor {
   private hoverTimer = 0;
 
   constructor(text: string, editable: boolean, label: string | null, private readonly phase: () => Phase,
-    onEdit: () => void, onCaret: () => void, private readonly describe: (token: Token) => Child,
+    onEdit: () => void, onCaret: () => void, private readonly describe: (token: Token) => Promise<Child>,
     private readonly kinds: (offset: number, name: string) => NameKind | null | undefined) {
     this.area = h("textarea", {
       class: "source", wrap: "off", spellcheck: "false", autocomplete: "off", autocapitalize: "off",
@@ -160,16 +177,29 @@ export class Editor {
     const paired = [...this.pairs.keys()];
     const bracket = caret === null ? undefined : paired.find(t => t.span.start === caret)
       ?? paired.find(t => t.span.end === caret);
-    fill(this.layer, highlight(text, this.tokens, t => this.kinds(t.span.start, t.text), [
+    const decorations = decorate(text, this.tokens, t => this.kinds(t.span.start, t.text), [
       ...this.mark ? errorMarks(text, this.mark) : [],
       ...bracket ? [bracket, this.pairs.get(bracket)!].map(t => ({ ...t.span, cls: "hl-bracket" })) : [],
-    ]), "\n");
+    ]).sort((a, b) => a.start - b.start);
+    let from = 0, taken = 0;
+    const rows = text.split("\n").map(line => {
+      const own: Decoration[] = [], end = from + line.length;
+      for (; taken < decorations.length && decorations[taken]!.start <= end; taken++) {
+        const d = decorations[taken]!;
+        own.push({ start: d.start - from, end: d.end - from, cls: d.cls });
+      }
+      from = end + 1;
+      return { line, own };
+    });
+    this.lines = reuse(this.layer, this.lines, rows.map(r => JSON.stringify(r)),
+      i => segments(rows[i]!.line, rows[i]!.own));
     const line = (offset: number | null) => offset === null ? 0 : lineCol(text, offset).line;
     const errorLine = line(this.mark && this.mark.start);
     const caretLine = focused ? line(this.area.selectionStart) : 0;
-    fill(this.gutter, Array.from({ length: text.split("\n").length }, (_, i) =>
-      h("span", { class: [i + 1 === errorLine && "error-line", i + 1 === caretLine && "current"].filter(Boolean)
-        .join(" ") }, `${i + 1}`)));
+    const numbers = rows.map((_, i) => ({ text: `${i + 1}`,
+      cls: [i + 1 === errorLine && "error-line", i + 1 === caretLine && "current"].filter(Boolean).join(" ") }));
+    this.numbers = reuse(this.gutter, this.numbers, numbers.map(n => JSON.stringify(n)),
+      i => h("span", { class: numbers[i]!.cls }, numbers[i]!.text));
     this.caretLine.hidden = !caretLine;
     this.caretLine.style.top = `${padding + (caretLine - 1) * lineHeight}px`;
     this.scrolled();
@@ -183,7 +213,9 @@ export class Editor {
   private hover(e: MouseEvent | null): void {
     const at = e && [...this.layer.querySelectorAll<HTMLElement>(".hl-name, .hl-hole")]
       .find(el => within(el.getBoundingClientRect(), e.clientX, e.clientY));
-    const offset = at ? Number(at.dataset.at) : -1;
+    const row = at ? this.lines.findIndex(l => l.row === at.parentElement) : -1;
+    const before = this.text.split("\n").slice(0, Math.max(row, 0)).reduce((sum, line) => sum + line.length + 1, 0);
+    const offset = at ? before + Number(at.dataset.at) : -1;
     const token = this.tokens.find(t => (t.kind === "name" || t.kind === "underscore") && t.span.start <= offset
       && offset < t.span.end) ?? null;
     if (token === this.hovered) return;
@@ -191,9 +223,9 @@ export class Editor {
     clearTimeout(this.hoverTimer);
     tip.hidden = true;
     if (!token || !at) return;
-    this.hoverTimer = setTimeout(() => {
-      const content = this.describe(token);
-      if (!content) return;
+    this.hoverTimer = setTimeout(async () => {
+      const content = await this.describe(token);
+      if (!content || this.hovered !== token) return;
       fill(tip, content);
       if (!tip.isConnected) document.body.append(tip);
       tip.hidden = false;

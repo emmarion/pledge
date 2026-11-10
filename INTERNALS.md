@@ -34,7 +34,8 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
   function's telescopes with a function goal's (§12).
 - `src/render.ts`: display of terms, entries and telescopes as
   `Rendered`.
-- `src/position.ts`: line and column of an offset.
+- `src/position.ts`: line and column of an offset, and the box, line
+  and column of an offset into several texts joined by newlines.
 - `src/context.ts`: shared checker state, the first-error exception,
   the snapshots behind §13 and the record of what each name occurrence
   refers to.
@@ -58,6 +59,17 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
 - `src/ui/`: the page (§13) and the tutorial page (§12). `main.ts`
   bundles every `examples/*.pledge` into the page with Vite's
   `import.meta.glob`.
+- `src/ui/worker.ts`, `src/ui/remote.ts`: the pages check in Web
+  Workers, so that a long check does not block the page. A worker runs
+  `check` once, replies with the result's plain fields and the kind of
+  each name occurrence, keeps the `CheckResult`, and then answers
+  `infoAt`, `nameAt`, `explainAt` and `evalAt` by message. Every thunk
+  in a reply (message texts, derivations) is forced when the reply is
+  sent and arrives as a thunk again. Each check gets a new worker: an
+  edit terminates a check that is still running, and the worker of the
+  last finished check goes on answering until the next one finishes.
+- `src/ui/editor.ts`: the editor. It repaints by line, and keeps the
+  elements of the lines that did not change.
 - `src/tutorial/`: the tutorial as data. `pages.ts` has the `Page` type
   and assembles the sections; `start.ts`, `dependent.ts`,
   `recursion.ts`, `evidence.ts`, `relation.ts`, `arithmetic.ts`,

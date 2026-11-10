@@ -160,7 +160,8 @@ export const verdict = (good: boolean | null, ...text: Child[]): HTMLElement =>
 const qedText: Record<CheckResult["qed"], string> = { none: "No qed", unreached: "qed not reached",
   fails: "qed does not check", checks: "qed checks" };
 
-export const statusView = (r: CheckResult, error: string | null, qedMissing: boolean, ctx: Host): Child[] => {
+export const statusView = (r: Pick<CheckResult, "error" | "containsSorry" | "qed" | "goalProved">,
+  error: string | null, qedMissing: boolean, ctx: Host): Child[] => {
   const proved = r.goalProved === null ? null : r.goalProved && !qedMissing;
   return [
     r.error ? verdict(false, "Error at ", goto(ctx, r.error.span.start), ": ", error && marked(error))
