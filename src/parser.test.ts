@@ -32,7 +32,7 @@ const app = (head: string, ...args: unknown[]) => ({ kind: "app", head: id(head)
 
 test("every tests/*.pledge parses in its phase and every later one", () => {
   assert.ok(pledgeFiles.length >= 10);
-  for (const f of pledgeFiles) for (const phase of f.startsWith("phase2_") ? [2] as const : [1, 2] as const) {
+  for (const f of pledgeFiles) for (const phase of /^(phase2|example)_/.test(f) ? [2] as const : [1, 2] as const) {
     const { error } = parse(file(f), phase);
     assert.ok(!error, `${f} (phase ${phase}): ${error?.message() ?? ""}`);
   }
