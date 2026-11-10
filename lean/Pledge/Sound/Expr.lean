@@ -1,4 +1,5 @@
 import Pledge.Sound.Match
+import Pledge.Sound.Call
 
 namespace Pledge
 
@@ -19,7 +20,7 @@ theorem call_sound {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSound 
     (hI : Inv C sc n0 W ρ act) (hg : ∀ g', g = some g' → g'.Ok W.Sc ρ)
     (hgl : C.global h.name = some (.fn m (some sig))) (h : checkExpr C sc g (.app h args) = .ok o) :
     ExprPost C sc g n0 W ρ act o := by
-  sorry
+  exact Call.sound ih ihs hh hI hg hgl h
 
 /-- An application of a type constructor or value constructor (§8): its arguments' ideal values satisfy the
 telescope, the untainted application is typed, and it runs to the head applied to the arguments' run-time values,
