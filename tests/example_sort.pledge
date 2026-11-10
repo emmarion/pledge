@@ -1,0 +1,105 @@
+-- Verified insertion sort on lists of Nat. `sort` returns its result together with evidence that the
+-- result is Sorted and a permutation (Perm, built from Insert) of the input; the goal states this.
+-- The evidence is erased, so what runs should be plain insertion sort, with `compare` choosing the branch.
+
+data Nat() : Type() {
+  Zero() : Nat();
+  Succ(pred : Nat()) : Nat();
+}
+
+data Le(m : Nat(), n : Nat()) : Type() {
+  LeZero(erased n : Nat()) : Le(Zero(), n);
+  LeSucc(erased m : Nat(), erased n : Nat(), p : Le(m, n)) : Le(Succ(m), Succ(n));
+}
+
+data Order(m : Nat(), n : Nat()) : Type() {
+  LeOrd(erased m : Nat(), erased n : Nat(), erased p : Le(m, n)) : Order(m, n);
+  GeOrd(erased m : Nat(), erased n : Nat(), erased p : Le(n, m)) : Order(m, n);
+}
+
+fn compare(subterm m : Nat(), n : Nat()) -> (o : Order(m, n)) {
+  match m : _ {
+    Zero() => LeOrd(_, _, LeZero(_));
+    Succ(m1) => match n : _ {
+      Zero() => GeOrd(_, _, LeZero(_));
+      Succ(n1) => match compare(subterm m1, n1) : _ {
+        LeOrd(_, _, p) => LeOrd(_, _, LeSucc(_, _, p));
+        GeOrd(_, _, p) => GeOrd(_, _, LeSucc(_, _, p));
+      };
+    };
+  }
+}
+
+data List() : Type() {
+  Nil() : List();
+  Cons(head : Nat(), tail : List()) : List();
+}
+
+data Below(x : Nat(), xs : List()) : Type() {
+  BelowNil(erased x : Nat()) : Below(x, Nil());
+  BelowCons(erased x : Nat(), erased y : Nat(), erased ys : List(), p : Le(x, y)) : Below(x, Cons(y, ys));
+}
+
+data Sorted(xs : List()) : Type() {
+  SortedNil() : Sorted(Nil());
+  SortedCons(erased x : Nat(), erased xs : List(), b : Below(x, xs), s : Sorted(xs)) : Sorted(Cons(x, xs));
+}
+
+data Insert(x : Nat(), xs : List(), ys : List()) : Type() {
+  InsHere(erased x : Nat(), erased xs : List()) : Insert(x, xs, Cons(x, xs));
+  InsThere(erased x : Nat(), erased y : Nat(), erased xs : List(), erased ys : List(), i : Insert(x, xs, ys))
+    : Insert(x, Cons(y, xs), Cons(y, ys));
+}
+
+data Perm(xs : List(), ys : List()) : Type() {
+  PermNil() : Perm(Nil(), Nil());
+  PermCons(erased x : Nat(), erased xs : List(), erased ys : List(), erased zs : List(),
+    p : Perm(xs, ys), i : Insert(x, ys, zs)) : Perm(Cons(x, xs), zs);
+}
+
+fn belowInsert(erased y : Nat(), erased x : Nat(), erased xs : List(), erased ys : List(), p : Le(y, x),
+    b : Below(y, xs), i : Insert(x, xs, ys)) -> (c : Below(y, ys)) {
+  match i : _ {
+    InsHere(_, _) => BelowCons(_, _, _, p);
+    InsThere(_, _, _, _, _) => {
+      let BelowCons(_, _, _, q) = b;
+      BelowCons(_, _, _, q)
+    };
+  }
+}
+
+fn insert(x : Nat(), subterm xs : List(), erased s : Sorted(xs))
+    -> (ys : List(), erased i : Insert(x, xs, ys), erased t : Sorted(ys)) {
+  match xs : _ {
+    Nil() => (Cons(x, Nil()), InsHere(_, _), SortedCons(_, _, BelowNil(_), SortedNil()));
+    Cons(y, rest) => match compare(x, y) : _ {
+      LeOrd(_, _, p) => (Cons(x, xs), InsHere(_, _), SortedCons(_, _, BelowCons(_, _, rest, p), s));
+      GeOrd(_, _, p) => {
+        let erased SortedCons(_, _, b, s1) = s;
+        let (zs, erased j, erased t1) = insert(x, subterm rest, s1);
+        (Cons(y, zs), InsThere(_, _, _, _, j), SortedCons(_, _, belowInsert(_, _, _, _, p, b, j), t1))
+      };
+    };
+  }
+}
+
+fn sort(subterm xs : List()) -> (ys : List(), erased p : Perm(xs, ys), erased s : Sorted(ys)) {
+  match xs : _ {
+    Nil() => (Nil(), PermNil(), SortedNil());
+    Cons(x, rest) => {
+      let (zs, erased q, erased t) = sort(subterm rest);
+      let (ws, erased i, erased u) = insert(x, zs, t);
+      (ws, PermCons(_, _, _, _, q, i), u)
+    };
+  }
+}
+
+goal fn (xs : List()) -> (ys : List(), erased p : Perm(xs, ys), erased s : Sorted(ys));
+qed sort;
+
+let one = Succ(Zero());
+let two = Succ(one);
+let three = Succ(two);
+let (sorted, erased perm, erased proof) = sort(Cons(three, Cons(one, Cons(two, Cons(Zero(), Cons(one, Nil()))))));
+print sorted;
+print compare(three, one);
