@@ -64,17 +64,6 @@ def pickBranch (m : Option Mult) (v : Value) (bs : List Branch) : Except String 
       | none => throw s!"no branch for {showValue v}"
     | .removed => throw "a removed value was inspected"
 
-theorem pickBranch_mem {m v bs b} (h : pickBranch m v bs = .ok b) : b ∈ bs := by
-  unfold pickBranch at h
-  split at h
-  · split at h <;> simp_all [pure, Except.pure]
-  · split at h
-    · split at h
-      · simp only [pure, Except.pure, Except.ok.injEq] at h; subst h; exact List.mem_of_find?_eq_some ‹_›
-      · cases h
-    · cases h
-
-
 def annTake : Tele → List Value → Except String (List Value)
   | .binders bs, vs => take bs.length vs
   | .hole _, vs => pure vs

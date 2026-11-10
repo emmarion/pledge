@@ -17,8 +17,6 @@ theorem BinderSat.frame {S : Sigs} {ρ env : List Value} {b : TBinder} {v : Valu
   let ⟨A, hA, hv, his⟩ := h
   ⟨A, Term.eval_frame_ρ ρ' hA, hv, fun e he => Term.eval_frame_ρ ρ' (his e he)⟩
 
-theorem one_singleton (v : Value) : one [v] = .ok v := rfl
-
 theorem checkArgs_sound {args : List Arg} (ih : ∀ a ∈ args, ExprSound a.expr) :
     ∀ {C : Ctx} {sc : Scope} {owner role : String} {params : Telescope} {prev : List Res} {a : ArgsOut}
       {n0 : Nat} {W : World} {ρ : List Value} {env : Env} {act : Act} {prevv : List Value},

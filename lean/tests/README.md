@@ -4,9 +4,12 @@
 says about a set of programs, so that the Lean implementation's
 verdicts can be compared with it. It is meant to hold every distinct
 `(source, phase)` pair that the TypeScript test suite passes to
-`check`, every `tests/*.pledge` file (phase 2 for `phase2_*`, else 1),
-and each tutorial page's read-only boxes joined with its starting text
-and with its solution (ASSUMPTIONS.md item 22). Each program has an
+`check`, every `tests/*.pledge` and `lean/tests/extra/*.pledge` file
+(phase 2 for `phase2_*`, else 1), and each tutorial page's read-only
+boxes joined with its starting text and with its solution
+(ASSUMPTIONS.md item 22). `extra/` holds phase 2 programs meant to
+exercise evaluation the other sources do not: recursion that decreases
+only on an erased `subterm` parameter, and an erased `match`. Each program has an
 `origin` (the test file and line of the call, the `.pledge` file, or
 `tutorial/<slug>/initial|solution`) and the checker's `expected`
 verdict: `error` (`null` or `{pos, message}`), `prints`, `qed`,

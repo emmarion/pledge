@@ -35,7 +35,9 @@ message; fails if the sources under `Pledge/`, `Pledge.lean` or
 `Main.lean`, outside comments and string literals, contain `sorry` as a
 term or tactic, `axiom`, `partial`, `unsafe`, `implemented_by`,
 `extern`, `opaque`, `native_decide`, `sorryAx`, `admit`,
-`skipKernelTC` or anything named like fuel; runs `tests/Audit.lean`,
+`skipKernelTC` or anything named like fuel, `partial` being allowed
+only on the five declarations of the evaluator in `Pledge/Eval.lean`,
+which must all be there; runs `tests/Audit.lean`,
 which prints the axioms of the headline theorems, and fails unless
 each uses only `propext`, `Classical.choice` and `Quot.sound`; checks
 that `tests/corpus.json` is what `tests/gen-corpus.mjs` writes from
@@ -54,14 +56,19 @@ requests that touch `lean/` or `src/`.
 - `Pledge/Unify.lean`: opening telescopes, `abstract?`, the strict
   subterm relation, `difference` (§12), and the equation solver behind
   forcing (§7) and `_` arguments (§16).
-- `Pledge/Eval.lean`: the evaluator (§11) and its measure.
+- `Pledge/Eval.lean`: evaluation (§11, §12, §16) as a big-step
+  relation, `Eval` with `EvalList`, `CallRel`, `EvalBlock` and
+  `EvalStmt`; its determinism (`Eval.det`) and monotonicity in the
+  program (`Eval.ext`); and the executable evaluator, `evalExpr` and
+  its companions, whose results carry a derivation of the relation.
 - `Pledge/Check/Basic.lean`, `Expr.lean`, `Top.lean`: the checker;
   `Top.lean` has `runProgram`, `run` and `Outcome`.
 - `Main.lean`: the command line.
 - `Pledge/CoreLemmas.lean`, `UnifySound.lean`, `Pledge/Sound/`: the
   proofs. `Sound/Plain.lean` defines `Program.plain`, `Sound/Defs.lean`
-  the invariants and `GoalHolds`, and `Sound/Top.lean` the headline
-  theorems.
+  the invariants and `GoalHolds`, `Sound/Measure.lean` the measure of
+  SOUNDNESS.md part 6 that the totality proof inducts on, and
+  `Sound/Top.lean` the headline theorems.
 - `Pledge/ParserTest.lean`, `EvalTest.lean`, `UnifyTest.lean`: `#guard`
   tests.
 - `tests/`: the differential comparison with the TypeScript checker
@@ -96,8 +103,17 @@ error `err`, writing `out` for `runProgram 1 prog has err`, Lean checks:
   given that the program `parse source 1` gives is plain.
 - `reached_eval_ok` and `reached_run_ok`: at any state the checker
   reaches on a plain program, an expression or statement checked there
-  at the top level evaluates without error, so the top level does not
-  report "evaluation stopped" for it.
+  at the top level has an evaluation by the relation (`Eval`,
+  `EvalStmt`), an expression's to one value that has a type under a
+  valuation satisfying the state's scope; and any value the top level's
+  evaluation (`TopState.eval`) returns for it is typed so too.
+
+The theorems speak of evaluation as the relation. The executable
+evaluator is `partial`, so no theorem can say what it does; what links
+it to the theorems is its result type: each value or environment it
+returns comes with a derivation of the relation, which
+`TopState.eval_cert` and `TopState.run_cert` extract, and by
+determinism that is the result the theorems describe.
 
 `tests/Audit.lean` prints the axioms these use. `Sound/Top.lean` has
 `#guard`s showing that the goal clause is reached by small programs,
@@ -112,8 +128,8 @@ proved. In the differential corpus, 25 phase 1 programs without
   `Quot.sound`.
 - The definitions the theorems are stated with: `Value`, `Term.eval`,
   `HasType`, `TeleSat`, `Sat`, `Sig.close`, `GoalHolds`, `World`,
-  `Program.plain`, and the meaning of `runProgram`, `run` and
-  `Outcome`'s fields. That `HasType` captures what a value of a type is
+  `Program.plain`, the evaluation relation `Eval` and its companions,
+  and the meaning of `runProgram`, `run` and `Outcome`'s fields. That `HasType` captures what a value of a type is
   rests on SOUNDNESS.md part 2, which it follows.
 - That the Lean checker implements DESIGN.md. Nothing proves this; it is
   supported only by the differential comparison, in which the two
@@ -136,11 +152,14 @@ items 69 to 75.
 - **Results are terms.** An application written in an expression gets
   no entry of its own; its result is the application term, which §7's
   entry would canonicalize to.
-- **The evaluator is total, with a dynamic termination check.** Each
-  activation carries the measure of SOUNDNESS.md part 6; a call whose
-  measure is not below its caller's is not made, and evaluation stops
-  with the error "the call to … does not decrease", which the top
-  level reports as "evaluation stopped". There is no fuel.
+- **The evaluator is partial, its results certified.** Evaluation is
+  the relation `Eval`, with no measure and no termination check; the
+  executable evaluator follows it, is `partial`, and returns each
+  result with a derivation of the relation. It fails, and the top level
+  reports "evaluation stopped", where no rule applies (an unbound name,
+  no branch, a `removed` value inspected, `sorry` reached, a count
+  mismatch); a run that does not end leaves checking without an end.
+  There is no fuel.
 - **Internal checks.** Where the TypeScript checker relies on
   invariants of its data, the Lean checker tests them and rejects the
   program with an error starting "internal:", so that the proofs need
@@ -155,9 +174,8 @@ items 69 to 75.
   mentioning an entry created after the scrutinee, a `comptime` pattern
   `let` below the top level, a `removed` expression being checked, and
   a telescope, value-constructor return or goal mentioning an entry
-  below the top level. No program of the corpus reaches one of these
-  or the evaluator's termination check; nothing proves them
-  unreachable.
+  below the top level. No program of the corpus reaches one of these;
+  nothing proves them unreachable.
 - It has no interface: it answers `inspect;` as text, and nothing else
   of §13.
 
@@ -166,15 +184,16 @@ items 69 to 75.
 - Programs containing `sorry`, and so taint (§12): the theorems assume
   a plain program.
 - Phase 2 and erasure (§16).
-- That the internal checks and the evaluator's termination check are
-  unreachable on programs DESIGN.md accepts. Under phase 2, a call that
-  decreases only on an erased `subterm` parameter is stopped by the
-  termination check, where the TypeScript implementation evaluates it
-  (ASSUMPTIONS.md item 72).
-- That checking terminates, as a theorem: every definition is total,
-  defined by structural or well-founded recursion, with no `partial`
-  and no fuel, which is what the gate checks; Lean accepts no
-  definition it cannot show terminates.
+- That the internal checks are unreachable on programs DESIGN.md
+  accepts.
+- Anything about the executable evaluator beyond its results'
+  certificates: that it terminates, and that it does not fail, on the
+  programs the theorems cover. The theorems give an evaluation by the
+  relation; that the `partial` function finds it is not established.
+- That checking terminates: every definition other than the evaluator's
+  five is total, defined by structural or well-founded recursion, with
+  no fuel, which is what the gate checks; checking a program ends if
+  each evaluation it performs does.
 - That `fn_goal_holds`'s returns are computed by the function the `qed`
   names: the proof goes through that function's specification, but the
   statement only says that returns exist.

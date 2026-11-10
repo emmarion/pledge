@@ -393,15 +393,15 @@ and never renumbered (rule 15); a removed item leaves a gap.
 71. **Results are terms.** An application written in an expression
     gets no entry of its own (§7); its result is the application term
     itself, the term its entry would canonicalize to (item 16).
-72. **The evaluator is total.** Each activation carries the measure of
-    SOUNDNESS.md part 6, the group of the running function and the
-    values of its `subterm` parameters; a call whose measure is not
-    below its caller's is not made, and the program's error is then
-    "evaluation stopped: the call to `f` does not decrease". There is
-    no fuel and no depth bound. Under phase 2 an erased `subterm`
-    parameter's value is removed (item 6), so a call that decreases
-    only on one is stopped there, where the TypeScript implementation
-    evaluates it.
+72. **Evaluation is a relation, run by a partial evaluator.**
+    Evaluation is a big-step relation with no termination check, in
+    which a call runs whatever its arguments' values. The executable
+    evaluator follows it and is `partial`; each result it returns
+    carries a derivation of the relation. A run that does not end
+    leaves checking without an end; Theorem 6.2's Lean counterpart is
+    meant to rule this out for phase 1 programs without `sorry`, but it
+    is about the relation, and no theorem says the evaluator returns.
+    There is no fuel and no depth bound.
 73. **Internal checks.** Where the code relies on an invariant of its
     data, such as every entry having a type, a term to abstract over a
     telescope being closed (`abstract?`), forcing never getting stuck,
@@ -424,5 +424,5 @@ and never renumbered (rule 15); a removed item leaves a gap.
     `containsSorry`; error positions and messages, print positions and
     inspect positions are informational, and the text of `inspect;` is
     not compared. The corpus is every program the TypeScript test suite
-    checks, every `tests/*.pledge` file and each tutorial page's
-    programs (`lean/tests/README.md`).
+    checks, every `tests/*.pledge` and `lean/tests/extra/*.pledge` file
+    and each tutorial page's programs (`lean/tests/README.md`).

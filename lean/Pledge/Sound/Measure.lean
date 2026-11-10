@@ -24,8 +24,6 @@ end
 /-- `v.lt w`: `v` is a strict subtree of `w`. -/
 def Value.lt (v w : Value) : Prop := v.isSub w = true
 
-instance : DecidableRel Value.lt := fun v w => inferInstanceAs (Decidable (v.isSub w = true))
-
 mutual
   theorem Value.sizeOf_isSub (v : Value) : (w : Value) → v.isSub w = true → sizeOf v < sizeOf w
     | .app h args, hs => by
@@ -67,11 +65,6 @@ def OptLt : Option Value → Option Value → Prop
   | some x, some y => x.lt y
   | _, _ => False
 
-instance : DecidableRel OptLt := fun a b => match a, b with
-  | some x, some y => inferInstanceAs (Decidable (x.lt y))
-  | none, _ => isFalse id
-  | some _, none => isFalse id
-
 theorem SubsLt.nil_left {bs} : ¬ SubsLt [] bs := fun ⟨_, _, _, _, _, h, _⟩ => by simp at h
 
 theorem SubsLt.nil_right {as} : ¬ SubsLt as [] := fun ⟨_, _, _, _, _, _, h, _⟩ => by simp at h
@@ -89,13 +82,6 @@ theorem SubsLt.cons_iff {a b as bs} :
     · match a, b, h with
       | some x, some y, h => exact ⟨by simp [hl], 0, x, y, by simp, rfl, rfl, h⟩
     · exact ⟨by simp [hl], k + 1, x, y, by simp [ht], ha, hb, hxy⟩
-
-instance SubsLt.dec : (as bs : List (Option Value)) → Decidable (SubsLt as bs)
-  | [], _ => isFalse SubsLt.nil_left
-  | _ :: _, [] => isFalse SubsLt.nil_right
-  | _ :: as, _ :: bs => have := SubsLt.dec as bs; decidable_of_iff _ SubsLt.cons_iff.symm
-
-instance : DecidableRel Act.lt := fun _ _ => inferInstanceAs (Decidable (_ ∨ _ ∧ _))
 
 theorem OptLt.acc : ∀ a, Acc OptLt a
   | none => ⟨_, fun b h => by cases b <;> simp [OptLt] at h⟩
@@ -142,8 +128,6 @@ theorem Act.lt_wf : WellFounded Act.lt := by
       · exact ihg g' h subs'
       · cases h; exact ihs subs' hs
 
-instance : WellFoundedRelation Act := ⟨Act.lt, Act.lt_wf⟩
-
 /-- The measure of a call to `d` with arguments `vs`. -/
 def calleeAct (d : FnDef) (vs : List Value) : Act :=
   let s := (d.subterm.zip vs).filterMap fun (b, v) => if b then some (some v) else none
@@ -151,20 +135,5 @@ def calleeAct (d : FnDef) (vs : List Value) : Act :=
 
 /-- The measure of top-level code: above every function's group. -/
 def Act.top (F : Fns) : Act := ⟨F.foldr (fun d n => max d.group n) 0 + 1, []⟩
-
-theorem Act.lt_top {F : Fns} {n d} (h : F.find n = some d) (vs : List Value) :
-    Act.lt (calleeAct d vs) (Act.top F) := by
-  refine Act.lt_of_group ?_
-  have hm := List.mem_of_find?_eq_some h
-  simp only [calleeAct, Act.top]
-  clear h
-  induction F with
-  | nil => cases hm
-  | cons e F ih =>
-    simp only [List.foldr_cons]
-    rcases List.mem_cons.1 hm with rfl | hm
-    · omega
-    · have := ih hm; omega
-
 
 end Pledge

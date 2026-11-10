@@ -365,21 +365,26 @@ names are under `lean/Pledge/`.
   and `Stmt.sound` (`Sound/Expr.lean`) for an expression or statement
   under an invariant on the scope, the valuation and the functions
   available, and `GroupOk.fnSpec` (`Sound/Fn.lean`) for the functions of
-  a group, by well-founded induction on the measure of part 6. Here
-  evaluation is the Lean evaluator, which is total and stops with an
-  error where a call's measure does not decrease; these theorems say
-  that it returns values instead.
+  a group, by well-founded induction on the measure of part 6
+  (`Act`, `Sound/Measure.lean`). Here `rho |- e => vs` is the relation
+  `Eval` (`Eval.lean`), big-step and with no measure; the measure
+  appears only in the proof, and these theorems say that a derivation
+  exists.
 - **Lemma 6.1:** `call_lt` (`Sound/Basic.lean`), with `Act.lt_wf`
-  (`Eval.lean`) for the well-foundedness of the order.
+  (`Sound/Measure.lean`) for the well-foundedness of the order.
 - **(P) and (T)** for the top level: `runProgram_sound`,
-  `reached_eval_ok` and `reached_run_ok` (`Sound/Top.lean`).
+  `reached_eval_ok` and `reached_run_ok` (`Sound/Top.lean`), the last
+  two saying that each top-level evaluation has a derivation of `Eval`,
+  not that the executable evaluator, a `partial` function, finds it.
 - **(K):** `type_goal_inhabited`, `fn_goal_holds` and `no_empty_goal`
   (`Sound/Top.lean`), and `run_sound` and `run_no_empty_goal` for source
   text whose parsed program contains no `sorry`.
-- **(C)** has no theorem: every definition of the Lean implementation is
-  total, by structural or well-founded recursion, with no `partial` and
-  no fuel, so Lean's acceptance of the definitions is meant to stand
-  for it.
+- **(C)** has no theorem. Every definition of the Lean implementation
+  other than the executable evaluator is total, by structural or
+  well-founded recursion, with no fuel. The evaluator is `partial`: each
+  result it returns carries a derivation of `Eval`, but nothing
+  establishes that it returns, so the Lean implementation does not
+  show that compile-time evaluation ends.
 
 The following have no Lean counterpart and rest on this note alone:
 programs that contain `sorry`, and taint (§12); phase 2 and part 9's

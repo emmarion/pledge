@@ -90,6 +90,8 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
 Lean 4, and Lean-checked soundness theorems about it for phase 1
 programs without `sorry`; `lean/README.md` describes its layout, what
 is proved and how it differs from the code above. It shares no code
-with `src/`. `lean/tests/` compares its verdicts with those of
-`src/check.ts` on a corpus of programs that `lean/tests/gen-corpus.mjs`
-collects from the test suite, `tests/*.pledge` and the tutorial.
+with `src/`. Its evaluation is a big-step relation, run by a `partial`
+evaluator whose results each carry a derivation of it. `lean/tests/`
+compares its verdicts with those of `src/check.ts` on a corpus of
+programs that `lean/tests/gen-corpus.mjs` collects from the test suite,
+`tests/*.pledge`, `lean/tests/extra/*.pledge` and the tutorial.
