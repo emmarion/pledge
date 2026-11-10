@@ -1056,7 +1056,7 @@ theorem GroupOk.post {st : TopState} {ρ : List Value} {heads : List FnHead} {bo
     fun W hW p hp => hW.prog.fns _ _ (by simp only [TopState.world, hfns]; exact fns_find_group G hp)
   refine ⟨hph ▸ hI.phase, by rw [hSc, hsc]; exact hI.sat, by rw [hSc, hsc, henv]; exact hI.names, hsc ▸ hI.inert,
     hsc ▸ hI.sigsOk, hsc ▸ hI.rets, fun h sig hs => by rw [hkind]; exact hI.sigNames h sig (hsc ▸ hs), ?_, ?_, ?_,
-    by rw [hgoal, hsc]; exact hI.goal, fun hp => ?_⟩
+    by rw [hgoal, hsc]; exact hI.goal, fun hp => ?_, hsc ▸ hI.typeSig⟩
   · intro d hd
     rw [hglob, groupGlobals, List.find?_append]
     rw [hfns] at hd

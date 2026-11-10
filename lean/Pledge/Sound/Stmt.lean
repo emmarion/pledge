@@ -78,7 +78,7 @@ theorem TopInv.step {st st' : TopState} {ρ ρ' : List Value} {C : Ctx} {act : A
     have := hI'.sat.1; simp only [List.length_append] at this; omega
   refine ⟨hle, ⟨hph ▸ hI.phase, by rw [hw]; exact hI'.sat, by rw [hw]; exact hI'.names, hI'.inert,
     hs ▸ hI.sigsOk.mono hn, hs ▸ hI.rets, hs ▸ hgl ▸ hI.sigNames, hf ▸ hgl ▸ hI.fnNames, hf ▸ hgr ▸ hI.groups,
-    fun W' hW act' hact => ?_, fun g hg => ?_, fun hp => ?_⟩⟩
+    fun W' hW act' hact => ?_, fun g hg => ?_, fun hp => ?_, hs ▸ hI.typeSig⟩⟩
   · rw [hgl, hs]
     exact (hI.globals W' (hle.trans hW) act' (hf ▸ hact)).mono hn
   · obtain ⟨h1, h2⟩ := hI.goal g (hgoal ▸ hg)
