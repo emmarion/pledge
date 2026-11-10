@@ -186,7 +186,7 @@ def bindPattern (env : Env) (m : Option Mult) (pat : Pattern) (v : Value) : Exce
   bindIds env pat.fields (← destruct m pat v)
 
 /-- The branch a match takes for the value `v`. -/
-def pick (m : Option Mult) (v : Value) (bs : List Branch) : Except String Branch :=
+def pickBranch (m : Option Mult) (v : Value) (bs : List Branch) : Except String Branch :=
   if m = some .erased then
     match bs with
     | [b] => pure b
@@ -197,8 +197,8 @@ def pick (m : Option Mult) (v : Value) (bs : List Branch) : Except String Branch
       | none => throw s!"no branch for {showValue v}"
     | .removed => throw "a removed value was inspected"
 
-theorem pick_mem {m v bs b} (h : pick m v bs = .ok b) : b ∈ bs := by
-  unfold pick at h
+theorem pickBranch_mem {m v bs b} (h : pickBranch m v bs = .ok b) : b ∈ bs := by
+  unfold pickBranch at h
   split at h
   · split at h <;> simp_all [pure, Except.pure]
   · split at h
@@ -265,7 +265,7 @@ mutual
     | .block ss e => evalBlock P act env ss e
     | .match _ m s ann bs => do
       let v ← one (← evalExpr P act env s)
-      match _ : pick m v bs with
+      match _ : pickBranch m v bs with
       | .ok br => do annTake ann (← evalExpr P act (← bindPattern env m br.pat v) br.body)
       | .error e => throw e
     | .sorry _ _ => throw "sorry was reached"
@@ -273,7 +273,7 @@ mutual
   termination_by e => (act, sizeOf e)
   decreasing_by
     all_goals
-      try have := sizeOf_body_lt (pick_mem ‹_›)
+      try have := sizeOf_body_lt (pickBranch_mem ‹_›)
       try have := sizeOf_map_expr args
       eval_decreasing
   /-- Evaluates expressions left to right, each to one value. -/
@@ -349,7 +349,7 @@ theorem evalExpr_block {ss : List Stmt} {e : Expr} :
 theorem evalExpr_match {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Branch} :
     evalExpr P act env (.match p m s ann bs) = (do
       let v ← one (← evalExpr P act env s)
-      let br ← pick m v bs
+      let br ← pickBranch m v bs
       annTake ann (← evalExpr P act (← bindPattern env m br.pat v) br.body)) := by
   rw [evalExpr]
   cases evalExpr P act env s with
@@ -436,7 +436,7 @@ mutual
       obtain ⟨br, hbr, h⟩ := bind_eq_ok.1 h
       obtain ⟨env', hb, h⟩ := bind_eq_ok.1 h
       obtain ⟨rs, hr, h⟩ := bind_eq_ok.1 h
-      have := sizeOf_body_lt (pick_mem hbr)
+      have := sizeOf_body_lt (pickBranch_mem hbr)
       rw [evalExpr_ext hP s hs, ok_bind, hv, ok_bind, hbr, ok_bind, hb, ok_bind, evalExpr_ext hP br.body hr, ok_bind]
       exact h
     | .sorry _ _, h => by rw [evalExpr_sorry] at h; cases h
