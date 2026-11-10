@@ -2,11 +2,15 @@
 -- Prime(n) is meant to say that n >= 2 and that no d with 2 <= d < n divides n, where "d does not divide n"
 -- is a division with a nonzero remainder (DivMod, NotDivides, NoDivBelow). As a check on that definition, the
 -- goal (primeFactor) is that if Prime(n) and a * b = n, then a or b is one.
--- decidePrime tests a binary number by binary long division (sub, divPos) by every d below a power of two B
--- with B <= n < B * B; the d with B <= d < n are covered by an erased argument (extend, bigDivisor) that such a
--- d dividing n would have a cofactor in [2, B). All Nat-level data and evidence is erased, so evaluation is
--- meant to do only binary work, at most about 2 * sqrt(n) trial divisions; the comptime let at the end uses it to
--- prove 999983 prime, and the print shows None for 988027 = 991 * 997.
+-- decidePrime works on binary numbers. ascend walks j up to floor(sqrt(n)), keeping the gap n - j * j and
+-- subtracting 2j + 1 at each step, with an erased bound on the gap as its termination measure. Each k = j + 1
+-- reached is tested against the primes listed so far, smallest first, stopping at the first p with p * p > k
+-- (trial); k is added when none divides it (grow). PrimesBelow(l, k) is meant to say that l lists exactly the
+-- primes below k; listedPrime and primeListed state its two directions against Prime, and buildPrime that a
+-- number m >= 2 with no listed divisor p, p * p <= m, is prime when the list holds every prime up to sqrt(m).
+-- Finally n is tested the same way. The result is IsPrime with a proof, Composite with a factor d, 2 <= d < n,
+-- or BelowTwo. All Nat-level data and evidence is erased, so evaluation is meant to do only binary work: the
+-- comptime let at the end uses it to prove 4999 prime, and the print shows the factor 29 of 899 = 29 * 31.
 
 data Nat() : Type() {
   Zero() : Nat();
@@ -22,11 +26,6 @@ data False() : Type() {}
 data Or(A : Type(), B : Type()) : Type() {
   Inl(erased A : Type(), erased B : Type(), x : A) : Or(A, B);
   Inr(erased A : Type(), erased B : Type(), y : B) : Or(A, B);
-}
-
-data Option(A : Type()) : Type() {
-  None(erased A : Type()) : Option(A);
-  Some(erased A : Type(), erased x : A) : Option(A);
 }
 
 data NonZero(n : Nat()) : Type() {
@@ -98,16 +97,60 @@ data Diff(m : Nat(), n : Nat()) : Type() {
   Below(erased m : Nat(), erased n : Nat(), erased k : Nat(), erased p : Plus(Succ(m), k, n)) : Diff(m, n);
 }
 
-data Shift(m : Nat(), j : Nat(), c : Nat()) : Type() {
-  ShiftZ(erased m : Nat()) : Shift(m, Zero(), m);
-  ShiftS(erased m : Nat(), erased j : Nat(), erased m2 : Nat(), erased c : Nat(), d : Plus(m, m, m2),
-      s : Shift(m2, j, c)) : Shift(m, Succ(j), c);
+data NatList() : Type() {
+  NNil() : NatList();
+  NCons(head : Nat(), tail : NatList()) : NatList();
 }
 
-data Reach(n : Nat(), m : Nat(), j : Nat()) : Type() {
-  ReachIntro(erased n : Nat(), erased m : Nat(), erased j : Nat(), erased e : Nat(), s : Shift(m, j, e),
-      nd : NoDivBelow(n, e)) : Reach(n, m, j);
+data Mem(x : Nat(), l : NatList()) : Type() {
+  Here(erased x : Nat(), erased l : NatList()) : Mem(x, NCons(x, l));
+  There(erased x : Nat(), erased y : Nat(), erased l : NatList(), m : Mem(x, l)) : Mem(x, NCons(y, l));
 }
+
+data Factor(d : Nat(), n : Nat()) : Type() {
+  FactorIntro(erased d : Nat(), erased n : Nat(), erased q : Nat(), erased a : Nat(), erased b : Nat(),
+      t : Times(q, d, n), lo : Plus(Succ(Succ(Zero())), a, d), hi : Plus(Succ(d), b, n)) : Factor(d, n);
+}
+
+data PrimesBelow(l : NatList(), k : Nat()) : Type() {
+  PrimesTwo() : PrimesBelow(NNil(), Succ(Succ(Zero())));
+  PrimesAdd(erased l : NatList(), erased k : Nat(), rest : PrimesBelow(l, k), p : Prime(k))
+    : PrimesBelow(NCons(k, l), Succ(k));
+  PrimesSkip(erased l : NatList(), erased k : Nat(), erased d : Nat(), rest : PrimesBelow(l, k), f : Factor(d, k))
+    : PrimesBelow(l, Succ(k));
+}
+
+data BelowSquare(m : Nat(), k : Nat()) : Type() {
+  BelowSquareIntro(erased m : Nat(), erased k : Nat(), erased kk : Nat(), erased w : Nat(), t : Times(k, k, kk),
+      p : Plus(Succ(m), w, kk)) : BelowSquare(m, k);
+}
+
+data Checked(l : NatList(), m : Nat()) : Type() {
+  CheckedNil(erased m : Nat()) : Checked(NNil(), m);
+  CheckedCons(erased p : Nat(), erased l : NatList(), erased m : Nat(), rest : Checked(l, m),
+      o : Or(NotDivides(p, m), BelowSquare(m, p))) : Checked(NCons(p, l), m);
+}
+
+data PList(l : NatList()) : Type() {
+  PNil() : PList(NNil());
+  PCons(p : Pos(), erased n : Nat(), erased r : PosRep(p, n), erased l : NatList(), rest : PList(l))
+    : PList(NCons(n, l));
+}
+
+data Trial(l : NatList(), m : Nat(), k : Nat()) : Type() {
+  Found(erased l : NatList(), erased m : Nat(), erased k : Nat(), d : Bin(), erased e : Nat(), erased r : Rep(d, e),
+      erased f : Factor(e, m)) : Trial(l, m, k);
+  Pass(erased l : NatList(), erased m : Nat(), erased k : Nat(), erased c : Checked(l, m)) : Trial(l, m, k);
+  Stop(erased l : NatList(), erased m : Nat(), erased k : Nat(), erased c : Checked(l, m), erased u : BelowSquare(m, k))
+    : Trial(l, m, k);
+}
+
+data Verdict(n : Nat()) : Type() {
+  IsPrime(erased n : Nat(), erased p : Prime(n)) : Verdict(n);
+  Composite(erased n : Nat(), d : Bin(), erased e : Nat(), erased r : Rep(d, e), erased f : Factor(e, n)) : Verdict(n);
+  BelowTwo(erased n : Nat(), erased k : Nat(), erased p : Plus(Succ(n), k, Succ(Succ(Zero())))) : Verdict(n);
+}
+
 
 goal fn (erased n : Nat(), erased a : Nat(), erased b : Nat(), erased p : Prime(n), erased t : Times(a, b, n))
     -> (erased o : Or(Eq(Nat(), a, Succ(Zero())), Eq(Nat(), b, Succ(Zero()))));
@@ -489,101 +532,274 @@ fn primeFactor(erased n : Nat(), erased a : Nat(), erased b : Nat(), erased p : 
 
 qed primeFactor;
 
-fn bigDivisor(erased n : Nat(), erased c : Nat(), erased b : Nat(), erased bb : Nat(), erased w : Nat(),
-    erased l : Nat(), erased k : Nat(), erased q : Nat(), lb : Plus(b, l, c), cn : Plus(Succ(c), k, n),
-    nd : NoDivBelow(n, b), tb : Times(b, b, bb), lt : Plus(Succ(n), w, bb), tq : Times(q, c, n))
-    -> (erased f : False()) {
-  match erased compare(q, b) : _ {
-    CmpGe(_, _, _, p) => {
-      let (erased x, erased y, erased tx, erased ty, erased s) = timesSplit(_, _, _, _, _, p, tq);
-      let (erased x1, erased y1, erased tx1, erased ty1, erased s1) =
-        timesSplit(_, _, _, _, _, lb, timesComm(_, _, _, tx));
-      match erased timesFunc(_, _, _, _, tb, tx1) : _ {
-        Refl(_, _) => {
-          let (erased z, erased p1, erased p2) = plusAssoc(_, _, _, _, _, s1, s);
-          antisym(_, _, _, _, p2, plusMove(_, _, _, lt))
-        };
-      }
-    };
-    CmpLt(_, _, _, p) => match erased q : _ {
-      Zero() => {
-        let erased TimesZero(_) = tq;
-        match erased cn : _ {}
-      };
-      Succ(q1) => match erased q1 : _ {
-        Zero() => {
-          let erased TimesSucc(_, _, _, _, t1, p1) = tq;
-          let erased TimesZero(_) = t1;
-          let erased PlusZero(_) = p1;
-          noGrow(_, _, plusMove(_, _, _, cn))
-        };
-        Succ(q2) => noFactor(_, _, _, _, _, nd, p, timesComm(_, _, _, tq));
-      };
+fn times(subterm m : Nat(), n : Nat()) -> (erased r : Nat(), erased t : Times(m, n, r)) {
+  match m : _ {
+    Zero() => (Zero(), TimesZero(_));
+    Succ(k) => {
+      let (erased r, erased t) = times(subterm k, n);
+      let (erased s, erased p) = plus(r, n);
+      (s, TimesSucc(_, _, _, _, t, p))
     };
   }
 }
 
-fn notDivLarge(erased n : Nat(), erased c : Nat(), erased b : Nat(), erased bb : Nat(), erased w : Nat(),
-    erased l : Nat(), erased k : Nat(), lb : Plus(b, l, c), cn : Plus(Succ(c), k, n), nd : NoDivBelow(n, b),
-    tb : Times(b, b, bb), lt : Plus(Succ(n), w, bb)) -> (erased r : NotDivides(c, n)) {
+fn timesAssoc(erased q : Nat(), erased j : Nat(), erased m : Nat(), erased q2 : Nat(), erased i : Nat(),
+    subterm t : Times(q, j, m), u : Times(q2, i, j)) -> (erased c : Nat(), erased v : Times(c, i, m)) {
+  match t : _ {
+    TimesZero(_) => (Zero(), TimesZero(_));
+    TimesSucc(_, _, _, _, t1, p1) => {
+      let (erased c, erased v) = timesAssoc(_, _, _, _, _, subterm t1, u);
+      let (erased c2, erased s) = plus(c, q2);
+      (c2, timesPlusLeft(_, _, _, _, _, _, _, s, v, u, p1))
+    };
+  }
+}
+
+fn squareMono(erased a : Nat(), erased i : Nat(), erased b : Nat(), erased aa : Nat(), erased bb : Nat(),
+    le : Plus(a, i, b), ta : Times(a, a, aa), tb : Times(b, b, bb)) -> (erased z : Nat(), erased p : Plus(aa, z, bb)) {
+  let (erased x, erased y, erased tx, erased ty, erased s) = timesSplit(_, _, _, _, _, le, tb);
+  let (erased x1, erased y1, erased tx1, erased ty1, erased s1) = timesSplit(_, _, _, _, _, le, timesComm(_, _, _, tx));
+  match erased timesFunc(_, _, _, _, ta, tx1) : _ {
+    Refl(_, _) => {
+      let (erased z, erased q1, erased q2) = plusAssoc(_, _, _, _, _, s1, s);
+      (z, q2)
+    };
+  }
+}
+
+fn squareStep(erased k : Nat(), erased kk : Nat(), erased d : Nat(), erased kk1 : Nat(), t : Times(k, k, kk),
+    dd : Plus(k, k, d), s : Plus(kk, Succ(d), kk1)) -> (erased t1 : Times(Succ(k), Succ(k), kk1)) {
+  let (erased r, erased u, erased q) = timesSuccRight(_, _, _, t);
+  let (erased ab, erased s1, erased s2) = plusAssocRev(_, _, _, _, _, plusSucc(_, _, _, dd), s);
+  match erased plusFunc(_, _, _, _, s1, q) : _ {
+    Refl(_, _) => TimesSucc(_, _, _, _, u, s2);
+  }
+}
+
+fn ltSquare(erased a : Nat(), erased kk : Nat(), t : Times(Succ(Succ(a)), Succ(Succ(a)), kk))
+    -> (erased w : Nat(), erased p : Plus(Succ(Succ(Succ(a))), w, kk)) {
+  let TimesSucc(_, _, _, _, t1, p1) = t;
+  let TimesSucc(_, _, _, _, _, p2) = t1;
+  let erased PlusSucc(_, _, w, _) = plusComm(_, _, _, p2);
+  (w, plusMoveBack(_, _, _, plusComm(_, _, _, p1)))
+}
+
+fn succLess(erased t : Nat(), erased r : Nat(), erased m : Nat(), erased k : Nat(), erased p : Nat(), erased x : Nat(),
+    s : Plus(t, r, m), l : Plus(Succ(r), k, p), q : Plus(t, p, x)) -> (erased lt : Plus(Succ(m), k, x)) {
+  let (erased ab, erased s1, erased s2) = plusAssocRev(_, _, _, _, _, l, q);
+  match erased plusFunc(_, _, _, _, s1, plusSucc(_, _, _, s)) : _ {
+    Refl(_, _) => s2;
+  }
+}
+
+fn belowSquareUp(erased m : Nat(), erased a : Nat(), erased w : Nat(), erased k : Nat(), u : BelowSquare(m, a),
+    lt : Plus(Succ(a), w, k)) -> (erased v : BelowSquare(m, k)) {
+  let BelowSquareIntro(_, _, _, _, ta, la) = u;
+  let (erased kk, erased tk) = times(k, k);
+  let (erased z, erased mono) = squareMono(_, _, _, _, _, plusMove(_, _, _, lt), ta, tk);
+  let (erased vz, erased q1, erased q2) = plusAssoc(_, _, _, _, _, la, mono);
+  BelowSquareIntro(_, _, _, _, tk, q2)
+}
+
+fn notBelowSquare(erased m : Nat(), erased k : Nat(), erased i : Nat(), erased j : Nat(), erased x : Nat(),
+    erased y : Nat(), u : BelowSquare(m, k), le : Plus(k, i, j), tj : Times(j, j, x), s : Plus(x, y, m))
+    -> (erased f : False()) {
+  let BelowSquareIntro(_, _, _, _, tk, lk) = u;
+  let (erased z, erased mono) = squareMono(_, _, _, _, _, le, tk, tj);
+  let (erased zy, erased q1, erased q2) = plusAssoc(_, _, _, _, _, mono, s);
+  antisym(_, _, _, _, q2, plusMove(_, _, _, lk))
+}
+
+fn divBig(erased m : Nat(), erased p : Nat(), erased q : Nat(), erased r : Nat(), erased i : Nat(),
+    dm : DivMod(m, p, q, r), lt : Plus(Succ(q), i, p)) -> (erased u : BelowSquare(m, p)) {
+  let DivModIntro(_, _, _, _, _, _, tq, s, l) = dm;
+  let (erased pp, erased tp) = times(p, p);
+  let (erased x, erased y, erased tx, erased ty, erased sxy) = timesSplit(_, _, _, _, _, lt, tp);
+  let TimesSucc(_, _, _, _, t1, p1) = tx;
+  match erased timesFunc(_, _, _, _, tq, t1) : _ {
+    Refl(_, _) => {
+      let (erased z, erased q1, erased q2) = plusAssoc(_, _, _, _, _, succLess(_, _, _, _, _, _, s, l, p1), sxy);
+      BelowSquareIntro(_, _, _, _, tp, q2)
+    };
+  }
+}
+
+fn exactTimes(erased m : Nat(), erased d : Nat(), erased q : Nat(), dm : DivMod(m, d, q, Zero()))
+    -> (erased t : Times(q, d, m)) {
+  let DivModIntro(_, _, _, _, t, _, tq, s, _) = dm;
+  match erased plusFunc(_, _, _, _, plusZeroRight(t), s) : _ {
+    Refl(_, _) => tq;
+  }
+}
+
+fn factorOf(erased m : Nat(), erased p : Nat(), erased q : Nat(), erased i : Nat(), dm : DivMod(m, p, q, Zero()),
+    ge : Plus(p, i, q), pr : Prime(p)) -> (erased f : Factor(p, m)) {
+  let PrimeIntro(_, nd) = pr;
   let (erased j, erased e) = ndTwo(_, _, nd);
   match erased e : _ {
     Refl(_, _) => {
-      let erased PlusSucc(_, _, _, _) = lb;
-      let (erased q, erased r, erased dm) = divmod(n, c, NonZeroSucc(_));
-      match erased r : _ {
-        Zero() => {
-          let erased DivModIntro(_, _, _, _, t, _, tq, s, _) = dm;
-          match erased plusFunc(_, _, _, _, plusZeroRight(t), s) : _ {
-            Refl(_, _) => match erased bigDivisor(_, _, _, _, _, _, _, _, lb, cn, nd, tb, lt, tq) : _ {};
-          }
+      let (erased t) = exactTimes(_, _, _, dm);
+      let (erased x, erased y, erased tx, erased ty, erased s) = timesSplit(_, _, _, _, _, ge, t);
+      let (erased w, erased lt) = ltSquare(_, _, tx);
+      let (erased wy, erased q1, erased q2) = plusAssoc(_, _, _, _, _, lt, s);
+      FactorIntro(_, _, _, _, _, t, PlusSucc(_, _, _, PlusSucc(_, _, _, PlusZero(_))), q2)
+    };
+  }
+}
+
+fn factorNotPrime(erased d : Nat(), erased n : Nat(), f : Factor(d, n), pr : Prime(n)) -> (erased r : False()) {
+  let FactorIntro(_, _, _, _, _, t, lo, hi) = f;
+  let PlusSucc(_, _, _, lo1) = lo;
+  let PlusSucc(_, _, _, _) = lo1;
+  let PrimeIntro(_, nd) = pr;
+  noFactor(_, _, _, _, _, nd, hi, t)
+}
+
+fn notDivDivisor(erased i : Nat(), erased m : Nat(), erased q : Nat(), erased j : Nat(), nd : NotDivides(i, m),
+    t : Times(q, j, m)) -> (erased r : NotDivides(i, j)) {
+  let NotDiv(_, _, _, _, dm) = nd;
+  let DivModIntro(_, _, _, _, _, _, _, _, l) = dm;
+  let PlusSucc(_, _, _, _) = l;
+  let (erased q2, erased r2, erased dm2) = divmod(j, i, NonZeroSucc(_));
+  match erased r2 : _ {
+    Zero() => {
+      let (erased c, erased u) = timesAssoc(_, _, _, _, _, t, exactTimes(_, _, _, dm2));
+      match erased divUniqueFalse(_, _, _, _, _, dm, u) : _ {}
+    };
+    Succ(_) => NotDiv(_, _, _, _, dm2);
+  }
+}
+
+fn noDivDivisor(erased m : Nat(), erased i : Nat(), erased q : Nat(), erased j : Nat(), subterm nd : NoDivBelow(m, i),
+    t : Times(q, j, m)) -> (erased r : NoDivBelow(j, i)) {
+  match nd : _ {
+    NoDivTwo(_) => NoDivTwo(_);
+    NoDivStep(_, _, rest, nd1) =>
+      NoDivStep(_, _, noDivDivisor(_, _, _, _, subterm rest, t), notDivDivisor(_, _, _, _, nd1, t));
+  }
+}
+
+fn listedPrime(erased p : Nat(), erased l : NatList(), erased k : Nat(), m : Mem(p, l), subterm ex : PrimesBelow(l, k))
+    -> (erased r : Prime(p)) {
+  match ex : _ {
+    PrimesTwo() => match m : _ {};
+    PrimesAdd(_, _, rest, pk) => match m : _ {
+      Here(_, _) => pk;
+      There(_, _, _, m1) => listedPrime(_, _, _, m1, subterm rest);
+    };
+    PrimesSkip(_, _, _, rest, _) => listedPrime(_, _, _, m, subterm rest);
+  }
+}
+
+fn primeListed(erased p : Nat(), erased w : Nat(), erased l : NatList(), erased k : Nat(), pr : Prime(p),
+    lt : Plus(Succ(p), w, k), subterm ex : PrimesBelow(l, k)) -> (erased m : Mem(p, l)) {
+  match ex : _ {
+    PrimesTwo() => {
+      let PrimeIntro(_, nd) = pr;
+      let (erased j, erased e) = ndTwo(_, _, nd);
+      match erased e : _ {
+        Refl(_, _) => {
+          let PlusSucc(_, _, _, l1) = lt;
+          let PlusSucc(_, _, _, l2) = l1;
+          match l2 : _ {}
         };
-        Succ(r1) => NotDiv(_, _, _, _, dm);
+      }
+    };
+    PrimesAdd(_, _, rest, _) => match erased plusComm(_, _, _, lt) : _ {
+      PlusZero(_) => Here(_, _);
+      PlusSucc(_, _, _, l1) => There(_, _, _, primeListed(_, _, _, _, pr, plusComm(_, _, _, l1), subterm rest));
+    };
+    PrimesSkip(_, _, _, rest, f) => match erased plusComm(_, _, _, lt) : _ {
+      PlusZero(_) => match erased factorNotPrime(_, _, f, pr) : _ {};
+      PlusSucc(_, _, _, l1) => primeListed(_, _, _, _, pr, plusComm(_, _, _, l1), subterm rest);
+    };
+  }
+}
+
+fn tailBelow(erased p : Nat(), erased l : NatList(), erased k : Nat(), subterm ex : PrimesBelow(NCons(p, l), k))
+    -> (erased w : Nat(), erased e : PrimesBelow(l, p), erased lt : Plus(Succ(p), w, k)) {
+  match ex : _ {
+    PrimesAdd(_, _, rest, _) => (Zero(), rest, plusZeroRight(Succ(p)));
+    PrimesSkip(_, _, _, rest, _) => {
+      let (erased w, erased e, erased lt) = tailBelow(_, _, _, subterm rest);
+      (Succ(w), e, plusSucc(_, _, _, lt))
+    };
+  }
+}
+
+fn checkedFalse(erased j : Nat(), erased l : NatList(), erased m : Nat(), erased q : Nat(), erased x : Nat(),
+    erased y : Nat(), subterm mem : Mem(j, l), c : Checked(l, m), t : Times(q, j, m), tx : Times(j, j, x),
+    s : Plus(x, y, m)) -> (erased f : False()) {
+  match mem : _ {
+    Here(_, _) => {
+      let CheckedCons(_, _, _, _, o) = c;
+      match o : _ {
+        Inl(_, _, nd) => {
+          let NotDiv(_, _, _, _, dm) = nd;
+          divUniqueFalse(_, _, _, _, _, dm, t)
+        };
+        Inr(_, _, u) => notBelowSquare(_, _, _, _, _, _, u, plusZeroRight(j), tx, s);
+      }
+    };
+    There(_, _, _, m1) => {
+      let CheckedCons(_, _, _, rest, _) = c;
+      checkedFalse(_, _, _, _, _, _, subterm m1, rest, t, tx, s)
+    };
+  }
+}
+
+fn divisorFalse(erased m : Nat(), erased j : Nat(), erased i : Nat(), erased q : Nat(), erased l : NatList(),
+    erased k : Nat(), nd : NoDivBelow(m, j), cn : Plus(Succ(j), i, m), t : Times(q, j, m), ex : PrimesBelow(l, k),
+    c : Checked(l, m), u : BelowSquare(m, k)) -> (erased f : False()) {
+  match erased compare(q, j) : _ {
+    CmpLt(_, _, _, lt) => match erased q : _ {
+      Zero() => {
+        let TimesZero(_) = t;
+        match cn : _ {}
+      };
+      Succ(q1) => match erased q1 : _ {
+        Zero() => {
+          let TimesSucc(_, _, _, _, t1, p1) = t;
+          let TimesZero(_) = t1;
+          let PlusZero(_) = p1;
+          noGrow(_, _, plusMove(_, _, _, cn))
+        };
+        Succ(_) => noFactor(_, _, _, _, _, nd, lt, timesComm(_, _, _, t));
+      };
+    };
+    CmpGe(_, _, _, ge) => {
+      let (erased x, erased y, erased tx, erased ty, erased s) = timesSplit(_, _, _, _, _, ge, t);
+      match erased compare(j, k) : _ {
+        CmpGe(_, _, _, kj) => notBelowSquare(_, _, _, _, _, _, u, kj, tx, s);
+        CmpLt(_, _, _, jk) => {
+          let (erased pr) = PrimeIntro(_, noDivDivisor(_, _, _, _, nd, t));
+          checkedFalse(_, _, _, _, _, _, primeListed(_, _, _, _, pr, jk, ex), c, t, tx, s)
+        };
       }
     };
   }
 }
 
-fn extend(subterm k : Nat(), erased n : Nat(), erased c : Nat(), erased b : Nat(), erased bb : Nat(),
-    erased w : Nat(), erased l : Nat(), nd : NoDivBelow(n, c), p : Plus(c, k, n), lb : Plus(b, l, c),
-    nd0 : NoDivBelow(n, b), tb : Times(b, b, bb), lt : Plus(Succ(n), w, bb)) -> (erased r : NoDivBelow(n, n)) {
-  match k : _ {
-    Zero() => match erased plusFunc(_, _, _, _, plusZeroRight(c), p) : _ {
+fn buildPrime(subterm i : Nat(), erased m : Nat(), erased j : Nat(), erased l : NatList(), erased k : Nat(),
+    nd : NoDivBelow(m, j), p : Plus(j, i, m), ex : PrimesBelow(l, k), c : Checked(l, m), u : BelowSquare(m, k))
+    -> (erased r : NoDivBelow(m, m)) {
+  match i : _ {
+    Zero() => match erased plusFunc(_, _, _, _, plusZeroRight(j), p) : _ {
       Refl(_, _) => nd;
     };
-    Succ(k1) => {
+    Succ(i1) => {
       let (erased cn) = plusMoveBack(_, _, _, p);
-      extend(subterm k1, _, _, _, _, _, _, NoDivStep(_, _, nd, notDivLarge(_, _, _, _, _, _, _, lb, cn, nd0, tb, lt)),
-        cn, plusSucc(_, _, _, lb), nd0, tb, lt)
-    };
-  }
-}
-
-fn shiftFunc(erased m : Nat(), erased j : Nat(), erased c : Nat(), erased d : Nat(), subterm s : Shift(m, j, c),
-    u : Shift(m, j, d)) -> (erased e : Eq(Nat(), c, d)) {
-  match s : _ {
-    ShiftZ(_) => {
-      let ShiftZ(_) = u;
-      Refl(_, _)
-    };
-    ShiftS(_, _, _, _, p, s1) => {
-      let ShiftS(_, _, _, _, q, u1) = u;
-      match erased plusFunc(_, _, _, _, p, q) : _ {
-        Refl(_, _) => shiftFunc(_, _, _, _, subterm s1, u1);
+      let (erased j2, erased e) = ndTwo(_, _, nd);
+      match erased e : _ {
+        Refl(_, _) => {
+          let (erased q, erased r, erased dm) = divmod(m, j, NonZeroSucc(_));
+          let (erased nd1) = match erased r : (erased nd1 : NotDivides(j, m)) {
+            Zero() => match erased divisorFalse(_, _, _, _, _, _, nd, cn, exactTimes(_, _, _, dm), ex, c, u) : _ {};
+            Succ(_) => NotDiv(_, _, _, _, dm);
+          };
+          buildPrime(subterm i1, _, _, _, _, NoDivStep(_, _, nd, nd1), cn, ex, c, u)
+        };
       }
-    };
-  }
-}
-
-fn shiftDouble(erased a : Nat(), erased j : Nat(), erased x : Nat(), erased a2 : Nat(), erased x2 : Nat(),
-    subterm s : Shift(a, j, x), sa : Plus(a, a, a2), sx : Plus(x, x, x2)) -> (erased u : Shift(a2, j, x2)) {
-  match s : _ {
-    ShiftZ(_) => match erased plusFunc(_, _, _, _, sa, sx) : _ {
-      Refl(_, _) => ShiftZ(_);
-    };
-    ShiftS(_, _, am, _, p, s1) => {
-      let (erased am2, erased q) = plus(am, am);
-      ShiftS(_, _, _, _, dsum(_, _, _, _, _, _, p, sa, sa, q), shiftDouble(_, _, _, _, _, subterm s1, q, sx))
     };
   }
 }
@@ -927,41 +1143,35 @@ fn divPos(erased m : Nat(), erased d : Nat(), subterm x : Pos(), y : Bin(), eras
   }
 }
 
-fn scan(subterm j : Nat(), x : Pos(), b : Bin(), erased n : Nat(), erased m : Nat(), erased c : Nat(),
-    erased px : PosRep(x, n), erased rb : Rep(b, m), erased s : Shift(m, j, c), erased nd : NoDivBelow(n, c))
-    -> (o : Option(Reach(n, Succ(m), j))) {
-  match j : _ {
-    Zero() => {
-      let erased ShiftZ(_) = s;
-      let (erased e, erased eq) = ndTwo(_, _, nd);
-      match erased eq : _ {
-        Refl(_, _) => {
-          let (_, r, erased nq, erased nr, erased rq, erased rr, erased dm) =
-            divPos(_, _, x, b, px, rb, NonZeroSucc(_));
-          match r : _ {
-            BZ() => None(_);
-            BP(p) => {
-              let erased RepP(_, _, rp) = rr;
-              let erased NonZeroSucc(_) = posPos(_, _, rp);
-              Some(_, ReachIntro(_, _, _, Succ(m), ShiftZ(_), NoDivStep(_, _, nd, NotDiv(_, _, _, _, dm))))
+fn trial(x : Pos(), erased m : Nat(), erased px : PosRep(x, m), erased l : NatList(), subterm ps : PList(l),
+    erased k : Nat(), erased ex : PrimesBelow(l, k)) -> (o : Trial(l, m, k)) {
+  match ps : _ {
+    PNil() => Pass(_, _, _, CheckedNil(_));
+    PCons(p, _, rp, _, rest) => {
+      let (erased w, erased ex1, erased lt) = tailBelow(_, _, _, ex);
+      match trial(x, _, px, _, subterm rest, _, ex1) : _ {
+        Found(_, _, _, d, _, rd, f) => Found(_, _, _, d, _, rd, f);
+        Stop(_, _, _, c, u) => Stop(_, _, _, CheckedCons(_, _, _, c, Inr(_, _, u)), belowSquareUp(_, _, _, _, u, lt));
+        Pass(_, _, _, c) => {
+          let erased NonZeroSucc(_) = posPos(_, _, rp);
+          let (q, r, erased nq, erased nr, erased rq, erased rr, erased dm) =
+            divPos(_, _, x, BP(p), px, RepP(_, _, rp), NonZeroSucc(_));
+          match subBin(_, _, q, BP(p), rq, RepP(_, _, rp)) : _ {
+            Below(_, _, _, lq) => {
+              let (erased u) = divBig(_, _, _, _, _, dm, lq);
+              Stop(_, _, _, CheckedCons(_, _, _, c, Inr(_, _, u)), belowSquareUp(_, _, _, _, u, lt))
             };
-          }
-        };
-      }
-    };
-    Succ(j1) => {
-      let erased ShiftS(_, _, _, _, sm, s1) = s;
-      let (b0, erased rb0) = twice(_, _, b, rb, sm);
-      match scan(subterm j1, x, b0, _, _, _, px, rb0, s1, nd) : _ {
-        None(_) => None(_);
-        Some(_, v) => {
-          let erased ReachIntro(_, _, _, _, s2, nd2) = v;
-          let (b1, erased rb1) = twice1(_, _, b, rb, sm);
-          match scan(subterm j1, x, b1, _, _, _, px, rb1, s2, nd2) : _ {
-            None(_) => None(_);
-            Some(_, v2) => {
-              let erased ReachIntro(_, _, _, e2, s3, nd3) = v2;
-              Some(_, ReachIntro(_, _, _, e2, ShiftS(_, _, _, _, succBoth(_, _, _, sm), s3), nd3))
+            Above(_, _, _, _, _, ge) => match r : _ {
+              BZ() => {
+                let erased RepZ() = rr;
+                Found(_, _, _, BP(p), _, RepP(_, _, rp),
+                  factorOf(_, _, _, _, dm, ge, listedPrime(_, _, _, Here(_, _), ex)))
+              };
+              BP(r1) => {
+                let erased RepP(_, _, rr1) = rr;
+                let erased NonZeroSucc(_) = posPos(_, _, rr1);
+                Pass(_, _, _, CheckedCons(_, _, _, c, Inl(_, _, NotDiv(_, _, _, _, dm))))
+              };
             };
           }
         };
@@ -970,92 +1180,80 @@ fn scan(subterm j : Nat(), x : Pos(), b : Bin(), erased n : Nat(), erased m : Na
   }
 }
 
-fn cover(subterm h : Nat(), x : Pos(), erased n : Nat(), erased px : PosRep(x, n))
-    -> (o : Option(Reach(n, Succ(Zero()), Succ(h)))) {
-  match h : _ {
-    Zero() => Some(_, ReachIntro(n, _, _, _, ShiftS(_, _, _, _, PlusSucc(_, _, _, PlusZero(_)), ShiftZ(_)),
-      NoDivTwo(_)));
-    Succ(h1) => match cover(subterm h1, x, _, px) : _ {
-      None(_) => None(_);
-      Some(_, v) => {
-        let erased ReachIntro(_, _, _, _, s, nd) = v;
-        match scan(h, x, BP(One()), _, _, _, px, RepP(_, _, RepOne()), s, nd) : _ {
-          None(_) => None(_);
-          Some(_, v2) => {
-            let erased ReachIntro(_, _, _, e2, s2, nd2) = v2;
-            Some(_, ReachIntro(_, _, _, e2, ShiftS(_, _, _, _, PlusSucc(_, _, _, PlusZero(_)), s2), nd2))
-          };
-        }
+fn test(x : Pos(), erased m : Nat(), erased px : PosRep(x, m), erased l : NatList(), ps : PList(l), erased k : Nat(),
+    erased a : Nat(), erased ex : PrimesBelow(l, k), erased u : BelowSquare(m, k),
+    erased two : Plus(Succ(Succ(Zero())), a, m)) -> (v : Verdict(m)) {
+  match trial(x, _, px, _, ps, _, ex) : _ {
+    Found(_, _, _, d, _, rd, f) => Composite(_, d, _, rd, f);
+    Pass(_, _, _, c) => IsPrime(_, PrimeIntro(_, buildPrime(a, _, _, _, _, NoDivTwo(_), two, ex, c, u)));
+    Stop(_, _, _, c, _) => IsPrime(_, PrimeIntro(_, buildPrime(a, _, _, _, _, NoDivTwo(_), two, ex, c, u)));
+  }
+}
+
+fn grow(k : Pos(), erased a : Nat(), erased kk : Nat(), erased pk : PosRep(k, Succ(Succ(a))), erased l : NatList(),
+    ps : PList(l), erased ex : PrimesBelow(l, Succ(Succ(a))), erased t : Times(Succ(Succ(a)), Succ(Succ(a)), kk))
+    -> (erased l2 : NatList(), ps2 : PList(l2), erased ex2 : PrimesBelow(l2, Succ(Succ(Succ(a))))) {
+  let (erased w, erased lt) = ltSquare(_, _, t);
+  match test(k, _, pk, _, ps, _, _, ex, BelowSquareIntro(_, _, _, _, t, lt),
+      PlusSucc(_, _, _, PlusSucc(_, _, _, PlusZero(_)))) : _ {
+    IsPrime(_, pr) => (NCons(Succ(Succ(a)), l), PCons(k, _, pk, _, ps), PrimesAdd(_, _, ex, pr));
+    Composite(_, _, _, _, f) => (l, ps, PrimesSkip(_, _, _, ex, f));
+    BelowTwo(_, _, p) => {
+      let erased PlusSucc(_, _, _, p1) = p;
+      let erased PlusSucc(_, _, _, p2) = p1;
+      match erased p2 : _ {}
+    };
+  }
+}
+
+fn ascend(subterm erased b : Nat(), x : Pos(), j : Pos(), g : Bin(), erased l : NatList(), ps : PList(l),
+    erased n : Nat(), erased nj : Nat(), erased jj : Nat(), erased ng : Nat(), erased e : Nat(), erased a : Nat(),
+    erased px : PosRep(x, n), erased pj : PosRep(j, nj), erased rg : Rep(g, ng), erased ex : PrimesBelow(l, Succ(nj)),
+    erased t : Times(nj, nj, jj), erased s : Plus(jj, ng, n), erased gb : Plus(ng, e, b),
+    erased two : Plus(Succ(Succ(Zero())), a, n)) -> (v : Verdict(n)) {
+  let (erased d, erased dd) = plus(nj, nj);
+  match subBin(_, _, g, BP(P1(j)), rg, RepP(_, _, RepP1(_, _, _, pj, dd))) : _ {
+    Below(_, _, _, lt) => {
+      let (erased kk, erased s1) = plus(jj, Succ(d));
+      test(x, _, px, _, ps, _, _, ex,
+        BelowSquareIntro(_, _, _, _, squareStep(_, _, _, _, t, dd, s1), succLess(_, _, _, _, _, _, s, lt, s1)), two)
+    };
+    Above(g1, _, _, _, rg1, p) => {
+      let (erased kk, erased s1, erased s2) = plusAssocRev(_, _, _, _, _, p, s);
+      let (erased tk) = squareStep(_, _, _, _, t, dd, s1);
+      let erased PlusSucc(_, _, _, p1) = p;
+      let erased PlusSucc(_, _, b1, gb1) = gb;
+      let (erased de, erased q1, erased q2) = plusAssoc(_, _, _, _, _, plusComm(_, _, _, p1), gb1);
+      let erased NonZeroSucc(_) = posPos(_, _, pj);
+      let (k, erased pk) = succPos(_, j, pj);
+      let (erased l2, ps2, erased ex2) = grow(k, _, _, pk, _, ps, ex, tk);
+      ascend(subterm b1, x, k, g1, _, ps2, _, _, _, _, _, _, px, pk, rg1, ex2, tk, s2, q2, two)
+    };
+  }
+}
+
+fn decidePrime(x : Bin(), erased n : Nat(), erased rx : Rep(x, n)) -> (v : Verdict(n)) {
+  match subBin(_, _, x, BP(P0(One())), rx, RepP(_, _, RepP0(_, _, _, RepOne(), PlusSucc(_, _, _, PlusZero(_))))) : _ {
+    Below(_, _, _, p) => BelowTwo(_, _, p);
+    Above(g, _, _, a, rg, two) => match x : _ {
+      BZ() => {
+        let erased RepZ() = rx;
+        match erased two : _ {}
+      };
+      BP(p) => {
+        let erased RepP(_, _, rp) = rx;
+        let (g1, erased rg1) = inc(_, g, rg);
+        ascend(Succ(a), p, One(), g1, _, PNil(), _, _, _, _, _, _, rp, RepOne(), rg1, PrimesTwo(),
+          TimesSucc(_, _, _, _, TimesZero(_), PlusZero(_)), plusMove(_, _, _, two), plusZeroRight(Succ(a)), two)
       };
     };
   }
 }
 
-fn pow2(subterm h : Nat())
-    -> (b : Pos(), bb : Pos(), erased nb : Nat(), erased nbb : Nat(), erased rb : PosRep(b, nb),
-        erased rbb : PosRep(bb, nbb), erased s : Shift(Succ(Zero()), h, nb), erased t : Times(nb, nb, nbb)) {
-  match h : _ {
-    Zero() => (One(), One(), Succ(Zero()), Succ(Zero()), RepOne(), RepOne(), ShiftZ(_),
-      TimesSucc(_, _, _, _, TimesZero(_), PlusZero(_)));
-    Succ(h1) => {
-      let (b1, bb1, erased nb1, erased nbb1, erased rb1, erased rbb1, erased s1, erased t1) = pow2(subterm h1);
-      let (erased nb2, erased sb) = plus(nb1, nb1);
-      let (erased d1, erased p1, erased u1) = timesDouble(_, _, _, _, sb, t1);
-      let (erased d2, erased p2, erased u2) = timesDouble(_, _, _, _, sb, timesComm(_, _, _, u1));
-      (P0(b1), P0(P0(bb1)), nb2, d2, RepP0(_, _, _, rb1, sb), RepP0(_, _, _, RepP0(_, _, _, rbb1, p1), p2),
-        ShiftS(_, _, _, _, PlusSucc(_, _, _, PlusZero(_)),
-          shiftDouble(_, _, _, _, _, s1, PlusSucc(_, _, _, PlusZero(_)), sb)), u2)
-    };
-  }
-}
+let prime = BP(P1(P1(P1(P0(P0(P0(P0(P1(P1(P1(P0(P0(One())))))))))))));
+let (erased nPrime, erased rPrime) = toNat(prime);
+comptime let IsPrime(_, primeIsPrime) = decidePrime(prime, nPrime, rPrime);
 
-fn halfLen(subterm x : Pos()) -> (h : Nat()) {
-  match x : _ {
-    One() => Zero();
-    P0(a) => match a : _ {
-      One() => Zero();
-      P0(b) => Succ(halfLen(subterm b));
-      P1(b) => Succ(halfLen(subterm b));
-    };
-    P1(a) => match a : _ {
-      One() => Zero();
-      P0(b) => Succ(halfLen(subterm b));
-      P1(b) => Succ(halfLen(subterm b));
-    };
-  }
-}
-
-fn decidePrime(x : Bin(), erased n : Nat(), erased rx : Rep(x, n)) -> (o : Option(Prime(n))) {
-  match x : _ {
-    BZ() => None(_);
-    BP(p) => {
-      let erased RepP(_, _, rp) = rx;
-      let h = halfLen(p);
-      let (b, bb, erased nb, erased nbb, erased rb, erased rbb, erased sh, erased tb) = pow2(Succ(h));
-      match sub(_, _, p, BP(b), rp, RepP(_, _, rb)) : _ {
-        Below(_, _, _, _) => None(_);
-        Above(_, _, _, k, _, le) => match sub(_, _, p, BP(bb), rp, RepP(_, _, rbb)) : _ {
-          Above(_, _, _, _, _, _) => None(_);
-          Below(_, _, w, lt) => match cover(h, p, _, rp) : _ {
-            None(_) => None(_);
-            Some(_, v) => {
-              let erased ReachIntro(_, _, _, _, se, nd) = v;
-              match erased shiftFunc(_, _, _, _, se, sh) : _ {
-                Refl(_, _) => Some(_, PrimeIntro(_,
-                  extend(k, _, _, _, _, _, _, nd, le, plusZeroRight(nb), nd, tb, lt)));
-              }
-            };
-          };
-        };
-      }
-    };
-  }
-}
-
-let big = BP(P1(P1(P1(P1(P0(P1(P0(P0(P0(P1(P0(P0(P0(P0(P1(P0(P1(P1(P1(One()))))))))))))))))))));
-let (erased nBig, erased rBig) = toNat(big);
-comptime let Some(_, bigIsPrime) = decidePrime(big, nBig, rBig);
-
-let composite = BP(P1(P1(P0(P1(P1(P1(P1(P0(P1(P1(P0(P0(P1(P0(P0(P0(P1(P1(P1(One()))))))))))))))))))));
+let composite = BP(P1(P1(P0(P0(P0(P0(P0(P1(P1(One()))))))))));
 let (erased nComposite, erased rComposite) = toNat(composite);
 print decidePrime(composite, nComposite, rComposite);
