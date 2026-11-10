@@ -101,6 +101,11 @@ export function withName(scope: Scope, id: EntryId, name: string): Scope {
   return { ...put(scope, { ...e, names: [...e.names, name] }), names: pset(scope.names, name, id) };
 }
 
+export function blank(scope: Scope, id: EntryId, span: Span): Scope {
+  const e = entry(scope, id);
+  return e.names.length ? scope : put(scope, { ...e, origin: { ...e.origin, span, blank: true } });
+}
+
 export const forget = (inner: Scope, outer: Scope, named: readonly { name: string; id: EntryId }[]): Scope =>
   named.reduce((s, { name, id }) => put(s, { ...entry(s, id), names: entry(s, id).names.filter(n => n !== name) }),
     { ...inner, names: outer.names });

@@ -1,6 +1,6 @@
 import type { Ann, Arg, Expr, Header, Id, LetBinder, Mult, Name, Pattern, Span, Stmt, Tele, WrittenBinder,
   WrittenTerm } from "./syntax.ts";
-import { TYPE, abstract, addRule, app, canon, create, entry, forget, identical, isStrictSubterm, lookup, mark,
+import { TYPE, abstract, addRule, app, blank, canon, create, entry, forget, identical, isStrictSubterm, lookup, mark,
   mentions, occurs, ref, subst, typeOf, withName } from "./terms.ts";
 import type { Binder, EntryId, Ref, Scope, Signature, Telescope, Term } from "./terms.ts";
 import { force, open, unify } from "./telescope.ts";
@@ -422,9 +422,10 @@ function bind(ctx: Ctx | null, local: Local, ids: readonly Id[], entries: readon
     tainted: (i: number) => boolean = never, erased: (i: number) => boolean = never): { local: Local; bound: Named[] } {
   let scope = local.scope;
   const sets = { tainted: new Set(local.tainted), erased: new Set(local.erased) }, bound: Named[] = [];
-  ids.forEach(({ name }, i) => {
+  ids.forEach(({ name, span }, i) => {
     const id = entries[i];
-    if (name === null || id === undefined) return;
+    if (id === undefined) return;
+    if (name === null) { scope = blank(scope, id, span); return; }
     scope = withName(scope, id, name);
     bound.push({ name, id });
     if (tainted(i)) sets.tainted.add(name);
@@ -536,8 +537,7 @@ interface Checked { local: Local; ids: EntryId[]; tele: Telescope; tainted: bool
 function opening(ctx: Ctx, local: Local, b: WrittenBinder, kind: string,
     occurs = true): { local: Local; id: EntryId; tainted: boolean } {
   const a = annotate(ctx, local, b.ann);
-  const made = create(a.local.scope, a.type, a.is, { origin: { kind, span: b.span, blank: b.name.name === null },
-    erased: b.mult === "erased" });
+  const made = create(a.local.scope, a.type, a.is, { origin: { kind, span: b.span }, erased: b.mult === "erased" });
   const bound = bind(occurs ? ctx : null, { ...a.local, scope: made.scope }, [b.name], [made.id]);
   return { local: bound.local, id: made.id, tainted: a.tainted };
 }
