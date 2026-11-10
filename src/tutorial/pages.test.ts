@@ -11,7 +11,7 @@ test("section links match DESIGN.md's headings, and every citation in the pages 
   const headings = [...readFileSync(new URL("../../DESIGN.md", import.meta.url), "utf8").matchAll(/^## (.*)$/gm)]
     .map(m => m[1]!.toLowerCase().replace(/[^a-z0-9 -]/g, "").replaceAll(" ", "-"));
   assert.deepEqual(sections, headings);
-  for (const text of [disclaimer, ...pages.flatMap(p => [p.prose, p.task, p.refs]), ...glossary.flatMap(g => [g.term, g.means])])
+  for (const text of [disclaimer, ...pages.flatMap(p => [p.prose, p.task, p.refs]), ...glossary.flatMap(g => [g.term, g.means, g.elsewhere ?? ""])])
     for (const part of text.split(cited).filter((_, i) => i % 2)) assert.notEqual(citationUrl(part), null, part);
 });
 

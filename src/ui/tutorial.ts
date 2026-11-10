@@ -40,7 +40,8 @@ workspace.mount(
     h("details", { class: "disclaimer" }, h("summary", {}, "Disclaimer"), h("p", {}, linked(disclaimer))),
     h("details", { class: "glossary" }, h("summary", {}, "Glossary"), h("dl", {}, glossary.map(g => [
       h("dt", {}, marked(g.term)),
-      h("dd", {}, marked(g.means), " ", link(pages.findIndex(p => p.slug === g.at)))])))),
+      h("dd", {}, marked(g.means), " ", g.elsewhere && ["Elsewhere: ", marked(g.elsewhere), ". "],
+        link(pages.findIndex(p => p.slug === g.at)))])))),
   h("p", { class: "muted" }, page.section), h("h2", {}, page.title), paragraphs(page.prose),
   h("section", { class: "task" }, h("h3", {}, "Task"), paragraphs(page.task)),
   h("p", { class: "muted refs" }, linked(`In DESIGN.md: ${page.refs}.`))],
