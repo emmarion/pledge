@@ -154,41 +154,69 @@ theorem solveHoles_nil {sc : Scope} (h : sc.holes = []) (l r : Term) (pos : Pos)
     solveHoles sc l r pos = .ok sc := by
   unfold solveHoles; rw [h]; rfl
 
+/-- What a result's ideal value is meant to be: without `removed`, with a type by its head, and with a type when
+the result is untainted (§12). -/
+def ResOk (S : Sigs) (r : Res) (v : Value) : Prop :=
+  v.noRemoved = true ∧ (∃ A, WType S v A) ∧ (r.tainted = false → ∃ V, HasType S v V)
+
+/-- `ResOk`, result by result. -/
+def ResOks (S : Sigs) : List Res → List Value → Prop
+  | [], [] => True
+  | r :: rs, v :: vs => ResOk S r v ∧ ResOks S rs vs
+  | _, _ => False
+
+theorem ResOks.getElem {S : Sigs} : ∀ {rs : List Res} {vs : List Value}, ResOks S rs vs →
+    ∀ (i : Nat) (r : Res) (v : Value), rs[i]? = some r → vs[i]? = some v → ResOk S r v
+  | _ :: _, _ :: _, h, 0, _, _, hr, hv => by cases hr; cases hv; exact h.1
+  | _ :: _, _ :: _, h, i + 1, r, v, hr, hv => ResOks.getElem h.2 i r v (by simpa using hr) (by simpa using hv)
+  | [], [], _, _, _, _, hr, _ => by simp at hr
+
+theorem ResOks.of_getElem {S : Sigs} : ∀ {rs : List Res} {vs : List Value}, rs.length = vs.length →
+    (∀ (i : Nat) (r : Res) (v : Value), rs[i]? = some r → vs[i]? = some v → ResOk S r v) → ResOks S rs vs
+  | [], [], _, _ => trivial
+  | r :: rs, v :: vs, hl, h => ⟨h 0 r v rfl rfl, ResOks.of_getElem (by simpa using hl) fun i r' v' h1 h2 =>
+      h (i + 1) r' v' (by simpa using h1) (by simpa using h2)⟩
+  | [], _ :: _, hl, _ | _ :: _, [], hl, _ => by simp at hl
+
 theorem against_go_sound {Sc : Sigs} {sc : Scope} {g : Given} {pos : Pos} {ρ envv : List Value}
-    (hΓ : Sat Sc sc.Γ ρ) (hS : SigsClose sc.sigs ρ Sc) (hh : sc.holes = [])
+    (hΓ : WSat Sc sc.Γ ρ) (hS : SigsClose sc.sigs ρ Sc) (hJ : Sc.find junkHead = none) (hh : sc.holes = [])
     (henv : Term.evalList ρ [] g.env = some envv) :
     ∀ (ws : List Want) (rs : List Res) (prev : List Term) (prevv vs : List Value) (sc' : Scope),
       Term.evalList ρ [] prev = some prevv → Term.evalList ρ [] (rs.map (·.term)) = some vs →
-      (∀ v ∈ vs, ∃ V, HasType Sc v V) → ws.length = rs.length →
-      against.go g pos sc prev ws rs = .ok sc' → sc' = sc ∧ WantsSat Sc ρ ws (envv ++ prevv) vs
+      ResOks Sc rs vs → ws.length = rs.length →
+      against.go g pos sc prev ws rs = .ok sc' →
+        sc' = sc ∧ WantsSat Sc ρ ws (envv ++ prevv) (rs.map (!·.tainted)) vs
   | [], [], prev, prevv, vs, sc', _, hvs, _, _, h => by
     cases hvs; simp [against.go, pure, Except.pure] at h; exact ⟨h.symm, trivial⟩
-  | w :: ws, r :: rs, prev, prevv, vs, sc', hprev, hvs, hty, hl, h => by
+  | w :: ws, r :: rs, prev, prevv, vs, sc', hprev, hvs, hok, hl, h => by
     obtain ⟨v, vs', hv, hvs', rfl⟩ := Term.evalList_cons_eq_some.1 hvs
     have hE : Term.evalList ρ [] (g.env ++ prev) = some (envv ++ prevv) := Term.evalList_append henv hprev
     have ih := fun (h' : against.go g pos sc (prev ++ [r.term]) ws rs = .ok sc') =>
-      against_go_sound hΓ hS hh henv ws rs (prev ++ [r.term]) (prevv ++ [v]) vs' sc'
-      (Term.evalList_append hprev (Term.evalList_singleton.2 ⟨v, hv, rfl⟩)) hvs'
-      (fun u hu => hty u (List.mem_cons_of_mem _ hu)) (by simpa using hl) h'
-    obtain ⟨V, hV⟩ := hty v List.mem_cons_self
+      against_go_sound hΓ hS hJ hh henv ws rs (prev ++ [r.term]) (prevv ++ [v]) vs' sc'
+      (Term.evalList_append hprev (Term.evalList_singleton.2 ⟨v, hv, rfl⟩)) hvs' hok.2 (by simpa using hl) h'
+    obtain ⟨hnr, ⟨A, hA⟩, hty⟩ := hok.1
     rw [against.go] at h
     simp only [Scope.typeOf, solveHoles_nil hh] at h
     cases hT : typeOf sc.sigs sc.Γ r.term with
     | none => simp [hT, internal, failAt, bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at h
     | some has =>
-      have hhas := typeOf_sound hΓ hS hv hV hT
+      have hhas := typeOf_eval hΓ hS hJ hv hA hT
       have hwT : ∀ T, w.type = some T → identical sc.Γ (T.subst (g.env ++ prev)) has = true →
-          ∃ A, T.eval ρ (envv ++ prevv) = some A ∧ HasType Sc v A := fun T _ hi =>
-        ⟨V, by rw [← Term.eval_subst hE, hΓ.eval_eq_of_identical hi, hhas], hV⟩
+          ∃ A', T.eval ρ (envv ++ prevv) = some A' ∧ v.noRemoved = true ∧ WType Sc v A' ∧
+            ((!r.tainted) = true → HasType Sc v A') := fun T _ hi =>
+        ⟨A, by rw [← Term.eval_subst hE, hΓ.eval_eq_of_identical hi, hhas], hnr, hA, fun ht => by
+          obtain ⟨V, hV⟩ := hty (by simpa using ht)
+          rwa [(hV.wtype hJ).unique hA] at hV⟩
       have hwI : ∀ e, w.is = some e → identical sc.Γ (e.subst (g.env ++ prev)) r.term = true →
           e.eval ρ (envv ++ prevv) = some v := fun e _ hi => by
         rw [← Term.eval_subst hE, hΓ.eval_eq_of_identical hi, hv]
       have fin : against.go g pos sc (prev ++ [r.term]) ws rs = .ok sc' →
           (∀ T, w.type = some T → identical sc.Γ (T.subst (g.env ++ prev)) has = true) →
           (∀ e, w.is = some e → identical sc.Γ (e.subst (g.env ++ prev)) r.term = true) →
-          sc' = sc ∧ WantsSat Sc ρ (w :: ws) (envv ++ prevv) (v :: vs') := fun hgo h1 h2 => by
-        obtain ⟨h3, h4⟩ := ih hgo
-        exact ⟨h3, ⟨fun T hT' => hwT T hT' (h1 T hT'), fun e he => hwI e he (h2 e he)⟩, by simpa using h4⟩
+          sc' = sc ∧ WantsSat Sc ρ (w :: ws) (envv ++ prevv) ((r :: rs).map (!·.tainted)) (v :: vs') :=
+        fun hgo h1 h2 => by
+          obtain ⟨h3, h4⟩ := ih hgo
+          exact ⟨h3, ⟨fun T hT' => hwT T hT' (h1 T hT'), fun e he => hwI e he (h2 e he)⟩, by simpa using h4⟩
       cases hwt : w.type <;> cases hwi : w.is <;>
         simp only [hT, hwt, hwi, Option.map_some, Option.map_none, pure, Except.pure, bind, Except.bind,
           solveHoles_nil hh, failAt_eq] at h
@@ -206,28 +234,29 @@ theorem against_go_sound {Sc : Sigs} {sc : Scope} {g : Given} {pos : Pos} {ρ en
               (fun e he => by rw [hwi] at he; cases he; exact hi')
           · cases h
         · cases h
-
   | [], _ :: _, _, _, _, _, _, _, _, hl, _ | _ :: _, [], _, _, _, _, _, _, _, hl, _ => by simp at hl
 
-theorem against_sound {Sc : Sigs} {sc sc' : Scope} {g : Given} {pos : Pos} {rs : List Res} {ρ envv vs : List Value}
-    (hΓ : Sat Sc sc.Γ ρ) (hS : SigsClose sc.sigs ρ Sc) (hh : sc.holes = [])
-    (hvs : Term.evalList ρ [] (rs.map (·.term)) = some vs) (hty : ∀ v ∈ vs, ∃ V, HasType Sc v V)
+/-- Checking results against what a position is given (§8): the results' ideal values meet it, those of untainted
+results with their types. -/
+theorem against_sound {Sc : Sigs} {sc sc' : Scope} {g : Given} {pos : Pos} {rs : List Res}
+    {ρ envv vs : List Value} (hΓ : WSat Sc sc.Γ ρ) (hS : SigsClose sc.sigs ρ Sc) (hJ : Sc.find junkHead = none)
+    (hh : sc.holes = []) (hvs : Term.evalList ρ [] (rs.map (·.term)) = some vs) (hok : ResOks Sc rs vs)
     (henv : Term.evalList ρ [] g.env = some envv) (h : against sc g pos rs = .ok sc') :
-    sc' = sc ∧ rs.length = g.wants.length ∧ WantsSat Sc ρ g.wants envv vs := by
+    sc' = sc ∧ rs.length = g.wants.length ∧ WantsSat Sc ρ g.wants envv (rs.map (!·.tainted)) vs := by
   simp only [against] at h
   by_cases hl : rs.length = g.wants.length
   · simp only [hl, ne_eq, not_true_eq_false, ↓reduceIte] at h
-    obtain ⟨h1, h2⟩ := against_go_sound hΓ hS hh henv g.wants rs [] [] vs sc' rfl hvs hty hl.symm h
+    obtain ⟨h1, h2⟩ := against_go_sound hΓ hS hJ hh henv g.wants rs [] [] vs sc' rfl hvs hok hl.symm h
     exact ⟨h1, hl, by simpa using h2⟩
   · simp [hl, miscount, failAt_eq, bind, Except.bind] at h
 
 theorem produced_sound {Sc : Sigs} {sc : Scope} {g : Option Given} {pos : Pos} {rs : List Res} {tree : Expr}
-    {o : Out} {ρ vs : List Value} (hΓ : Sat Sc sc.Γ ρ) (hS : SigsClose sc.sigs ρ Sc) (hh : sc.holes = [])
-    (hvs : Term.evalList ρ [] (rs.map (·.term)) = some vs) (hty : ∀ v ∈ vs, ∃ V, HasType Sc v V)
+    {o : Out} {ρ vs : List Value} (hΓ : WSat Sc sc.Γ ρ) (hS : SigsClose sc.sigs ρ Sc) (hJ : Sc.find junkHead = none)
+    (hh : sc.holes = []) (hvs : Term.evalList ρ [] (rs.map (·.term)) = some vs) (hok : ResOks Sc rs vs)
     (hg : ∀ g', g = some g' → ∃ envv, Term.evalList ρ [] g'.env = some envv)
     (h : produced sc g pos rs tree = .ok o) :
     o = ⟨sc, rs, tree, []⟩ ∧ ∀ g', g = some g' → ∀ envv, Term.evalList ρ [] g'.env = some envv →
-      rs.length = g'.wants.length ∧ WantsSat Sc ρ g'.wants envv vs := by
+      rs.length = g'.wants.length ∧ WantsSat Sc ρ g'.wants envv (rs.map (!·.tainted)) vs := by
   cases g with
   | none =>
     simp only [produced, pure, Except.pure, bind, Except.bind, Except.ok.injEq] at h
@@ -237,11 +266,10 @@ theorem produced_sound {Sc : Sigs} {sc : Scope} {g : Option Given} {pos : Pos} {
     obtain ⟨sc', hsc, h⟩ := bind_eq_ok.1 h
     cases h
     obtain ⟨envv, henv⟩ := hg g rfl
-    obtain ⟨rfl, -⟩ := against_sound hΓ hS hh hvs hty henv hsc
+    obtain ⟨rfl, -⟩ := against_sound hΓ hS hJ hh hvs hok henv hsc
     refine ⟨rfl, fun g' hg envv henv => ?_⟩
     cases hg
-    exact (against_sound hΓ hS hh hvs hty henv hsc).2
-
+    exact (against_sound hΓ hS hJ hh hvs hok henv hsc).2
 
 theorem keep_ok {α : Type} {snaps : List Snapshot} {x : CheckM α} {a : α} : keep snaps x = .ok a ↔ x = .ok a := by
   cases x <;> simp [keep]
@@ -256,67 +284,86 @@ theorem settle_nil {sc : Scope} (hh : sc.holes = []) (g : Option Given) (rs : Li
     settle sc g rs since = .ok (sc, false) := by
   unfold settle; rw [hh, List.drop_nil]; rfl
 
-theorem applied_sound {Sc : Sigs} {sc : Scope} {g : Option Given} {pos : Pos} {rs : List Res} {tree : Expr}
-    {since : Nat} {snaps : List Snapshot} {o : Out} {ρ vs : List Value} (hΓ : Sat Sc sc.Γ ρ)
-    (hS : SigsClose sc.sigs ρ Sc) (hh : sc.holes = []) (hvs : Term.evalList ρ [] (rs.map (·.term)) = some vs)
-    (hty : ∀ v ∈ vs, ∃ V, HasType Sc v V) (hg : ∀ g', g = some g' → ∃ envv, Term.evalList ρ [] g'.env = some envv)
-    (h : applied sc g pos rs tree since snaps = .ok o) :
-    o = ⟨sc, rs, tree, snaps⟩ ∧ ∀ g', g = some g' → ∀ envv, Term.evalList ρ [] g'.env = some envv →
-      rs.length = g'.wants.length ∧ WantsSat Sc ρ g'.wants envv vs := by
+theorem produced_eq {sc : Scope} {g : Option Given} {pos : Pos} {rs : List Res} {tree : Expr} {o : Out}
+    (hh : sc.holes = []) (h : produced sc g pos rs tree = .ok o) : o = ⟨sc, rs, tree, []⟩ := by
+  cases g with
+  | none => simp only [produced, pure, Except.pure, bind, Except.bind, Except.ok.injEq] at h; exact h.symm
+  | some g =>
+    simp only [produced] at h
+    obtain ⟨sc', hsc, h⟩ := bind_eq_ok.1 h
+    cases h
+    simp only [against] at hsc
+    split at hsc
+    · simp [miscount, failAt_eq, bind, Except.bind] at hsc
+    · have : ∀ (ws : List Want) (rs : List Res) (prev : List Term) (sc'' : Scope),
+          against.go g pos sc prev ws rs = .ok sc'' → sc'' = sc := by
+        intro ws
+        induction ws with
+        | nil => intro rs prev sc'' h; cases rs <;> simp [against.go, pure, Except.pure] at h <;> exact h.symm
+        | cons w ws ih =>
+          intro rs prev sc'' h
+          cases rs with
+          | nil => simp [against.go, pure, Except.pure] at h; exact h.symm
+          | cons r rs =>
+            rw [against.go] at h
+            simp only [Scope.typeOf, solveHoles_nil hh] at h
+            cases hT : typeOf sc.sigs sc.Γ r.term with
+            | none => simp [hT, internal, failAt, bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at h
+            | some has =>
+              cases hwt : w.type <;> cases hwi : w.is <;>
+                simp only [hT, hwt, hwi, Option.map_some, Option.map_none, pure, Except.pure, bind, Except.bind,
+                  solveHoles_nil hh, failAt_eq] at h
+              all_goals first
+                | exact ih _ _ _ h
+                | (split at h <;> first | exact ih _ _ _ h | cases h)
+                | (split at h
+                   · split at h
+                     · exact ih _ _ _ h
+                     · cases h
+                   · cases h)
+      rw [this _ _ _ _ hsc]
+
+theorem applied_eq {sc : Scope} {g : Option Given} {pos : Pos} {rs : List Res} {tree : Expr} {since : Nat}
+    {snaps : List Snapshot} {o : Out} (hh : sc.holes = []) (h : applied sc g pos rs tree since snaps = .ok o) :
+    o = ⟨sc, rs, tree, snaps⟩ ∧ produced sc g pos rs tree = .ok ⟨sc, rs, tree, []⟩ := by
   simp only [applied, keep_ok] at h
   obtain ⟨o', ho', h⟩ := bind_eq_ok.1 h
-  obtain ⟨rfl, hw⟩ := produced_sound hΓ hS hh hvs hty hg ho'
+  obtain rfl := produced_eq hh ho'
   simp only [settle_nil hh, ok_bind] at h
   simp only [Bool.false_eq_true, ↓reduceIte, pure, Except.pure, Except.ok.injEq] at h
-  exact ⟨h.symm, hw⟩
+  exact ⟨h.symm, ho'⟩
 
-theorem Given.allErased_eq_false {g : Given} (h : ∀ w ∈ g.wants, w.mult = .many) : g.allErased = false := by
-  simp only [Given.allErased, Bool.and_eq_false_iff, List.any_eq_false]
-  exact .inl fun w hw => by simp [h w hw]
-
-theorem Given.erasedAt_eq_false {g : Given} (h : ∀ w ∈ g.wants, w.mult = .many) (i : Nat) :
-    g.erasedAt i = false := by
-  simp only [Given.erasedAt]
-  cases hw : g.wants[i]? with
-  | none => rfl
-  | some w => simp [h w (List.mem_of_getElem? hw)]
-
-/-- `finish` changes nothing, and does not remove, when nothing is tainted or erased and the expression has a
-result. -/
-theorem finish_inert {C : Ctx} {g : Option Given} {e : Expr} {o o' : Out}
-    (hg : ∀ g', g = some g' → ∀ w ∈ g'.wants, w.mult = .many) (ht : o.sc.taintedBy = none)
-    (hr : ∀ r ∈ o.res, r.tainted = false) (h : finish C false g e o = .ok o') :
-    o' = o ∧ o.res ≠ [] ∧ ∀ r ∈ o.res, r.erased = false := by
+/-- What `finish` does (§12, §16): an expression produces a value; in a tainted scope every result is tainted; outside
+a wholly erased position, an erased result is in an erased position; and the tree is removed when the position is
+wholly erased or every result is tainted. -/
+theorem finish_spec {C : Ctx} {whole : Bool} {g : Option Given} {e : Expr} {o o' : Out}
+    (h : finish C whole g e o = .ok o') :
+    o.res ≠ [] ∧ o'.sc = o.sc ∧ o'.snaps = o.snaps ∧
+      o'.res = (if o.sc.taintedBy.isSome then o.res.map ({ · with tainted := true }) else o.res) ∧
+      o'.tree = (if whole || o'.res.all (·.tainted) then .removed else o.tree) ∧
+      (whole = false → ∀ (i : Nat) (r : Res), o'.res[i]? = some r → r.erased = true → g.any (·.erasedAt i) = true) := by
   simp only [finish] at h
   obtain ⟨u, hu, h⟩ := bind_eq_ok.1 h
   have hne : o.res ≠ [] := by simpa using ensure_ok hu
-  have hall : (o.res.all fun x => x.tainted) = false := by
-    obtain ⟨r, rs, hrs⟩ := List.exists_cons_of_ne_nil hne
-    simp only [List.all_eq_false]
-    exact ⟨r, by simp [hrs], by simp [hr r (by simp [hrs])]⟩
-  have herr : ∀ i, ¬ (o.res[i]?.any (·.erased) && !g.any (·.erasedAt i)) = true → ∀ r, o.res[i]? = some r →
-      r.erased = false := by
-    intro i hi r hri
-    have : g.any (·.erasedAt i) = false := by
-      cases g with
-      | none => rfl
-      | some g' => simpa using Given.erasedAt_eq_false (hg g' rfl) i
-    simp only [hri, Option.any_some, this, Bool.not_false, Bool.and_true, Bool.not_eq_true] at hi
-    exact hi
-  simp only [ht, Option.isSome_none, Bool.false_eq_true, ↓reduceIte, Bool.false_or, hall] at h
-  split at h
-  · simp [failAt_eq, bind, Except.bind] at h
-  · rename_i x hx
-    simp only [pure, Except.pure, Except.ok.injEq] at h
-    refine ⟨by rw [← h], hne, fun r hr' => ?_⟩
-    obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hr'
-    refine herr i (fun hc => ?_) _ (List.getElem?_eq_getElem hi)
-    cases hfi : List.find? (fun i => Option.any (fun x => x.erased) o.res[i]? && !Option.any (fun x => x.erasedAt i) g)
-      (List.range o.res.length) with
-    | some j => exact absurd hfi (hx j)
-    | none =>
-      have := List.find?_eq_none.1 hfi i (List.mem_range.2 hi)
-      simp [hc] at this
+  generalize hres : (if o.sc.taintedBy.isSome then o.res.map ({ · with tainted := true }) else o.res) = res at h
+  cases whole
+  · simp only [Bool.false_eq_true, ↓reduceIte, Bool.not_false, Bool.false_or] at h
+    split at h
+    · simp [failAt_eq, bind, Except.bind] at h
+    · rename_i hx
+      simp only [pure, Except.pure, Except.ok.injEq, ok_bind] at h
+      subst h
+      refine ⟨hne, rfl, rfl, rfl, by simp, fun _ i r hr he => ?_⟩
+      have hi : i < res.length := (List.getElem?_eq_some_iff.1 hr).1
+      cases hfi : List.find? (fun i => Option.any (fun x => x.erased) res[i]? && !Option.any (fun x => x.erasedAt i) g)
+        (List.range res.length) with
+      | some j => exact absurd hfi (hx j)
+      | none =>
+        have := List.find?_eq_none.1 hfi i (List.mem_range.2 hi)
+        simpa [hr, he] using this
+  · simp only [↓reduceIte, Bool.true_or, pure, Except.pure, Except.ok.injEq] at h
+    subst h
+    exact ⟨hne, rfl, rfl, rfl, by simp, by simp⟩
 
 theorem single_ok {pos : Pos} {rs : List Res} {r : Res} (h : single pos rs = .ok r) : rs = [r] := by
   unfold single at h
@@ -329,39 +376,89 @@ theorem opened_fst (sc : Scope) (tele : Telescope) (env : List Term) (kind : Str
     (opened sc tele env kind pos taint).1 = { sc with Γ := (opened sc tele env kind pos taint).1.Γ } :=
   rfl
 
-/-- Opening a telescope to entries whose values satisfy it: the scope stays satisfied, and the results are the new
-entries, taking those values. -/
+theorem openTele.go_prefix_getElem (mk : TBinder → Nat → Entry → Entry) (tele : Telescope) (i : Nat)
+    (Γ : Entries) (ids : List Nat) (env : List Term) (k : Nat) (hk : k < Γ.length) :
+    (openTele.go mk i tele ⟨Γ, ids, env⟩).Γ[k]? = Γ[k]? := by
+  obtain ⟨Δ, h, -⟩ := openTele.go_shape mk tele i Γ ids env
+  rw [h, List.getElem?_append_left hk]
+
+theorem openTele.go_getElem (mk : TBinder → Nat → Entry → Entry) :
+    ∀ (tele : Telescope) (i : Nat) (Γ : Entries) (ids : List Nat) (env : List Term) (k : Nat) (b : TBinder),
+      tele[k]? = some b → ∃ type rule, (openTele.go mk i tele ⟨Γ, ids, env⟩).Γ[Γ.length + k]? =
+        some { mk b (i + k) { type, rule, erased := b.mult == .erased } with type, rule }
+  | [], _, _, _, _, _, _, hb => by simp at hb
+  | b :: bs, i, Γ, ids, env, 0, b', hb => by
+    cases hb
+    simp only [openTele.go]
+    refine ⟨b.type.subst env, b.is.map fun e => (e.subst env).canon Γ, ?_⟩
+    rw [Nat.add_zero, openTele.go_prefix_getElem mk bs _ _ _ _ _ (by simp)]
+    simp
+  | b :: bs, i, Γ, ids, env, k + 1, b', hb => by
+    simp only [openTele.go]
+    obtain ⟨type, rule, h⟩ := openTele.go_getElem mk bs (i + 1) _ (ids ++ [Γ.length]) (env ++ [.entry Γ.length]) k b'
+      (by simpa using hb)
+    refine ⟨type, rule, ?_⟩
+    rw [show Γ.length + (k + 1) = (Γ ++ [_]).length + k by simp; omega, show i + (k + 1) = i + 1 + k by omega]
+    exact h
+
+/-- What `opened` returns, independently of any valuation: the fresh entries of the telescope, as results, tainted
+and erased as `taint` and the binders' multiplicities say. -/
+theorem opened_shape (sc : Scope) (tele : Telescope) (env : List Term) (kind : String) (pos : Pos)
+    (taint : Nat → Bool) :
+    sc.Γ <+: (opened sc tele env kind pos taint).1.Γ ∧
+      (opened sc tele env kind pos taint).1.Γ.length = sc.Γ.length + tele.length ∧
+      (opened sc tele env kind pos taint).2.length = tele.length ∧
+      ∀ (i : Nat) (b : TBinder), tele[i]? = some b →
+        (opened sc tele env kind pos taint).2[i]? = some ⟨.entry (sc.Γ.length + i), taint i, b.mult == .erased⟩ ∧
+        ∃ en, (opened sc tele env kind pos taint).1.Γ[sc.Γ.length + i]? = some en ∧ en.tainted = taint i ∧
+          en.erased = (b.mult == .erased) := by
+  let mk : TBinder → Nat → Entry → Entry := fun b i en =>
+    { en with origin := s!"{kind}.{b.name.getD (toString (i + 1))}@{pos}", tainted := taint i }
+  have hop : opened sc tele env kind pos taint = ({ sc with Γ := (openTele sc.Γ tele env mk).Γ },
+      (openTele sc.Γ tele env mk).ids.mapIdx fun i id =>
+        ⟨.entry id, taint i, (((openTele sc.Γ tele env mk).Γ[id]?).map (·.erased)).getD false⟩) := rfl
+  rw [hop]
+  obtain ⟨Δ, hΔ, hΔl, hids, -⟩ := openTele_shape sc.Γ tele env mk
+  have hent : ∀ (i : Nat) (b : TBinder), tele[i]? = some b → ∃ en,
+      (openTele sc.Γ tele env mk).Γ[sc.Γ.length + i]? = some en ∧ en.tainted = taint i ∧
+        en.erased = (b.mult == .erased) := fun i b hb => by
+    obtain ⟨type, rule, h⟩ := openTele.go_getElem mk tele 0 sc.Γ [] env i b hb
+    exact ⟨_, h, by simp [mk], by simp [mk]⟩
+  refine ⟨by rw [hΔ]; exact List.prefix_append _ _, by rw [hΔ, List.length_append, hΔl], by simp [hids],
+    fun i b hb => ⟨?_, hent i b hb⟩⟩
+  have hi : i < tele.length := (List.getElem?_eq_some_iff.1 hb).1
+  obtain ⟨en, hen, -, her⟩ := hent i b hb
+  simp [hids, List.getElem?_range' hi, hen, her]
+
+/-- Opening a telescope to entries whose values meet it, the untainted ones typed: the scope stays satisfied, and
+the results are the new entries, taking those values. -/
 theorem opened_sound {Sc : Sigs} {sc : Scope} {tele : Telescope} {env : List Term} {kind : String} {pos : Pos}
     {taint : Nat → Bool} {ρ envv vs : List Value} (hΓ : Sat Sc sc.Γ ρ)
-    (henv : Term.evalList ρ [] env = some envv) (ht : TeleSat Sc ρ tele envv vs) :
+    (henv : Term.evalList ρ [] env = some envv) (ht : TeleOk Sc ρ (fun k => !taint k) tele envv vs) :
     Sat Sc (opened sc tele env kind pos taint).1.Γ (ρ ++ vs) ∧
-      Term.evalList (ρ ++ vs) [] ((opened sc tele env kind pos taint).2.map (·.term)) = some vs ∧
-      (opened sc tele env kind pos taint).1.Γ.length = sc.Γ.length + tele.length ∧
-      ((∀ i, taint i = false) → ∀ r ∈ (opened sc tele env kind pos taint).2, r.tainted = false) := by
-  obtain ⟨mk, hop⟩ : ∃ mk, opened sc tele env kind pos taint = ({ sc with Γ := (openTele sc.Γ tele env mk).Γ },
+      Term.evalList (ρ ++ vs) [] ((opened sc tele env kind pos taint).2.map (·.term)) = some vs := by
+  let mk : TBinder → Nat → Entry → Entry := fun b i en =>
+    { en with origin := s!"{kind}.{b.name.getD (toString (i + 1))}@{pos}", tainted := taint i }
+  have hop : opened sc tele env kind pos taint = ({ sc with Γ := (openTele sc.Γ tele env mk).Γ },
       (openTele sc.Γ tele env mk).ids.mapIdx fun i id =>
-        ⟨.entry id, taint i, (((openTele sc.Γ tele env mk).Γ[id]?).map (·.erased)).getD false⟩) := ⟨_, rfl⟩
+        ⟨.entry id, taint i, (((openTele sc.Γ tele env mk).Γ[id]?).map (·.erased)).getD false⟩) := rfl
   rw [hop]
-  obtain ⟨hs, he⟩ := openTele_sound mk hΓ henv ht
+  obtain ⟨hs, he⟩ := openTele_sound mk taint (fun _ _ _ _ => rfl) hΓ henv ht
   obtain ⟨Δ, hΔ, hΔl, hids, henv'⟩ := openTele_shape sc.Γ tele env mk
   have hmap : (((openTele sc.Γ tele env mk).ids.mapIdx fun i id =>
         (⟨.entry id, taint i, (((openTele sc.Γ tele env mk).Γ[id]?).map (·.erased)).getD false⟩ : Res)).map
           (·.term)) = (openTele sc.Γ tele env mk).ids.map .entry :=
     List.ext_getElem (by simp) fun i h₁ h₂ => by simp [List.getElem_mapIdx]
-  refine ⟨hs, ?_, by simp only; rw [openTele_length], fun hT r hr => ?_⟩
-  · rw [hmap]
-    rw [henv'] at he
-    obtain ⟨a, b, ha, hb, hab⟩ := Term.evalList_append_iff.1 he
-    have : a = envv := by
-      have h₁ := Term.evalList_frame_ρ vs henv
-      rw [ha] at h₁; exact Option.some.inj h₁
-    subst this
-    obtain rfl := List.append_cancel_left hab
-    exact hb
-  · simp only [List.mem_mapIdx] at hr
-    obtain ⟨i, -, rfl⟩ := hr
-    exact hT i
-
+  refine ⟨hs, ?_⟩
+  rw [hmap]
+  rw [henv'] at he
+  obtain ⟨a, b, ha, hb, hab⟩ := Term.evalList_append_iff.1 he
+  have : a = envv := by
+    have h₁ := Term.evalList_frame_ρ vs henv
+    rw [ha] at h₁; exact Option.some.inj h₁
+  subst this
+  obtain rfl := List.append_cancel_left hab
+  exact hb
 
 /-- The names `bind` and `bindIds` push, newest first. -/
 def pushed {α : Type} (ids : List Id) (xs : List α) : List (String × α) :=
@@ -407,85 +504,128 @@ theorem lookup_append {α : Type} (l l' : List (String × α)) (n : String) :
     simp only [List.cons_append, List.lookup]
     split <;> simp_all
 
-/-- The names-to-values correspondence of the main lemma survives pushing names for results with those values. -/
-theorem names_pushed {Sc : Sigs} {ρ : List Value} :
-    ∀ (ids : List Id) (rs : List Res) (vs : List Value) (names : List (String × Res)) (env : Env),
-      (∀ n r, names.lookup n = some r → ∃ v V, env.lookup n = some v ∧ r.term.eval ρ [] = some v ∧ HasType Sc v V) →
-      Term.evalList ρ [] (rs.map (·.term)) = some vs → (∀ v ∈ vs, ∃ V, HasType Sc v V) →
-      ∀ n r, (pushed ids rs ++ names).lookup n = some r →
-        ∃ v V, (pushed ids vs ++ env).lookup n = some v ∧ r.term.eval ρ [] = some v ∧ HasType Sc v V
-  | x :: ids, r :: rs, vs, names, env, h, hvs, hty => by
-    obtain ⟨v, vs', hv, hvs', rfl⟩ := Term.evalList_cons_eq_some.1 hvs
-    rw [pushed_cons, pushed_cons, List.append_assoc, List.append_assoc]
-    refine names_pushed ids rs vs' _ _ ?_ hvs' (fun u hu => hty u (List.mem_cons_of_mem _ hu))
-    intro n r' hr'
-    rw [lookup_append] at hr' ⊢
-    cases hx : x.name with
-    | none => simpa [hx] using h n r' (by simpa [hx] using hr')
-    | some m =>
-      obtain ⟨V, hV⟩ := hty v List.mem_cons_self
-      by_cases hnm : n = m
-      · subst hnm
-        simp only [hx, Option.map_some, Option.toList_some, List.lookup, beq_self_eq_true, Option.some_or,
-          Option.some.injEq] at hr' ⊢
-        subst hr'
-        exact ⟨v, V, rfl, hv, hV⟩
-      · have hb : (n == m) = false := by simpa using hnm
-        simp only [hx, Option.map_some, Option.toList_some, List.lookup, hb, Option.none_or] at hr' ⊢
-        exact h n r' hr'
-  | [], rs, vs, names, env, h, _, _ => by simpa [pushed] using h
-  | _ :: _, [], vs, names, env, h, hvs, _ => by
-    cases hvs
-    simpa [pushed] using h
+/-- Looking a name up after pushing names for two lists of the same length finds entries at the same position, or
+falls through to what was there before in both. -/
+theorem lookup_pushed₂ {α β : Type} (R : α → β → Prop) : ∀ (ids : List Id) (xs : List α) (ys : List β)
+    (l : List (String × α)) (l' : List (String × β)), ids.length = xs.length → xs.length = ys.length →
+    (∀ (i : Nat) (x : α) (y : β), xs[i]? = some x → ys[i]? = some y → R x y) →
+    ∀ n x, (pushed ids xs ++ l).lookup n = some x →
+      (∃ y, (pushed ids ys ++ l').lookup n = some y ∧ R x y) ∨
+        (l.lookup n = some x ∧ (pushed ids ys ++ l').lookup n = l'.lookup n)
+  | [], xs, ys, l, l', _, _, _, n, x, h => .inr ⟨by simpa [pushed] using h, by simp [pushed]⟩
+  | i :: ids, a :: xs, b :: ys, l, l', h1, h2, hR, n, x, h => by
+    rw [pushed_cons, List.append_assoc] at h
+    rw [pushed_cons, List.append_assoc]
+    rcases lookup_pushed₂ R ids xs ys _ _ (by simpa using h1) (by simpa using h2)
+      (fun k x y hx hy => hR (k + 1) x y (by simpa using hx) (by simpa using hy)) n x h with h' | ⟨h', h''⟩
+    · exact .inl h'
+    · rw [h'']
+      rw [lookup_append] at h'
+      cases hn : i.name with
+      | none =>
+        simp only [hn, Option.map_none, Option.toList_none, List.lookup, Option.none_or, List.nil_append] at h' ⊢
+        exact .inr ⟨h', by simp⟩
+      | some m =>
+        by_cases hnm : n = m
+        · subst hnm
+          simp only [hn, Option.map_some, Option.toList_some, List.lookup, beq_self_eq_true, Option.some_or,
+            List.singleton_append] at h' ⊢
+          cases h'
+          exact .inl ⟨b, rfl, hR 0 _ _ rfl rfl⟩
+        · have hb : (n == m) = false := by simpa using hnm
+          simp only [hn, Option.map_some, Option.toList_some, List.lookup, hb, Option.none_or,
+            List.singleton_append] at h' ⊢
+          exact .inr ⟨h', by simp⟩
+  | _ :: _, [], _, _, _, h1, _, _, _, _, _ => by simp at h1
+  | _ :: _, _ :: _, [], _, _, _, h2, _, _, _, _ => by simp at h2
 
-theorem Inv.length {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {env : Env} {act : Act}
-    (hI : Inv C sc n0 W ρ env act) : n0 ≤ ρ.length := by
+theorem pushed_mem : ∀ {α : Type} {ids : List Id} {rs : List α} {p : String × α}, p ∈ pushed ids rs →
+    ∃ i : Nat, rs[i]? = some p.2 := by
+  intro α ids rs p hp
+  simp only [pushed, List.mem_reverse, List.mem_filterMap, Option.map_eq_some_iff] at hp
+  obtain ⟨⟨i, r⟩, hm, n, -, rfl⟩ := hp
+  obtain ⟨k, hk, he⟩ := List.getElem_of_mem (List.of_mem_zip hm).2
+  exact ⟨k, by rw [List.getElem?_eq_getElem hk, he]⟩
+
+theorem lookup_mem {α : Type} {n : String} {r : α} : ∀ {l : List (String × α)}, l.lookup n = some r → (n, r) ∈ l
+  | [], h => by simp at h
+  | (k, b) :: l, h => by
+    simp only [List.lookup] at h
+    split at h
+    · rename_i hk; cases h; simp at hk; subst hk; exact List.mem_cons_self
+    · exact List.mem_cons_of_mem _ (lookup_mem h)
+
+theorem Inv.length {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {act : Act}
+    (hI : Inv C sc n0 W ρ act) : n0 ≤ ρ.length := by
   have := congrArg List.length hI.agree
   simp only [List.length_take] at this
   have := hI.n0_world
   omega
 
-theorem Inv.termInv {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {env : Env} {act : Act}
-    (hI : Inv C sc n0 W ρ env act) : TermInv sc n0 W.Sc ρ :=
-  ⟨hI.sat, hI.length, hI.sigs ρ hI.agree, hI.sigsOk,
-    fun n r h => let ⟨v, V, _, h1, h2⟩ := hI.names n r h; ⟨v, V, h1, h2⟩, hI.inert⟩
-
-theorem Inv.sigsClose {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {env : Env} {act : Act}
-    (hI : Inv C sc n0 W ρ env act) (ρ' : List Value) : SigsClose sc.sigs (ρ ++ ρ') W.Sc :=
+theorem Inv.sigsClose {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {act : Act}
+    (hI : Inv C sc n0 W ρ act) (ρ' : List Value) : SigsClose sc.sigs (ρ ++ ρ') W.Sc :=
   hI.sigs _ (by rw [List.take_append_of_le_length hI.length]; exact hI.agree)
 
-/-- The invariant carries over to a scope with more entries, the same names and signatures, satisfied by an
-extension of the valuation. -/
-theorem Inv.extend {C : Ctx} {sc sc' : Scope} {n0 : Nat} {W : World} {ρ ρ' : List Value} {env : Env} {act : Act}
-    (hI : Inv C sc n0 W ρ env act) (hsat : Sat W.Sc sc'.Γ (ρ ++ ρ')) (hsigs : sc'.sigs = sc.sigs)
-    (hnames : sc'.names = sc.names) (hin : sc'.Inert) : Inv C sc' n0 W (ρ ++ ρ') env act := by
+/-- The invariant carries over to an untainted scope with more entries, the same names and signatures, satisfied by
+an extension of the valuation. -/
+theorem Inv.extend {C : Ctx} {sc sc' : Scope} {n0 : Nat} {W : World} {ρ ρ' : List Value} {act : Act}
+    (hI : Inv C sc n0 W ρ act) (hsat : Sat W.Sc sc'.Γ (ρ ++ ρ')) (hsigs : sc'.sigs = sc.sigs)
+    (hnames : sc'.names = sc.names) (hh : sc'.holes = []) (ht : sc'.taintedBy = none) :
+    Inv C sc' n0 W (ρ ++ ρ') act := by
   have hl := hI.length
-  refine ⟨hI.phase, hI.erased, hsat, hI.n0_world, by rw [List.take_append_of_le_length hl]; exact hI.agree,
-    hsigs ▸ hI.sigs, hsigs ▸ hI.sigsOk, fun n r h => ?_, hsigs ▸ hI.globals, fun f hf => ?_, hin⟩
+  refine ⟨hh, ht, hsat, hI.n0_world, by rw [List.take_append_of_le_length hl]; exact hI.agree,
+    hsigs ▸ hI.sigs, hsigs ▸ hI.sigsOk, hI.noJunk, fun n r h => ?_, hsigs ▸ hI.globals, fun f hf => ?_⟩
   · have h' : sc.lookup n = some r := by simpa [Scope.lookup, hnames] using h
-    obtain ⟨v, V, h1, h2, h3⟩ := hI.names n r h'
-    exact ⟨v, V, h1, Term.eval_frame_ρ ρ' h2, h3⟩
+    obtain ⟨v, h1, h2⟩ := hI.names n r h'
+    exact ⟨v, Term.eval_frame_ρ ρ' h1, h2⟩
   · obtain ⟨ss, h1, h2⟩ := hI.act f hf
     exact ⟨ss, Term.evalList_frame_ρ ρ' h1, h2⟩
 
-/-- The invariant carries over to a scope with names pushed for results whose values are pushed in the evaluator's
-environment. -/
-theorem Inv.bind {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {env env' : Env} {act : Act}
-    {ids : List Id} {rs : List Res} {vs : List Value} (hI : Inv C sc n0 W ρ env act)
-    (hvs : Term.evalList ρ [] (rs.map (·.term)) = some vs) (hty : ∀ v ∈ vs, ∃ V, HasType W.Sc v V)
-    (hr : ∀ r ∈ rs, r.tainted = false) (hb : bindIds env ids vs = .ok env') :
-    Inv C (sc.bind ids rs) n0 W ρ env' act := by
-  obtain ⟨-, rfl⟩ := bindIds_ok hb
+/-- The invariant carries over to a scope with names pushed for results with ideal values, typed where the result
+is untainted. -/
+theorem Inv.bind {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {act : Act}
+    {ids : List Id} {rs : List Res} {vs : List Value} (hI : Inv C sc n0 W ρ act)
+    (hvs : Term.evalList ρ [] (rs.map (·.term)) = some vs)
+    (hty : ∀ (i : Nat) (r : Res) (v : Value), rs[i]? = some r → vs[i]? = some v → r.tainted = false →
+      ∃ V, HasType W.Sc v V) :
+    Inv C (sc.bind ids rs) n0 W ρ act := by
   rw [Scope.bind_eq]
-  refine ⟨hI.phase, hI.erased, hI.sat, hI.n0_world, hI.agree, hI.sigs, hI.sigsOk, ?_, hI.globals, hI.act,
-    ⟨hI.inert.holes, hI.inert.taintedBy, fun p hp => ?_⟩⟩
-  · exact names_pushed ids rs vs sc.names env (fun n r h => hI.names n r h) hvs hty
-  · rcases List.mem_append.1 hp with hp | hp
-    · simp only [pushed, List.mem_reverse, List.mem_filterMap, Option.map_eq_some_iff] at hp
-      obtain ⟨⟨i, r⟩, hm, n, -, rfl⟩ := hp
-      exact hr r (List.of_mem_zip hm).2
-    · exact hI.inert.names p hp
+  refine ⟨hI.holes, hI.untainted, hI.sat, hI.n0_world, hI.agree, hI.sigs, hI.sigsOk, hI.noJunk, ?_, hI.globals,
+    hI.act⟩
+  intro n r h
+  simp only [Scope.lookup, lookup_append] at h
+  cases hp : (pushed ids rs).lookup n with
+  | none => rw [hp, Option.none_or] at h; exact hI.names n r h
+  | some r' =>
+    rw [hp, Option.some_or, Option.some.injEq] at h
+    subst h
+    obtain ⟨i, hi⟩ := pushed_mem (lookup_mem hp)
+    have hx := (Term.evalList_eq_some_iff.1 hvs).2 i r'.term (by simp [hi])
+    obtain ⟨v, hv⟩ : ∃ v, vs[i]? = some v := by
+      have hl := Term.length_evalList hvs
+      have : i < vs.length := by rw [hl, List.length_map]; exact (List.getElem?_eq_some_iff.1 hi).1
+      exact ⟨_, List.getElem?_eq_getElem this⟩
+    exact ⟨v, by rw [hx, hv], hty i r' v hi hv⟩
 
+/-- The run-time environment stays related after pushing the names of results with run-time values related to
+their ideal values. -/
+theorem EnvRel.bind {S : Sigs} {phase : Nat} {sc : Scope} {ρ : List Value} {env : Env} {ids : List Id}
+    {rs : List Res} {us : List Value} (h : EnvRel S phase sc ρ env) (hl : ids.length = rs.length)
+    (hlu : rs.length = us.length)
+    (hR : ∀ (i : Nat) (r : Res) (a : Value), rs[i]? = some r → us[i]? = some a → r.tainted = false →
+      ∃ v, r.term.eval ρ [] = some v ∧ MultRel S phase (sc.multOf r) a v) :
+    EnvRel S phase (sc.bind ids rs) ρ (pushed ids us ++ env) := by
+  intro n r hn ht
+  rw [Scope.bind_eq] at hn
+  have hmult : (sc.bind ids rs).multOf r = sc.multOf r := by rw [Scope.bind_eq]; rfl
+  simp only [Scope.lookup] at hn
+  rcases lookup_pushed₂ (fun r a => r.tainted = false → ∃ v, r.term.eval ρ [] = some v ∧
+      MultRel S phase (sc.multOf r) a v) ids rs us sc.names env hl hlu (fun i r a hr ha => hR i r a hr ha) n r hn with
+    ⟨a, ha, hra⟩ | ⟨h1, h2⟩
+  · obtain ⟨v, hv, hm⟩ := hra ht
+    exact ⟨a, v, ha, hv, by rw [hmult]; exact hm⟩
+  · obtain ⟨a, v, ha, hv, hm⟩ := h n r h1 ht
+    exact ⟨a, v, by rw [h2]; exact ha, hv, by rw [hmult]; exact hm⟩
 
 theorem forM_ok {α ε : Type} {f : α → Except ε Unit} : ∀ {l : List α}, l.forM f = .ok () → ∀ x ∈ l, f x = .ok ()
   | [], _, _, hx => by cases hx
@@ -724,7 +864,9 @@ theorem forcings_spec {C : Ctx} {sc : Scope} {t : Term} {sp at_ : Pos} {pats : L
     ∃ ctors, dataCtors C sc t sp = .ok ctors ∧
       (∀ p ∈ pats, ∃ sig, (p.ctor.name, sig) ∈ ctors ∧ p.fields.length = sig.params.length) ∧
       fs.length = ctors.length ∧ ∀ (i : Nat) f, fs[i]? = some f → ∃ sig mk, ctors[i]? = some (f.name, sig) ∧
-        f.forced = force sc.sigs sc.Γ t sig mk ∧ (∀ msg, f.forced ≠ .stuck msg) ∧
+        f.forced = force sc.sigs sc.Γ t sig mk ∧
+        (∀ b k en, (mk b k en).tainted = en.tainted ∧ (mk b k en).erased = (en.erased || erased)) ∧
+        (∀ msg, f.forced ≠ .stuck msg) ∧
         f.pat = pats.find? (·.ctor.name == f.name) := by
   unfold forcings at h
   obtain ⟨ctors, hc, h⟩ := bind_eq_ok.1 h
@@ -757,43 +899,46 @@ theorem forcings_spec {C : Ctx} {sc : Scope} {t : Term} {sp at_ : Pos} {pats : L
     · rename_i hns
       simp only [pure, Except.pure, Except.ok.injEq] at this
       subst this
-      exact ⟨sig, _, hp, rfl, fun msg hm => hns msg hm, rfl⟩
+      exact ⟨sig, _, hp, rfl, fun b k en => ⟨rfl, rfl⟩, fun msg hm => hns msg hm, rfl⟩
 
 
-theorem GlobalsOk.fn {n0 : Nat} {gs : List Global} {fn : Option FnCtx} {S : Sigs} {W : World} {act : Act}
-    {n m : String} {sig : FnSig} (h : GlobalsOk n0 gs fn S W act)
+theorem GlobalsOk.fn {n0 phase : Nat} {gs : List Global} {fn : Option FnCtx} {S : Sigs} {W : World} {act : Act}
+    {n m : String} {sig : FnSig} (h : GlobalsOk n0 phase gs fn S W act)
     (hg : gs.find? (·.name == n) = some (.fn m (some sig))) :
-    FnOk n0 W fn act n sig := h n _ hg
+    FnOk n0 phase W fn act n sig := h n _ hg
 
-theorem GlobalsOk.type {n0 : Nat} {gs : List Global} {fn : Option FnCtx} {S : Sigs} {W : World} {act : Act}
-    {n T : String} {cs : Option (List String)} {done : Bool} (h : GlobalsOk n0 gs fn S W act)
+theorem GlobalsOk.type {n0 phase : Nat} {gs : List Global} {fn : Option FnCtx} {S : Sigs} {W : World} {act : Act}
+    {n T : String} {cs : Option (List String)} {done : Bool} (h : GlobalsOk n0 phase gs fn S W act)
     (hg : gs.find? (·.name == n) = some (.type T cs done)) :
     HeadOk S W .type n ∧ ∀ cs', cs = some cs' → done = true →
       n ≠ "Type" ∧ (∃ s, W.Sc.find ⟨.type, n⟩ = some s) ∧ Complete W n cs' ∧
       ∀ c ∈ cs', gs.find? (·.name == c) = some (.ctor c) := h n _ hg
 
-theorem GlobalsOk.ctor {n0 : Nat} {gs : List Global} {fn : Option FnCtx} {S : Sigs} {W : World} {act : Act}
-    {n m : String} (h : GlobalsOk n0 gs fn S W act) (hg : gs.find? (·.name == n) = some (.ctor m)) :
+theorem GlobalsOk.ctor {n0 phase : Nat} {gs : List Global} {fn : Option FnCtx} {S : Sigs} {W : World} {act : Act}
+    {n m : String} (h : GlobalsOk n0 phase gs fn S W act) (hg : gs.find? (·.name == n) = some (.ctor m)) :
     HeadOk S W .ctor n := h n _ hg
 
 theorem Ctx.global_name {C : Ctx} {n : String} {g : Global} (h : C.global n = some g) : g.name = n := by
   simpa using List.find?_some h
 
-/-- At a `match` or pattern `let` whose scrutinee has a typed value, that value is an application of a value
-constructor of the scrutinee's data type, whose forcing survived, and the scope it gave is satisfied by the
-valuation extended by the value's arguments. -/
-theorem forcings_value {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {env : Env} {act : Act}
+/-- At a `match` or pattern `let` whose scrutinee has a typed value (an untainted one, §12), that value is an
+application of a value constructor of the scrutinee's data type, whose forcing survived; the scope it gave is
+satisfied by the valuation extended by the value's arguments, and the fields' entries are untainted, erased when
+the field or the match is (§16). -/
+theorem forcings_value {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {act : Act}
     {t : Term} {sp at_ : Pos} {pats : List Pattern} {erased : Bool} {fs : List Forcing} {v V : Value}
-    (hI : Inv C sc n0 W ρ env act) (h : forcings C sc t sp pats at_ erased = .ok fs)
+    (hI : Inv C sc n0 W ρ act) (h : forcings C sc t sp pats at_ erased = .ok fs)
     (ht : t.eval ρ [] = some v) (hv : HasType W.Sc v V) :
     ∃ c ws sig Γ' ids pat, v = .app ⟨.ctor, c⟩ ws ∧ fs.find? (·.name == c) = some ⟨c, .ok Γ' ids, pat⟩ ∧
       sc.sigs.find ⟨.ctor, c⟩ = some sig ∧ TeleSat W.Sc ρ sig.params [] ws ∧ Sat W.Sc Γ' (ρ ++ ws) ∧
-      Γ'.length = sc.Γ.length + ws.length ∧ ids = List.range' sc.Γ.length ws.length ∧
-      pat = pats.find? (·.ctor.name == c) := by
+      sc.Γ.eraseRules <+: Γ'.eraseRules ∧ Γ'.length = sc.Γ.length + ws.length ∧
+      ids = List.range' sc.Γ.length ws.length ∧ pat = pats.find? (·.ctor.name == c) ∧
+      ∀ (k : Nat) (b : TBinder), sig.params[k]? = some b → ∃ en, Γ'[sc.Γ.length + k]? = some en ∧
+        en.tainted = false ∧ en.erased = (b.mult == .erased || erased) := by
   obtain ⟨ctors, hc, -, hl, hfs⟩ := forcings_spec h
   obtain ⟨ty, hd, args, T, cs, hty, hcanon, hg, hcs, hsigs⟩ := dataCtors_spec hc
   have hS := hI.sigs ρ hI.agree
-  have hV := typeOf_sound hI.sat hS ht hv hty
+  have hV := typeOf_sound hI.sat.1 hS hI.noJunk ht hv hty
   rw [← hI.sat.eval_canon, hcanon] at hV
   obtain ⟨us, -, rfl⟩ := Term.eval_app.1 hV
   obtain ⟨-, -, hcomp, -⟩ := (hI.globals.type hg).2 cs rfl rfl
@@ -809,31 +954,45 @@ theorem forcings_value {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List 
   have hsig := hsigs _ _ hmem'
   obtain ⟨i, hi, hci⟩ := List.getElem_of_mem hmem'
   obtain ⟨f, hf⟩ : ∃ f, fs[i]? = some f := ⟨fs[i]'(hl ▸ hi), by simp⟩
-  obtain ⟨sig₁, mk₁, hc₁, -, -, -⟩ := hfs i f hf
+  obtain ⟨sig₁, mk₁, hc₁, -, -, -, -⟩ := hfs i f hf
   rw [List.getElem?_eq_getElem hi, hci] at hc₁
   have hfc : f.name = c := (congrArg Prod.fst (Option.some.inj hc₁)).symm
   obtain ⟨f₀, hf₀⟩ : ∃ f₀, fs.find? (·.name == c) = some f₀ :=
     Option.isSome_iff_exists.1 (List.find?_isSome.2 ⟨f, List.mem_of_getElem? hf, by simp [hfc]⟩)
   have hn₀ : f₀.name = c := by simpa using List.find?_some hf₀
   obtain ⟨j, hj, hj'⟩ := List.getElem_of_mem (List.mem_of_find?_eq_some hf₀)
-  obtain ⟨sig₀, mk₀, hc₀, hforce, hstuck, hpat⟩ := hfs j f₀ (by rw [List.getElem?_eq_getElem hj, hj'])
+  obtain ⟨sig₀, mk₀, hc₀, hforce, hmk₀, hstuck, hpat⟩ := hfs j f₀ (by rw [List.getElem?_eq_getElem hj, hj'])
   have hsig₀ := hsigs _ _ (List.mem_of_getElem? hc₀)
   rw [hn₀, hsig] at hsig₀
   obtain rfl := Option.some.inj hsig₀
   have hhead : sig.head = ⟨.ctor, c⟩ := Sigs.find_head hsig
-  have hgood := force_good mk₀ hI.sat hS (hI.sigsClose ws) (scrut := t) (ctor := sig) (by rw [hhead]; exact ht)
-    (by rw [hhead]; exact hsig) (by rw [hhead]; exact hv)
+  have hgood := force_good mk₀ (fun b k en hen => (hmk₀ b k en).1.trans hen) hI.sat hS (hI.sigsClose ws) hI.noJunk
+    (scrut := t) (ctor := sig) (by rw [hhead]; exact ht) (by rw [hhead]; exact hsig) (by rw [hhead]; exact hv)
   obtain ⟨n₀, forced, pat⟩ := f₀
   simp only at hn₀ hforce hstuck hpat
   subst hn₀
   rw [← hforce] at hgood
   cases forced with
   | ok Γ' ids =>
-    obtain ⟨hsat, -, hlen, hids, -⟩ := hgood
-    exact ⟨n₀, ws, sig, Γ', ids, pat, rfl, hf₀, hsig, ((hS.hasType_app_iff hsig).1 hv).1, hsat, hlen, hids, hpat⟩
+    obtain ⟨hsat, hero, hpre, hlen, hids, -⟩ := hgood
+    refine ⟨n₀, ws, sig, Γ', ids, pat, rfl, hf₀, hsig, ((hS.hasType_app_iff hsig).1 hv).1, hsat, hpre, hlen, hids,
+      hpat, fun k b hb => ?_⟩
+    obtain ⟨type, rule, hk⟩ := openTele.go_getElem mk₀ sig.params 0 sc.Γ [] [] k b hb
+    have h1 := congrArg (·[sc.Γ.length + k]?) hero
+    simp only [Entries.eraseRules, List.getElem?_map] at h1
+    change Option.map _ Γ'[sc.Γ.length + k]? = Option.map _ (openTele.go mk₀ 0 sig.params ⟨sc.Γ, [], []⟩).Γ[sc.Γ.length + k]? at h1
+    rw [hk] at h1
+    cases hen : Γ'[sc.Γ.length + k]? with
+    | none => rw [hen] at h1; cases h1
+    | some en =>
+      rw [hen] at h1
+      simp only [Option.map_some, Option.some.injEq] at h1
+      have ht' := congrArg Entry.tainted h1
+      have he' := congrArg Entry.erased h1
+      simp only at ht' he'
+      exact ⟨en, rfl, by rw [ht', (hmk₀ _ _ _).1], by rw [he', (hmk₀ _ _ _).2]⟩
   | refuted => exact hgood.elim
   | stuck msg => exact (hstuck msg rfl).elim
-
 
 theorem survivor_spec {sc : Scope} {fs : List Forcing} {n : String} {pos : Pos} {cons : String} {Γ : Entries}
     {ids : List Nat} (h : survivor sc fs n pos cons = .ok (Γ, ids)) :
@@ -895,16 +1054,15 @@ theorem Complete.mono {W W' : World} {T : String} {cs : List String} (hW : W.Le 
     · obtain ⟨s, hs⟩ := hs
       rw [hs] at hd'; cases hd'
 
-theorem FnSpec.callSpec {W : World} {d : FnDef} {sig : FnSig} (h : FnSpec W d sig) (act : Act) :
-    CallSpec W d sig act := fun vs hvs _ => h vs hvs
+theorem FnSpec.callSpec {W : World} {phase : Nat} {d : FnDef} {sig : FnSig} (h : FnSpec W phase d sig) (act : Act) :
+    CallSpec W phase d sig act := fun vs hvs _ => h vs hvs
 
-
-/-- The invariant depends on the context only through its phase, erasure, globals and enclosing function. -/
-theorem Inv.congr_ctx {C C' : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {env : Env} {act : Act}
-    (hI : Inv C sc n0 W ρ env act) (hph : C'.phase = C.phase) (her : C'.erased = C.erased)
-    (hgl : C'.globals = C.globals) (hfn : C'.fn = C.fn) : Inv C' sc n0 W ρ env act :=
-  ⟨hph ▸ hI.phase, her ▸ hI.erased, hI.sat, hI.n0_world, hI.agree, hI.sigs, hI.sigsOk, hI.names,
-    hgl ▸ hfn ▸ hI.globals, hfn ▸ hI.act, hI.inert⟩
+/-- The invariant depends on the context only through its phase, globals and enclosing function. -/
+theorem Inv.congr_ctx {C C' : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {act : Act}
+    (hI : Inv C sc n0 W ρ act) (hph : C'.phase = C.phase) (hgl : C'.globals = C.globals) (hfn : C'.fn = C.fn) :
+    Inv C' sc n0 W ρ act :=
+  ⟨hI.holes, hI.untainted, hI.sat, hI.n0_world, hI.agree, hI.sigs, hI.sigsOk, hI.noJunk, hI.names,
+    hph ▸ hgl ▸ hfn ▸ hI.globals, hfn ▸ hI.act⟩
 
 theorem arity_ok {pos : Pos} {name : String} {params args : Nat} {u : Unit} (h : arity pos name params args = .ok u) :
     params = args := by
@@ -914,16 +1072,8 @@ theorem arity_ok {pos : Pos} {name : String} {params args : Nat} {u : Unit} (h :
   · omega
 
 theorem WantSat.binderSat {S : Sigs} {ρ env : List Value} {b : TBinder} {m : Mult} {v : Value}
-    (h : WantSat S ρ { Want.of b with mult := m } env v) : BinderSat S ρ b env v := by
-  obtain ⟨A, hA, hv⟩ := h.1 b.type rfl
-  exact ⟨A, hA, hv, h.2⟩
-
-theorem lookup_mem {α : Type} {n : String} {r : α} : ∀ {l : List (String × α)}, l.lookup n = some r → (n, r) ∈ l
-  | [], h => by simp at h
-  | (k, b) :: l, h => by
-    simp only [List.lookup] at h
-    split at h
-    · rename_i hk; cases h; simp at hk; subst hk; exact List.mem_cons_self
-    · exact List.mem_cons_of_mem _ (lookup_mem h)
+    (h : WantSat S ρ { Want.of b with mult := m } env true v) : BinderSat S ρ b env v := by
+  obtain ⟨A, hA, -, -, hv⟩ := h.1 b.type rfl
+  exact ⟨A, hA, hv rfl, h.2⟩
 
 end Pledge

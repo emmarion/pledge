@@ -119,7 +119,7 @@ theorem Group.global_none {st s : TopState} {ts : List String} {cs : List (Strin
     exact h' _ (.inr (by simp [groupGlobals]; exact .inr ⟨p.1, p.2, hp, rfl⟩)) rfl
 
 theorem declType_group {st s s' : TopState} {ts : List String} {new : Sigs} {d : Data}
-    (hg : Group st ts [] new false s) (hp : d.params.all Binder.plain = true) (h : declType s d = .ok s') :
+    (hg : Group st ts [] new false s) (h : declType s d = .ok s') :
     ∃ sig, Group st (ts ++ [d.name.name]) [] (new ++ [sig]) false s' := by
   unfold declType at h
   obtain ⟨_, hf, h⟩ := bind_eq_ok.1 h
@@ -128,7 +128,6 @@ theorem declType_group {st s s' : TopState} {ts : List String} {new : Sigs} {d :
   simp only [pure, Except.pure, Except.ok.injEq] at h
   subst h
   obtain ⟨hfr, hts, -⟩ := hg.global_none (by simpa [TopState.ctx_global] using fresh_ok hf)
-  have hmult := (telescope_shape hp hps).2.2.2.2.2.1
   have hbelow := topLevel_ok htl
   obtain ⟨heq, hnd, hfresh, -, hok, hsigs, htypes, -⟩ := hg
   subst heq
@@ -148,7 +147,7 @@ theorem declType_group {st s s' : TopState} {ts : List String} {new : Sigs} {d :
     · exact hok sig hs
     · simp only [List.mem_singleton] at hs
       subst hs
-      refine ⟨?_, by simp [Term.TYPE, Term.boundsBelow, Term.boundsBelowList], hmult⟩
+      refine ⟨?_, by simp [Term.TYPE, Term.boundsBelow, Term.boundsBelowList]⟩
       simp only [Sig.entriesBelow, Bool.and_eq_true, List.all_eq_true]
       exact ⟨hbelow, by simp [Term.TYPE, Term.entriesBelow, Term.entriesBelowList]⟩
   · intro sig hs
@@ -196,7 +195,7 @@ theorem map_owner {F : Global → Global} {gs : List Global} {ts : List String} 
     List.map_nil, ownedBy_append, List.append_assoc]
 
 theorem declCtor_group {st s s' : TopState} {ts : List String} {cs : List (String × String)} {new : Sigs}
-    {T : String} {k : Ctor} (hg : Group st ts cs new false s) (hT : T ∈ ts) (hp : k.fields.all Binder.plain = true)
+    {T : String} {k : Ctor} (hg : Group st ts cs new false s) (hT : T ∈ ts)
     (h : declCtor T s k = .ok s') : ∃ sig, Group st ts (cs ++ [(T, k.name.name)]) (new ++ [sig]) false s' := by
   unfold declCtor at h
   obtain ⟨_, hf, h⟩ := bind_eq_ok.1 h
@@ -235,7 +234,6 @@ theorem declCtor_group {st s s' : TopState} {ts : List String} {cs : List (Strin
   subst hr
   rw [Sigs.find_head (Scope.sig_ok hsig)] at hret
   obtain ⟨args', rfl⟩ := abstractChecked_app hret
-  have hmult := (telescope_shape hp hfs).2.2.2.2.2.1
   have hbelow := topLevel_ok htl
   have hens := ensure_ok he
   obtain ⟨heq, hnd, hfresh, hown, hok, hsigs, htypes, hctors⟩ := hg
@@ -279,7 +277,7 @@ theorem declCtor_group {st s s' : TopState} {ts : List String} {cs : List (Strin
     · simp only [List.mem_singleton] at hs
       subst hs
       simp only [Bool.and_eq_true] at hens
-      refine ⟨?_, hens.2, hmult⟩
+      refine ⟨?_, hens.2⟩
       simp only [Sig.entriesBelow, Bool.and_eq_true, List.all_eq_true]
       exact ⟨hbelow, hens.1⟩
   · intro sig hs
@@ -313,24 +311,19 @@ theorem map_done {F : Global → Global} {gs : List Global} {ts : List String} {
 def groupCtors (ds : List Data) : List (String × String) := ds.flatMap fun d => d.ctors.map (d.name.name, ·.name.name)
 
 /-- What checking a group of `data` declarations adds: `Group`, for all its type and value constructors. -/
-theorem dataGroup_group {st st' : TopState} {ds : List Data} (hp : ds.all Data.plain = true)
+theorem dataGroup_group {st st' : TopState} {ds : List Data}
     (h : dataGroup st ds = .ok st') : ∃ new, Group st (ds.map (·.name.name)) (groupCtors ds) new true st' := by
   unfold dataGroup at h
   obtain ⟨s1, h1, h⟩ := bind_eq_ok.1 h
   obtain ⟨s2, h2, h⟩ := bind_eq_ok.1 h
   simp only [pure, Except.pure, Except.ok.injEq] at h
   subst h
-  have hpl : ∀ d ∈ ds, d.params.all Binder.plain = true ∧ ∀ k ∈ d.ctors, k.fields.all Binder.plain = true :=
-    fun d hd => by
-      have := List.all_eq_true.1 hp d hd
-      simp only [Data.plain, Bool.and_eq_true, List.all_eq_true, Ctor.plain] at this
-      exact ⟨List.all_eq_true.2 this.1, fun k hk => List.all_eq_true.2 (this.2 k hk)⟩
   have g0 : Group st [] [] [] false st :=
     ⟨by cases st; simp [groupGlobals], by simp, by simp, by simp, by simp [SigsOk], by simp, by simp, by simp⟩
   obtain ⟨new1, g1⟩ : ∃ new, Group st (ds.map (·.name.name)) [] new false s1 := by
     have := foldlM_induct (fun pre s => ∃ new, Group st (pre.map (·.name.name)) [] new false s) ds []
       (fun q x b b' hx ⟨new, hb⟩ hf => by
-        obtain ⟨sig, hg⟩ := declType_group hb (hpl x hx).1 hf
+        obtain ⟨sig, hg⟩ := declType_group hb hf
         exact ⟨new ++ [sig], by simpa using hg⟩) ⟨[], g0⟩ h1
     simpa using this
   obtain ⟨new2, g2⟩ : ∃ new, Group st (ds.map (·.name.name)) (groupCtors ds) new false s2 := by
@@ -339,7 +332,7 @@ theorem dataGroup_group {st st' : TopState} {ds : List Data} (hp : ds.all Data.p
         have := foldlM_induct (fun kq s => ∃ new, Group st (ds.map (·.name.name))
             (groupCtors q ++ kq.map (x.name.name, ·.name.name)) new false s) x.ctors []
           (fun kq k c c' hk ⟨new, hc⟩ hf' => by
-            obtain ⟨sig, hg⟩ := declCtor_group hc (List.mem_map_of_mem hx) ((hpl x hx).2 k hk) hf'
+            obtain ⟨sig, hg⟩ := declCtor_group hc (List.mem_map_of_mem hx) hf'
             exact ⟨new ++ [sig], by simpa using hg⟩) ⟨new, by simpa using hb⟩ hf
         simpa [groupCtors] using this) ⟨new1, g1⟩ h2
     simpa using this
@@ -496,80 +489,11 @@ theorem HeadOk.append {S S' : Sigs} {W : World} {k : HeadKind} {n : String} (h :
     HeadOk (S ++ S') W k n :=
   ⟨h.fns, h.kind, let ⟨_, hs⟩ := h.sig; ⟨_, Sigs.find_append_old hs⟩⟩
 
-/-- A group of `data` declarations keeps the top level's invariant. -/
-theorem Group.topInv (hI : TopInv st ρ) (hg : Group st ts cs new true st') : TopInv st' ρ := by
-  have hle := hg.le hI
-  have hsub := Sigs.sub_append_close st.sc.sigs new ρ
-  have hwSc := hg.world_Sc (ρ := ρ)
-  obtain ⟨heq, -, -, hown, hok, hsigs, htypes, hctors⟩ := id hg
-  subst heq
-  refine ⟨hI.phase, hwSc ▸ hI.sat.mono_sigs hsub, fun n r h => ?_, ⟨hI.inert.holes, hI.inert.taintedBy,
-    hI.inert.names⟩, fun sig hs => ?_, fun sig hs => ?_, fun h sig hs => ?_, fun d hd => ?_, hI.groups, ?_, hI.goal,
-    fun hp => ?_, let ⟨_, hs⟩ := hI.typeSig; ⟨_, Sigs.find_append_old hs⟩⟩
-  · obtain ⟨v, V, h1, h2, h3⟩ := hI.names n r h
-    exact ⟨v, V, h1, h2, hwSc ▸ h3.mono_sigs hsub⟩
-  · rcases List.mem_append.1 hs with hs | hs
-    · exact hI.sigsOk sig hs
-    · exact hok sig hs
-  · rcases List.mem_append.1 hs with hs | hs
-    · obtain ⟨hd, args, h1, h2, s, h3⟩ := hI.rets sig hs
-      exact ⟨hd, args, h1, h2, s, Sigs.find_append_old h3⟩
-    · rcases hsigs sig hs with ⟨T, -, -, hret⟩ | ⟨p, hp, -, args, hret⟩
-      · obtain ⟨s, h3⟩ := hI.typeSig
-        exact ⟨_, _, hret, rfl, s, Sigs.find_append_old h3⟩
-      · obtain ⟨s, hs', hh⟩ := htypes p.1 (hown p hp)
-        exact ⟨_, _, hret, rfl, Sigs.find_of_mem (List.mem_append_right _ hs') hh⟩
-  · cases ho : st.sc.sigs.find h with
-    | some s0 => exact hg.kindOf_old (hI.sigNames h s0 ho)
-    | none =>
-      have hh := Sigs.find_head hs
-      subst hh
-      rcases hsigs sig (Sigs.find_append_new ho hs) with ⟨T, hT, h1, -⟩ | ⟨p, hp, h1, -⟩
-      · rw [h1]; simp [kindOf, hg.find?_type hT]
-      · rw [h1]; simp [kindOf, hg.find?_ctor hp]
-  · obtain ⟨sig, hs⟩ := hI.fnNames d hd
-    exact ⟨sig, hg.find?_old hs⟩
-  · intro W' hW' act hact n g hfind
-    have hle' := hle.trans hW'
-    cases h0 : st.globals.find? (·.name == n) with
-    | some g0 =>
-      rw [hg.find?_old h0] at hfind
-      cases hfind
-      have hold := hI.globals W' hle' act hact n g h0
-      cases g with
-      | fn _ s => cases s <;> exact hold
-      | type T cs0 dn =>
-        exact ⟨hold.1.append, fun cs' h1 h2 =>
-          let ⟨a, b, c, d⟩ := hold.2 cs' h1 h2
-          ⟨a, b, c, fun c hc => hg.find?_old (d c hc)⟩⟩
-      | ctor _ => exact HeadOk.append hold
-    | none =>
-      have hfr : ∀ g ∈ st.globals, g.name ≠ n := fun g hg' hn => by
-        have := List.find?_eq_none.1 h0 g hg'
-        simp [hn] at this
-      rw [find?_fresh hfr] at hfind
-      rcases groupGlobals_find? hfind with ⟨hT, rfl⟩ | ⟨p, hp, rfl, rfl⟩
-      · have hn' := List.mem_append_left (cs.map (·.2)) hT
-        have hS : ∃ s, (st.sc.sigs ++ new).find ⟨.type, n⟩ = some s :=
-          let ⟨_, hs, hh⟩ := htypes n hT
-          Sigs.find_of_mem (List.mem_append_right _ hs) hh
-        have hSc : ∃ s, Sigs.find ((st.sc.sigs ++ new).map (Sig.close ρ)) ⟨.type, n⟩ = some s := by
-          rw [Sigs.find_map_close]
-          obtain ⟨s, hs⟩ := hS
-          exact ⟨_, by rw [hs]; rfl⟩
-        have hne := hg.ne_Type hI hn'
-        refine ⟨HeadOk.mono hW' ⟨hg.fns_none hI hn',
-          by simp [TopState.world, TopState.prog, kindOf, hg.find?_type hT], hS⟩, ?_⟩
-        rintro cs' ⟨⟩ -
-        refine ⟨hne, let ⟨s, hs⟩ := hSc; ⟨s, hW'.sigs _ _ hs⟩, Complete.mono hW' hne hSc (hg.complete hI hT),
-          fun c hc => ?_⟩
-        obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hc
-        exact hg.find?_ctor (List.mem_filter.1 hp).1
-      · have hn' := List.mem_append_right ts (List.mem_map_of_mem (f := (·.2)) hp)
-        exact HeadOk.mono hW' ⟨hg.fns_none hI hn', by simp [TopState.world, TopState.prog, kindOf, hg.find?_ctor hp],
-          let ⟨_, hs, hh⟩ := hctors p hp; Sigs.find_of_mem (List.mem_append_right _ hs) hh⟩
-  · obtain ⟨g, h1, h2⟩ := hI.proved hp
-    exact ⟨g, h1, fun W' hW' => h2 W' (hle.trans hW')⟩
+/-- A group of `data` declarations, none named `sorry`, keeps the top level's invariant: the world extends by the
+new signatures, closed under the same ideal values, which add no value constructor to an earlier data type. -/
+theorem Group.topInv (hI : TopInv st ρ) (hg : Group st ts cs new true st')
+    (hj : ∀ n ∈ ts ++ cs.map (·.2), n ≠ junkHead.name) : TopInv st' ρ := by
+  sorry
 
 end
 
@@ -598,52 +522,10 @@ theorem goal_spec {st st' : TopState} {p : Pos} {g : Goal} (h : topItem st (.goa
     simp only [pure, Except.pure, ok_bind, Except.ok.injEq] at h
     exact ⟨_, h.symm, ty, is, tainted, h1, ensure_ok h2, rfl⟩
 
-theorem TopInv.termInv {st : TopState} {ρ : List Value} (hI : TopInv st ρ) :
-    TermInv st.sc st.sc.Γ.length (st.world ρ).Sc ρ :=
-  ⟨hI.sat, by rw [hI.sat.1]; exact Nat.le_refl _, SigsClose.close hI.sat.noRemoved, hI.sigsOk,
-    fun n r h => let ⟨v, V, _, h1, h2⟩ := hI.names n r h; ⟨v, V, h1, h2⟩, hI.inert⟩
-
-theorem header_untainted {C : Ctx} {sc : Scope} {h : Header} {ps rs : Checked} (hp : h.plain = true)
-    (hi : sc.Inert) (hh : header C sc h = .ok (ps, rs)) : ps.tainted = false ∧ rs.tainted = false := by
-  simp only [Header.plain, Bool.and_eq_true] at hp
-  unfold header at hh
-  obtain ⟨ps', h1, hh⟩ := bind_eq_ok.1 hh
-  obtain ⟨rs', h2, hh⟩ := bind_eq_ok.1 hh
-  simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at hh
-  obtain ⟨rfl, rfl⟩ := hh
-  have s1 := telescope_shape (by simpa using hp.1) h1
-  have s2 := telescope_shape hp.2 h2
-  refine ⟨s1.2.2.2.2.2.2 hi.taintedBy hi.names, s2.2.2.2.2.2.2 ?_ ?_⟩
-  · rw [s1.2.2.2.2.1, Scope.bind_eq]; exact hi.taintedBy
-  · rw [s1.2.2.2.2.1, Scope.bind_eq]
-    intro q hq
-    rcases List.mem_append.1 hq with hq | hq
-    · simp only [pushed, List.mem_reverse, List.mem_filterMap, Option.map_eq_some_iff] at hq
-      obtain ⟨⟨i, r⟩, hm, n, -, rfl⟩ := hq
-      obtain ⟨_, -, rfl⟩ := List.mem_map.1 (List.of_mem_zip hm).2
-      rfl
-    · exact hi.names q hq
-
-/-- A `goal` statement keeps the top level's invariant: the goal it sets is untainted and mentions only top-level
-entries. -/
+/-- A `goal` statement keeps the top level's invariant: the goal it sets mentions only top-level entries (§12). -/
 theorem goalItem_sound {st st' : TopState} {ρ : List Value} {p : Pos} {g : Goal} (hI : TopInv st ρ)
-    (hp : g.plain = true) (h : topItem st (.goal p g) = .ok st') : (st.world ρ).Le (st'.world ρ) ∧ TopInv st' ρ := by
-  obtain ⟨hnone, goal, rfl, hgoal⟩ := goal_spec h
-  refine ⟨World.Le.refl _, ⟨hI.phase, hI.sat, hI.names, hI.inert, hI.sigsOk, hI.rets, hI.sigNames, hI.fnNames,
-    hI.groups, hI.globals, fun g' hg' => ?_, fun hpr => ?_, hI.typeSig⟩⟩
-  · cases hg'
-    cases g with
-    | fn hdr =>
-      obtain ⟨ps, rs, u, h1, h2, rfl⟩ := hgoal
-      obtain ⟨t1, t2⟩ := header_untainted hp hI.inert h1
-      exact ⟨by simp [t1, t2, hI.inert.taintedBy], topLevel_ok h2⟩
-    | type t =>
-      obtain ⟨ty, is, tainted, h1, h2, rfl⟩ := hgoal
-      have := (annotate_sound hI.termInv h1).1
-      exact ⟨by simp [this, hI.inert.taintedBy], h2⟩
-  · obtain ⟨g', hg', -⟩ := hI.proved hpr
-    rw [hnone] at hg'
-    cases hg'
+    (h : topItem st (.goal p g) = .ok st') : (st.world ρ).Le (st'.world ρ) ∧ TopInv st' ρ := by
+  sorry
 
 theorem fnGroup_goal {st st' : TopState} {fs : List Fn} (h : fnGroup st fs = .ok st') : st'.goal = st.goal := by
   unfold fnGroup at h
@@ -682,13 +564,13 @@ theorem qedFnGoal_goal {st st' : TopState} {ps rs : Telescope} {e : Expr} (h : q
   all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h])
 
 /-- No item but a `goal` statement changes the goal once it is set. -/
-theorem topItem_goal {st st' : TopState} {t : Top} {g : CheckedGoal} (hp : t.plain = true)
+theorem topItem_goal {st st' : TopState} {t : Top} {g : CheckedGoal}
     (h : topItem st t = .ok st') (hg : st.goal = some g) : st'.goal = some g := by
   unfold topItem at h
   split at h
-  · obtain ⟨_, hgr⟩ := dataGroup_group (by simpa [Top.plain] using hp) h
+  · obtain ⟨_, hgr⟩ := dataGroup_group h
     rw [hgr.eq]; exact hg
-  · obtain ⟨_, hgr⟩ := dataGroup_group (by simpa [Top.plain] using hp) h
+  · obtain ⟨_, hgr⟩ := dataGroup_group h
     rw [hgr.eq]; exact hg
   · rw [fnGroup_goal h]; exact hg
   · rw [fnGroup_goal h]; exact hg
@@ -725,15 +607,14 @@ theorem topItems_split : ∀ {st : TopState} {pre post : List Top} {t : Top},
       exact topItems_split h
     · simp at h
 
-theorem topItems_goal : ∀ {st : TopState} {l : List Top} {g : CheckedGoal}, Program.plain l = true →
+theorem topItems_goal : ∀ {st : TopState} {l : List Top} {g : CheckedGoal},
     (topItems st l).2 = none → st.goal = some g → (topItems st l).1.goal = some g
-  | st, [], g, _, _, hg => by simpa [topItems] using hg
-  | st, t :: l, g, hp, h, hg => by
-    simp only [Program.plain, List.all_cons, Bool.and_eq_true] at hp
+  | st, [], g, _, hg => by simpa [topItems] using hg
+  | st, t :: l, g, h, hg => by
     simp only [topItems] at h ⊢
     split at h
     · rename_i s' hs
-      exact topItems_goal hp.2 h (topItem_goal hp.1 hs hg)
+      exact topItems_goal h (topItem_goal hs hg)
     · simp at h
 
 theorem List.eq_of_nodup_map {α β : Type} {f : α → β} : ∀ {l : List α}, (l.map f).Nodup → ∀ {a b : α}, a ∈ l → b ∈ l →

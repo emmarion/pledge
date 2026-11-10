@@ -292,11 +292,12 @@ theorem HasType.inv_type {S : Sigs} {v : Value} {T : String} {us : List Value}
   let ⟨hd, ws, sig, hv, hs, _, hr⟩ := h.inv
   ⟨hd, ws, sig, hv, hs, hr⟩
 
-theorem TBinder.Agree.refl (ρ : List Value) (b : TBinder) : TBinder.Agree ρ ρ b b := ⟨fun _ => rfl, fun _ => rfl⟩
+theorem TBinder.Agree.refl (ρ : List Value) (b : TBinder) : TBinder.Agree ρ ρ b b :=
+  ⟨fun _ => rfl, fun _ => rfl, rfl⟩
 
 theorem TBinder.Agree.trans {ρ₁ ρ₂ ρ₃ : List Value} {b₁ b₂ b₃ : TBinder} (h : TBinder.Agree ρ₁ ρ₂ b₁ b₂)
     (h' : TBinder.Agree ρ₂ ρ₃ b₂ b₃) : TBinder.Agree ρ₁ ρ₃ b₁ b₃ :=
-  ⟨fun env => (h.type env).trans (h'.type env), fun env => (h.is env).trans (h'.is env)⟩
+  ⟨fun env => (h.type env).trans (h'.type env), fun env => (h.is env).trans (h'.is env), h.mult.trans h'.mult⟩
 
 theorem Telescope.Agree.trans {ρ₁ ρ₂ ρ₃ : List Value} :
     ∀ {Δ₁ Δ₂ Δ₃ : Telescope}, Telescope.Agree ρ₁ ρ₂ Δ₁ Δ₂ → Telescope.Agree ρ₂ ρ₃ Δ₂ Δ₃ →
@@ -329,7 +330,7 @@ end
 theorem TBinder.agree_of_entriesBelow {n : Nat} {ρ ρ' : List Value} (hρ : ρ.take n = ρ'.take n) {b : TBinder}
     (h : b.entriesBelow n = true) : TBinder.Agree ρ ρ' b b := by
   simp only [TBinder.entriesBelow, Bool.and_eq_true] at h
-  refine ⟨fun env => Term.eval_entriesBelow hρ env _ h.1, fun env => ?_⟩
+  refine ⟨fun env => Term.eval_entriesBelow hρ env _ h.1, fun env => ?_, rfl⟩
   cases hb : b.is with
   | none => rfl
   | some e => simp_all [Term.eval_entriesBelow hρ env e]
@@ -387,7 +388,7 @@ theorem Sig.agree_close {ρ : List Value} (hρ : ∀ v ∈ ρ, v.noRemoved = tru
   induction sig.params with
   | nil => trivial
   | cons b Δ ih =>
-    refine ⟨⟨fun env => (Term.eval_close hρ env b.type).symm, fun env => ?_⟩, ih⟩
+    refine ⟨⟨fun env => (Term.eval_close hρ env b.type).symm, fun env => ?_, rfl⟩, ih⟩
     cases h : b.is <;> simp [TBinder.close, h, Term.eval_close hρ env]
 
 theorem Sigs.find_map_close (S : Sigs) (ρ : List Value) (h : Head) :
@@ -484,55 +485,136 @@ theorem HasType.empty {Sc : Sigs} {V : Value}
     obtain ⟨_, ws, _, -, hc, -, hr⟩ := h.inv
     exact hV _ _ ws hc hr
 
-theorem Sat.rulesHold {S : Sigs} {Γ : Entries} {ρ : List Value} (h : Sat S Γ ρ) : RulesHold Γ ρ :=
+theorem WType.unique {S : Sigs} {v A B : Value} (ha : WType S v A) (hb : WType S v B) : A = B := by
+  cases v with
+  | removed => exact ha.elim
+  | app h vs =>
+    simp only [WType] at ha hb
+    split at ha
+    · rename_i hh
+      simp only [hh, ↓reduceIte] at hb
+      rw [ha] at hb; exact (List.cons.inj hb).1
+    · rename_i hh
+      simp only [hh, ↓reduceIte] at hb
+      obtain ⟨s, hs, hr⟩ := ha
+      obtain ⟨s', hs', hr'⟩ := hb
+      rw [hs] at hs'; cases hs'; rw [hr] at hr'; exact Option.some.inj hr'
+
+theorem WType.junk (S : Sigs) (A : Value) : WType S (.junk A) A := by simp [WType, Value.junk]
+
+theorem WType.mono_sigs {S S' : Sigs} (hS : S.Sub S') {v A : Value} (h : WType S v A) : WType S' v A := by
+  cases v with
+  | removed => exact h.elim
+  | app hd vs =>
+    simp only [WType] at h ⊢
+    split at h
+    · rename_i hn; simp only [hn, ↓reduceIte]; exact h
+    · rename_i hn
+      obtain ⟨s, hs, hr⟩ := h
+      simp only [hn, ↓reduceIte]
+      exact ⟨s, hS _ _ hs, hr⟩
+
+/-- A typed value has its type by its head, when no signature has `junkHead`. -/
+theorem HasType.wtype {S : Sigs} (hJ : S.find junkHead = none) {v A : Value} (h : HasType S v A) : WType S v A := by
+  obtain ⟨hd, ws, sig, rfl, hs, -, hr⟩ := h.inv
+  have : hd ≠ junkHead := fun e => by rw [e, hJ] at hs; cases hs
+  simp only [WType, this, ↓reduceIte]
+  exact ⟨sig, hs, hr⟩
+
+theorem HasType.not_junk {S : Sigs} (hJ : S.find junkHead = none) {A B : Value} : ¬ HasType S (.junk A) B :=
+  fun h => by obtain ⟨_, _, _, he, hs, -⟩ := h.inv; cases he; rw [hJ] at hs; cases hs
+
+theorem Value.noRemoved_junk {A : Value} : (Value.junk A).noRemoved = A.noRemoved := by
+  simp [Value.junk, Value.noRemoved, Value.noRemovedList]
+
+theorem WSat.rulesHold {S : Sigs} {Γ : Entries} {ρ : List Value} (h : WSat S Γ ρ) : RulesHold Γ ρ :=
   fun i en r hen hr =>
-    let ⟨v, _, hv, _, _, hrv⟩ := h.2 i en hen
+    let ⟨v, _, hv, _, _, _, hrv⟩ := h.2 i en hen
     ⟨v, hv, hrv r hr⟩
+
+theorem Sat.rulesHold {S : Sigs} {Γ : Entries} {ρ : List Value} (h : Sat S Γ ρ) : RulesHold Γ ρ := h.1.rulesHold
+
+theorem WSat.eval_canon {S : Sigs} {Γ : Entries} {ρ : List Value} (h : WSat S Γ ρ) (env : List Value) (t : Term) :
+    (t.canon Γ).eval ρ env = t.eval ρ env := Term.eval_canon h.rulesHold env t
 
 theorem Sat.eval_canon {S : Sigs} {Γ : Entries} {ρ : List Value} (h : Sat S Γ ρ) (env : List Value) (t : Term) :
     (t.canon Γ).eval ρ env = t.eval ρ env := Term.eval_canon h.rulesHold env t
+
+theorem WSat.eval_eq_of_identical {S : Sigs} {Γ : Entries} {ρ env : List Value} {a b : Term} (h : WSat S Γ ρ)
+    (hab : identical Γ a b = true) : a.eval ρ env = b.eval ρ env := identical.eval_eq h.rulesHold hab
 
 theorem Sat.eval_eq_of_identical {S : Sigs} {Γ : Entries} {ρ env : List Value} {a b : Term} (h : Sat S Γ ρ)
     (hab : identical Γ a b = true) : a.eval ρ env = b.eval ρ env := identical.eval_eq h.rulesHold hab
 
 /-- A satisfying valuation has no `removed` subtree, so closing under it keeps values. -/
-theorem Sat.noRemoved {S : Sigs} {Γ : Entries} {ρ : List Value} (h : Sat S Γ ρ) : ∀ v ∈ ρ, v.noRemoved = true :=
+theorem WSat.noRemoved {S : Sigs} {Γ : Entries} {ρ : List Value} (h : WSat S Γ ρ) : ∀ v ∈ ρ, v.noRemoved = true :=
   fun v hv => by
     obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hv
     obtain ⟨en, hen⟩ : ∃ en, Γ[i]? = some en := ⟨Γ[i]'(h.1 ▸ hi), by simp⟩
-    obtain ⟨w, _, hw, _, hwA, _⟩ := h.2 i en hen
+    obtain ⟨w, _, hw, _, hwr, -⟩ := h.2 i en hen
     rw [List.getElem?_eq_getElem hi] at hw
-    exact Option.some.inj hw ▸ hwA.noRemoved
+    exact Option.some.inj hw ▸ hwr
+
+theorem Sat.noRemoved {S : Sigs} {Γ : Entries} {ρ : List Value} (h : Sat S Γ ρ) : ∀ v ∈ ρ, v.noRemoved = true :=
+  h.1.noRemoved
+
+theorem WSat.mono_sigs {S S' : Sigs} {Γ : Entries} {ρ : List Value} (hS : S.Sub S') (h : WSat S Γ ρ) :
+    WSat S' Γ ρ :=
+  ⟨h.1, fun i en hen =>
+    let ⟨v, A, hv, hA, hr, hw, hru⟩ := h.2 i en hen
+    ⟨v, A, hv, hA, hr, hw.mono_sigs hS, hru⟩⟩
 
 theorem Sat.mono_sigs {S S' : Sigs} {Γ : Entries} {ρ : List Value} (hS : S.Sub S') (h : Sat S Γ ρ) :
     Sat S' Γ ρ :=
-  ⟨h.1, fun i en hen =>
-    let ⟨v, A, hv, hA, hvA, hr⟩ := h.2 i en hen
-    ⟨v, A, hv, hA, hvA.mono_sigs hS, hr⟩⟩
+  ⟨h.1.mono_sigs hS, fun i en v A hen hv hA ht => (h.2 i en v A hen hv hA ht).mono_sigs hS⟩
+
+/-- What `Sat` asks of one entry and its value. -/
+def EntryOk (S : Sigs) (ρ : List Value) (en : Entry) (v : Value) : Prop :=
+  ∃ A, en.type.eval ρ [] = some A ∧ v.noRemoved = true ∧ WType S v A ∧ (en.tainted = false → HasType S v A) ∧
+    ∀ r : Term, en.rule = some r → r.eval ρ [] = some v
+
+theorem Sat.entryOk {S : Sigs} {Γ : Entries} {ρ : List Value} (h : Sat S Γ ρ) {i : Nat} {en : Entry}
+    (hen : Γ[i]? = some en) : ∃ v, ρ[i]? = some v ∧ EntryOk S ρ en v := by
+  obtain ⟨v, A, hv, hA, hr, hw, hru⟩ := h.1.2 i en hen
+  exact ⟨v, hv, A, hA, hr, hw, fun ht => h.2 i en v A hen hv hA ht, hru⟩
+
+theorem EntryOk.frame {S : Sigs} {ρ : List Value} {en : Entry} {v : Value} (ρ' : List Value) (h : EntryOk S ρ en v) :
+    EntryOk S (ρ ++ ρ') en v :=
+  let ⟨A, hA, hr, hw, ht, hru⟩ := h
+  ⟨A, Term.eval_frame_ρ ρ' hA, hr, hw, ht, fun r h => Term.eval_frame_ρ ρ' (hru r h)⟩
+
+/-- `Sat`, entry by entry. -/
+theorem Sat.iff {S : Sigs} {Γ : Entries} {ρ : List Value} :
+    Sat S Γ ρ ↔ ρ.length = Γ.length ∧
+      ∀ (i : Nat) (en : Entry), Γ[i]? = some en → ∃ v, ρ[i]? = some v ∧ EntryOk S ρ en v := by
+  refine ⟨fun h => ⟨h.1.1, fun i en hen => h.entryOk hen⟩, fun ⟨hl, h⟩ => ⟨⟨hl, fun i en hen => ?_⟩, ?_⟩⟩
+  · obtain ⟨v, hv, A, hA, hr, hw, -, hru⟩ := h i en hen
+    exact ⟨v, A, hv, hA, hr, hw, hru⟩
+  · intro i en v A hen hv hA ht
+    obtain ⟨v', hv', A', hA', -, -, hty, -⟩ := h i en hen
+    rw [hv] at hv'; cases hv'; rw [hA] at hA'; cases hA'
+    exact hty ht
 
 /-- Extending a scope by entries whose values satisfy them, under the extended valuation. -/
 theorem Sat.append {S : Sigs} {Γ Δ : Entries} {ρ vs : List Value} (hΓ : Sat S Γ ρ) (hl : vs.length = Δ.length)
-    (hΔ : ∀ (i : Nat) (en : Entry), Δ[i]? = some en → ∃ v A, vs[i]? = some v ∧
-      en.type.eval (ρ ++ vs) [] = some A ∧ HasType S v A ∧
-      ∀ r : Term, en.rule = some r → r.eval (ρ ++ vs) [] = some v) :
+    (hΔ : ∀ (i : Nat) (en : Entry), Δ[i]? = some en → ∃ v, vs[i]? = some v ∧ EntryOk S (ρ ++ vs) en v) :
     Sat S (Γ ++ Δ) (ρ ++ vs) := by
-  refine ⟨by simp [hΓ.1, hl], fun i en hen => ?_⟩
+  refine Sat.iff.2 ⟨by simp [hΓ.1.1, hl], fun i en hen => ?_⟩
   by_cases hi : i < Γ.length
   · rw [List.getElem?_append_left hi] at hen
-    obtain ⟨v, A, hv, hA, hvA, hr⟩ := hΓ.2 i en hen
-    exact ⟨v, A, getElem?_append_of_some hv, Term.eval_frame_ρ vs hA, hvA, fun r h => Term.eval_frame_ρ vs (hr r h)⟩
+    obtain ⟨v, hv, hok⟩ := hΓ.entryOk hen
+    exact ⟨v, getElem?_append_of_some hv, hok.frame vs⟩
   · rw [List.getElem?_append_right (Nat.le_of_not_lt hi)] at hen
-    obtain ⟨v, A, hv, rest⟩ := hΔ _ en hen
-    refine ⟨v, A, ?_, rest⟩
-    rw [List.getElem?_append_right (by rw [hΓ.1]; omega), hΓ.1]
+    obtain ⟨v, hv, rest⟩ := hΔ _ en hen
+    refine ⟨v, ?_, rest⟩
+    rw [List.getElem?_append_right (by rw [hΓ.1.1]; omega), hΓ.1.1]
     exact hv
 
-theorem Sat.push {S : Sigs} {Γ : Entries} {ρ : List Value} {en : Entry} {v A : Value} (hΓ : Sat S Γ ρ)
-    (hA : en.type.eval (ρ ++ [v]) [] = some A) (hv : HasType S v A)
-    (hr : ∀ r : Term, en.rule = some r → r.eval (ρ ++ [v]) [] = some v) : Sat S (Γ ++ [en]) (ρ ++ [v]) :=
+theorem Sat.push {S : Sigs} {Γ : Entries} {ρ : List Value} {en : Entry} {v : Value} (hΓ : Sat S Γ ρ)
+    (h : EntryOk S (ρ ++ [v]) en v) : Sat S (Γ ++ [en]) (ρ ++ [v]) :=
   hΓ.append rfl fun i en' hen => by
     cases i with
-    | zero => cases hen; exact ⟨v, A, rfl, hA, hv, hr⟩
+    | zero => cases hen; exact ⟨v, rfl, h⟩
     | succ => simp at hen
 
 theorem addRule_length (Γ : Entries) (x : Nat) (e : Term) : (addRule Γ x e).length = Γ.length :=
@@ -544,41 +626,75 @@ theorem addRule_getElem? (Γ : Entries) (x : Nat) (e : Term) (i : Nat) :
   List.getElem?_mapIdx
 
 /-- Adding a rule that holds keeps the scope satisfied. -/
-theorem Sat.addRule {S : Sigs} {Γ : Entries} {ρ : List Value} {x : Nat} {e : Term} {v : Value}
-    (hΓ : Sat S Γ ρ) (hx : ρ[x]? = some v) (he : e.eval ρ [] = some v) : Sat S (addRule Γ x e) ρ := by
+theorem WSat.addRule {S : Sigs} {Γ : Entries} {ρ : List Value} {x : Nat} {e : Term} {v : Value}
+    (hΓ : WSat S Γ ρ) (hx : ρ[x]? = some v) (he : e.eval ρ [] = some v) : WSat S (addRule Γ x e) ρ := by
   refine ⟨by rw [addRule_length]; exact hΓ.1, fun i en hen => ?_⟩
   rw [addRule_getElem?, Option.map_eq_some_iff] at hen
   obtain ⟨en₀, hen₀, rfl⟩ := hen
-  obtain ⟨w, A, hw, hA, hwA, hr⟩ := hΓ.2 i en₀ hen₀
+  obtain ⟨w, A, hw, hA, hwr, hwA, hr⟩ := hΓ.2 i en₀ hen₀
   by_cases hix : i = x
   · subst hix
     rw [hx] at hw; cases hw
-    exact ⟨v, A, hx, by simpa using hA, hwA, by simpa using he⟩
-  · refine ⟨w, A, hw, by simpa [hix] using hA, hwA, fun r hr' => ?_⟩
+    exact ⟨v, A, hx, by simpa using hA, hwr, hwA, by simpa using he⟩
+  · refine ⟨w, A, hw, by simpa [hix] using hA, hwr, hwA, fun r hr' => ?_⟩
     simp only [hix, ↓reduceIte, Option.map_eq_some_iff] at hr'
     obtain ⟨r₀, hr₀, rfl⟩ := hr'
     rw [Term.eval_replace (he.trans hx.symm)]
     exact hr r₀ hr₀
 
-/-- `typeOf` gives a term whose value is the type of the term's value. -/
-theorem typeOf_sound {S Sc : Sigs} {Γ : Entries} {ρ : List Value} {t T : Term} {v V : Value} (hΓ : Sat Sc Γ ρ)
-    (hS : SigsClose S ρ Sc) (ht : t.eval ρ [] = some v) (hv : HasType Sc v V) (hT : typeOf S Γ t = some T) :
-    T.eval ρ [] = some V := by
+/-- Between two scopes that differ only in rules, what `Sat` asks beyond `WSat` carries over. -/
+theorem Sat.of_eraseRules {S : Sigs} {Γ Γ' : Entries} {ρ : List Value} (hΓ : Sat S Γ ρ) (hW : WSat S Γ' ρ)
+    (he : Γ'.map (fun en => { en with rule := none }) = Γ.map (fun en => { en with rule := none })) :
+    Sat S Γ' ρ := by
+  refine ⟨hW, fun i en v A hen hv hA ht => ?_⟩
+  have h1 := congrArg (·[i]?) he
+  simp only [List.getElem?_map, hen, Option.map_some] at h1
+  cases hen₀ : Γ[i]? with
+  | none => simp [hen₀] at h1
+  | some en₀ =>
+    simp only [hen₀, Option.map_some, Option.some.injEq] at h1
+    have hty : en₀.type = en.type := (congrArg Entry.type h1).symm
+    have hta : en₀.tainted = en.tainted := (congrArg Entry.tainted h1).symm
+    exact hΓ.2 i en₀ v A hen₀ hv (hty ▸ hA) (hta ▸ ht)
+
+theorem Sat.addRule {S : Sigs} {Γ : Entries} {ρ : List Value} {x : Nat} {e : Term} {v : Value}
+    (hΓ : Sat S Γ ρ) (hx : ρ[x]? = some v) (he : e.eval ρ [] = some v) : Sat S (addRule Γ x e) ρ := by
+  refine hΓ.of_eraseRules (hΓ.1.addRule hx he) ?_
+  apply List.ext_getElem?
+  intro i
+  simp only [List.getElem?_map, addRule_getElem?]
+  cases Γ[i]? <;> simp only [Option.map_none, Option.map_some]
+  split <;> rfl
+
+/-- `typeOf` gives a term whose value is the type a term's value has by its head. -/
+theorem typeOf_eval {S Sc : Sigs} {Γ : Entries} {ρ : List Value} {t T : Term} {v A : Value} (hΓ : WSat Sc Γ ρ)
+    (hS : SigsClose S ρ Sc) (hJ : Sc.find junkHead = none) (ht : t.eval ρ [] = some v) (hv : WType Sc v A)
+    (hT : typeOf S Γ t = some T) : T.eval ρ [] = some A := by
   cases t with
   | entry i =>
     simp only [typeOf, Option.map_eq_some_iff] at hT
     obtain ⟨en, hen, rfl⟩ := hT
-    obtain ⟨w, A, hw, hA, hwA, -⟩ := hΓ.2 i en hen
+    obtain ⟨w, B, hw, hB, -, hwB, -⟩ := hΓ.2 i en hen
     simp only [Term.eval] at ht
     rw [ht] at hw; cases hw
-    rw [hA, hv.unique hwA]
+    rw [hB, hwB.unique hv]
   | bound => simp [Term.eval] at ht
   | app h as =>
     obtain ⟨vs, hvs, rfl⟩ := Term.eval_app.1 ht
     simp only [typeOf, Option.map_eq_some_iff] at hT
     obtain ⟨sig, hs, rfl⟩ := hT
-    obtain ⟨-, hr⟩ := (hS.hasType_app_iff hs).1 hv
-    rw [Term.eval_subst hvs]
+    obtain ⟨sig', hc, ha⟩ := hS h sig hs
+    have hne : h ≠ junkHead := fun e => by rw [e, hJ] at hc; cases hc
+    simp only [WType, hne, ↓reduceIte] at hv
+    obtain ⟨sig'', hc', hr⟩ := hv
+    rw [hc] at hc'; cases hc'
+    rw [Term.eval_subst hvs, ha.ret vs]
     exact hr
+
+/-- `typeOf` gives a term whose value is the type of the term's value. -/
+theorem typeOf_sound {S Sc : Sigs} {Γ : Entries} {ρ : List Value} {t T : Term} {v V : Value} (hΓ : WSat Sc Γ ρ)
+    (hS : SigsClose S ρ Sc) (hJ : Sc.find junkHead = none) (ht : t.eval ρ [] = some v) (hv : HasType Sc v V)
+    (hT : typeOf S Γ t = some T) : T.eval ρ [] = some V :=
+  typeOf_eval hΓ hS hJ ht (hv.wtype hJ) hT
 
 end Pledge

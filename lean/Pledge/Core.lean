@@ -210,15 +210,6 @@ mutual
         TeleSat S ρ (b :: Δ) env (v :: vs)
 end
 
-/-- `Sat S Γ ρ`: the valuation `ρ` gives every entry of `Γ` a value of the entry's type
-that agrees with the entry's rule (SOUNDNESS.md part 3). `S` is meant to hold closed
-signatures, as for `HasType`. -/
-def Sat (S : Sigs) (Γ : Entries) (ρ : List Value) : Prop :=
-  ρ.length = Γ.length ∧
-  ∀ (i : Nat) (en : Entry), Γ[i]? = some en →
-    ∃ v A, ρ[i]? = some v ∧ en.type.eval ρ [] = some A ∧ HasType S v A ∧
-    ∀ r : Term, en.rule = some r → r.eval ρ [] = some v
-
 mutual
   /-- Every entry's id is below `n`. -/
   def Term.entriesBelow (n : Nat) : Term → Bool
@@ -255,6 +246,67 @@ mutual
     | v :: vs => v.noRemoved && Value.noRemovedList vs
 end
 
+/-- The head of `Value.junk`. No signature is meant to have it: `sorry` is a keyword, so no
+declaration is named so. -/
+def junkHead : Head := ⟨.ctor, "sorry"⟩
+
+/-- The value a soundness proof may give a tainted result that need have none (§12), such as a result
+of `sorry`: it carries the type `A` the result is meant to have, and no typing rule gives it a type. -/
+def Value.junk (A : Value) : Value := .app junkHead [A]
+
+/-- `WType S v A`: `v` has the type `A` by its head alone, without its arguments being typed: an
+application's type is its signature's return, and `junk A`'s is `A`. -/
+def WType (S : Sigs) : Value → Value → Prop
+  | .app h vs, A => if h = junkHead then vs = [A] else ∃ sig, S.find h = some sig ∧ sig.ret.eval [] vs = some A
+  | .removed, _ => False
+
+/-- `WSat S Γ ρ`: the valuation `ρ` gives every entry of `Γ` a value without `removed` that has the
+entry's type by its head (`WType`) and agrees with the entry's rule. -/
+def WSat (S : Sigs) (Γ : Entries) (ρ : List Value) : Prop :=
+  ρ.length = Γ.length ∧
+  ∀ (i : Nat) (en : Entry), Γ[i]? = some en →
+    ∃ v A, ρ[i]? = some v ∧ en.type.eval ρ [] = some A ∧ v.noRemoved = true ∧ WType S v A ∧
+    ∀ r : Term, en.rule = some r → r.eval ρ [] = some v
+
+/-- `Sat S Γ ρ` (SOUNDNESS.md part 3, with taint): `WSat`, and every entry not marked tainted has a
+value of its type. A tainted entry's value may be `Value.junk`, so that what relies on `sorry` is
+meant to need no value. `S` is meant to hold closed signatures, as for `HasType`. -/
+def Sat (S : Sigs) (Γ : Entries) (ρ : List Value) : Prop :=
+  WSat S Γ ρ ∧ ∀ (i : Nat) (en : Entry) (v A : Value), Γ[i]? = some en → ρ[i]? = some v →
+    en.type.eval ρ [] = some A → en.tainted = false → HasType S v A
+
+/-- The run-time value `a` approximates the ideal value `i`: `a` is `removed` where erasure or taint
+removed it (§12, §16), and otherwise applies `i`'s head to arguments approximating `i`'s. -/
+inductive Approx : Value → Value → Prop
+  | removed {i : Value} : Approx .removed i
+  | app {h : Head} {as is : List Value} : as.length = is.length →
+      (∀ (k : Nat) (a i : Value), as[k]? = some a → is[k]? = some i → Approx a i) → Approx (.app h as) (.app h is)
+
+/-- Whether argument `k` of an application of `h` is erased (§16): every argument of a type
+constructor from phase 2 on, and a parameter or field declared `erased`. -/
+def Sigs.erasedArg (S : Sigs) (phase : Nat) (h : Head) (k : Nat) : Bool :=
+  (h.kind == .type && 2 ≤ phase) || ((S.find h).bind (·.params[k]?)).any (·.mult == .erased)
+
+/-- `Rel S phase a i`: the run-time value `a` of a result in a position that is not erased has the
+ideal value `i`'s head, and so on in every argument that is not erased; an erased argument only
+approximates (`Approx`). -/
+inductive Rel (S : Sigs) (phase : Nat) : Value → Value → Prop
+  | app {h : Head} {as is : List Value} : as.length = is.length →
+      (∀ (k : Nat) (a i : Value), as[k]? = some a → is[k]? = some i → S.erasedArg phase h k = true → Approx a i) →
+      (∀ (k : Nat) (a i : Value), as[k]? = some a → is[k]? = some i → S.erasedArg phase h k = false →
+        Rel S phase a i) →
+      Rel S phase (.app h as) (.app h is)
+
+/-- The relation between a run-time and an ideal value at a position of multiplicity `m`. -/
+def MultRel (S : Sigs) (phase : Nat) : Mult → Value → Value → Prop
+  | .erased, a, i => Approx a i
+  | .many, a, i => Rel S phase a i
+
+/-- `MultRel`, position by position, for the multiplicities `ms`. -/
+def MultsRel (S : Sigs) (phase : Nat) (ms : List Mult) (as is : List Value) : Prop :=
+  as.length = ms.length ∧ is.length = ms.length ∧
+  ∀ (k : Nat) (m : Mult) (a i : Value), ms[k]? = some m → as[k]? = some a → is[k]? = some i → MultRel S phase m a i
+
 mutual
   /-- Replaces each entry `i` that `ρ` gives a value by that value as a term. -/
   def Term.close (ρ : List Value) : Term → Term
@@ -273,10 +325,11 @@ def Sig.close (ρ : List Value) (sig : Sig) : Sig :=
   { sig with params := sig.params.map (TBinder.close ρ), ret := sig.ret.close ρ }
 
 /-- The binders `b` under `ρ` and `b'` under `ρ'` have the same type and the same `is` clause,
-by value, whatever the values of the bound variables. -/
+by value, whatever the values of the bound variables, and the same multiplicity. -/
 structure TBinder.Agree (ρ ρ' : List Value) (b b' : TBinder) : Prop where
   type : ∀ env, b.type.eval ρ env = b'.type.eval ρ' env
   is : ∀ env, b.is.map (Term.eval ρ env) = b'.is.map (Term.eval ρ' env)
+  mult : b.mult = b'.mult
 
 /-- `TBinder.Agree`, binder by binder. -/
 def Telescope.Agree (ρ ρ' : List Value) : Telescope → Telescope → Prop
