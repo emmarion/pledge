@@ -297,17 +297,11 @@ def SigsClose (S : Sigs) (ρ : List Value) (Sc : Sigs) : Prop :=
 /-- The evaluator's environment: the values of the names in scope, newest first. -/
 abbrev Env := List (String × Value)
 
-/-- An activation's measure (SOUNDNESS.md part 6): the group of the running function and
-the values of its `subterm` parameters, padded with `none` to the group's largest number of
-`subterm` parameters. Top-level code runs with a group above every function's. -/
-structure Act where
-  group : Nat
-  subs : List (Option Value)
-  deriving Repr, DecidableEq, Inhabited
-
 /-- A function as the evaluator sees it: the body the checker left after removing what
 taint and erasure remove (§14), and the top-level environment in force where the function
-was declared. `subterm` says, per parameter, whether it is marked `subterm`. -/
+was declared. `subterm` says, per parameter, whether it is marked `subterm`; with `group`, the
+function's group, and `pad`, the group's largest number of `subterm` parameters, it is read only by
+the totality proof's measure (`calleeAct`), not by evaluation. -/
 structure FnDef where
   name : String
   params : List Id

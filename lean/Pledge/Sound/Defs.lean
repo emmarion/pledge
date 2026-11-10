@@ -1,4 +1,5 @@
 import Pledge.Sound.Plain
+import Pledge.Sound.Measure
 import Pledge.UnifySound
 
 namespace Pledge
@@ -61,18 +62,15 @@ def Complete (W : World) (T : String) (cs : List String) : Prop :=
     h.kind = .ctor ∧ h.name ∈ cs
 
 /-- What a call to `d` is meant to do from an activation `act`: on arguments satisfying the parameters, if the
-measure decreases, the body runs to results satisfying the returns. Its left side is the right side of
-`evalExpr_call`. -/
-def callBody (P : Prog) (d : FnDef) (vs : List Value) : Except String (List Value) := do
-  take d.returns (← evalExpr P (calleeAct d vs) (← bindIds d.globals d.params vs) d.body)
-
+measure decreases, the call returns results satisfying the returns. `act` is only the measure the totality proof
+inducts on; the call's evaluation (`CallRel`) does not consult it. -/
 def CallSpec (W : World) (d : FnDef) (sig : FnSig) (act : Act) : Prop :=
   ∀ vs, TeleSat W.Sc W.ρ sig.params [] vs → Act.lt (calleeAct d vs) act →
-    ∃ rs, callBody W.P d vs = .ok rs ∧ TeleSat W.Sc W.ρ sig.returns vs rs
+    ∃ rs, CallRel W.P d vs rs ∧ TeleSat W.Sc W.ρ sig.returns vs rs
 
 /-- `CallSpec` from every activation. -/
 def FnSpec (W : World) (d : FnDef) (sig : FnSig) : Prop :=
-  ∀ vs, TeleSat W.Sc W.ρ sig.params [] vs → ∃ rs, callBody W.P d vs = .ok rs ∧ TeleSat W.Sc W.ρ sig.returns vs rs
+  ∀ vs, TeleSat W.Sc W.ρ sig.params [] vs → ∃ rs, CallRel W.P d vs rs ∧ TeleSat W.Sc W.ρ sig.returns vs rs
 
 /-- A function global `n` with the signature `sig`, called from the activation `act` inside the function `fn` (or at
 the top level). -/
@@ -131,7 +129,7 @@ position is given, with the scope after it satisfied by an extension of the valu
 def ExprPost (C : Ctx) (sc : Scope) (g : Option Given) (n0 : Nat) (W : World) (ρ : List Value) (env : Env)
     (act : Act) (o : Out) : Prop :=
   o.sc.sigs = sc.sigs ∧ o.sc.names = sc.names ∧ (∀ r ∈ o.res, r.tainted = false ∧ r.erased = false) ∧
-  ∃ ρ' vs, evalExpr W.P act env o.tree = .ok vs ∧ Inv C o.sc n0 W (ρ ++ ρ') env act ∧
+  ∃ ρ' vs, Eval W.P env o.tree vs ∧ Inv C o.sc n0 W (ρ ++ ρ') env act ∧
     Term.evalList (ρ ++ ρ') [] (o.res.map (·.term)) = some vs ∧ (∀ v ∈ vs, ∃ V, HasType W.Sc v V) ∧
     ∀ g', g = some g' → ∀ envv, Term.evalList ρ [] g'.env = some envv → WantsSat W.Sc (ρ ++ ρ') g'.wants envv vs
 
@@ -143,7 +141,7 @@ def ExprSound (e : Expr) : Prop :=
 def StmtSound (s : Stmt) : Prop :=
   ∀ (C : Ctx) (sc : Scope) (n0 : Nat) (W : World) (ρ : List Value) (env : Env) (act : Act) (o : StmtOut),
     Inv C sc n0 W ρ env act → checkStmt C sc s = .ok o →
-    o.sc.sigs = sc.sigs ∧ ∃ ρ' env', evalStmt W.P act env o.tree = .ok env' ∧ Inv C o.sc n0 W (ρ ++ ρ') env' act
+    o.sc.sigs = sc.sigs ∧ ∃ ρ' env', EvalStmt W.P env o.tree env' ∧ Inv C o.sc n0 W (ρ ++ ρ') env' act
 
 /-- What a goal states, in a world. -/
 def GoalHolds (W : World) (g : CheckedGoal) : Prop :=
@@ -158,7 +156,7 @@ def GoalBelow (n : Nat) (g : CheckedGoal) : Prop :=
 
 /-- The world of a top-level state, given the values of its entries. -/
 def TopState.world (st : TopState) (ρ : List Value) : World :=
-  ⟨⟨st.fns, kindOf st.globals⟩, st.sc.sigs.map (Sig.close ρ), ρ⟩
+  ⟨st.prog, st.sc.sigs.map (Sig.close ρ), ρ⟩
 
 /-- The invariant of the top level, between items, for the valuation `ρ` of the top-level entries. -/
 structure TopInv (st : TopState) (ρ : List Value) : Prop where

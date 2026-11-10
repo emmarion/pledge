@@ -871,7 +871,7 @@ theorem GroupOk.step {st : TopState} {ρ : List Value} {heads : List FnHead} {bo
     (hfind : ∀ p ∈ heads.zip bodies, W.P.fns.find p.1.fn.name = some (mkDef st pad p))
     {p : FnHead × Out} (hp : p ∈ heads.zip bodies) {vs : List Value} (hvs : TeleSat W.Sc W.ρ p.1.sig.params [] vs)
     (ih : ∀ q ∈ heads.zip bodies, CallSpec W (mkDef st pad q) q.1.sig (calleeAct (mkDef st pad p) vs)) :
-    ∃ rs, callBody W.P (mkDef st pad p) vs = .ok rs ∧ TeleSat W.Sc W.ρ p.1.sig.returns vs rs := by
+    ∃ rs, CallRel W.P (mkDef st pad p) vs rs ∧ TeleSat W.Sc W.ρ p.1.sig.returns vs rs := by
   obtain ⟨h, o⟩ := p
   have hmem : h ∈ heads := (List.of_mem_zip hp).1
   obtain ⟨hs, hpl⟩ := G.spec h hmem
@@ -962,12 +962,7 @@ theorem GroupOk.step {st : TopState} {ρ : List Value} {heads : List FnHead} {bo
   have hw' := hw _ rfl vs (by simp only [returnsGiven]; rw [henv]; exact hevids)
   have ht : TeleSat W.Sc (ρ ++ vs ++ ρ') h.sig.returns vs vr := wantsSat_teleSat hw'
   refine ⟨vr, ?_, (TeleSat.iff_of_entriesBelow ?_ hrb).1 ht⟩
-  · simp only [callBody]
-    rw [hbind, ok_bind]
-    have hev' : evalExpr W.P (calleeAct (mkDef st pad (h, o)) vs) (pushed (mkDef st pad (h, o)).params vs ++ st.env)
-        (mkDef st pad (h, o)).body = .ok vr := hev
-    rw [hev', ok_bind]
-    exact take_of_length (by simpa [mkDef] using ht.length_eq)
+  · exact .mk hbind hev (take_of_length (by simpa [mkDef] using ht.length_eq))
   · rw [hpre, List.append_assoc, List.take_append_of_le_length (Nat.le_of_eq hρl.symm), hρt]
 
 /-- Every function of a checked group meets its specification in every later world (SOUNDNESS.md part 6), by
@@ -978,7 +973,7 @@ theorem GroupOk.fnSpec {st : TopState} {ρ : List Value} {heads : List FnHead} {
     ∀ p ∈ heads.zip bodies, FnSpec W (mkDef st pad p) p.1.sig := by
   suffices H : ∀ a p, p ∈ heads.zip bodies → ∀ vs, TeleSat W.Sc W.ρ p.1.sig.params [] vs →
       calleeAct (mkDef st pad p) vs = a →
-      ∃ rs, callBody W.P (mkDef st pad p) vs = .ok rs ∧ TeleSat W.Sc W.ρ p.1.sig.returns vs rs from
+      ∃ rs, CallRel W.P (mkDef st pad p) vs rs ∧ TeleSat W.Sc W.ρ p.1.sig.returns vs rs from
     fun p hp vs hvs => H _ p hp vs hvs rfl
   intro a
   induction a using WellFounded.induction Act.lt_wf with
@@ -1038,11 +1033,11 @@ theorem GroupOk.post {st : TopState} {ρ : List Value} {heads : List FnHead} {bo
     obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hd
     exact ⟨p, hp, rfl⟩
   have hle : (st.world ρ).Le (st'.world ρ) := by
-    refine ⟨⟨fun n d hd => ?_, fun n k hd hk => ⟨?_, by simp only [TopState.world, hkind]; exact hk⟩⟩,
+    refine ⟨⟨fun n d hd => ?_, fun n k hd hk => ⟨?_, by simp only [TopState.world, TopState.prog, hkind]; exact hk⟩⟩,
       by rw [hSc]; exact Sigs.Sub.refl _, List.prefix_refl _, fun h' sig' ws hd us hn hs => ?_⟩
-    · simp only [TopState.world, hfns, Fns.find, List.find?_append] at hd ⊢
+    · simp only [TopState.world, TopState.prog, hfns, Fns.find, List.find?_append] at hd ⊢
       rw [hd]; rfl
-    · simp only [TopState.world, hfns, Fns.find, List.find?_append] at hd ⊢
+    · simp only [TopState.world, TopState.prog, hfns, Fns.find, List.find?_append] at hd ⊢
       rw [hd, Option.none_or]
       refine List.find?_eq_none.2 fun d hdm he => ?_
       obtain ⟨p, hp, rfl⟩ := hdef d hdm
@@ -1053,7 +1048,7 @@ theorem GroupOk.post {st : TopState} {ρ : List Value} {heads : List FnHead} {bo
     · rw [hSc] at hs; rw [hs] at hn; cases hn
   refine ⟨hle, ?_⟩
   have hfind : ∀ W, (st'.world ρ).Le W → ∀ p ∈ heads.zip bodies, W.P.fns.find p.1.fn.name = some (mkDef st pad p) :=
-    fun W hW p hp => hW.prog.fns _ _ (by simp only [TopState.world, hfns]; exact fns_find_group G hp)
+    fun W hW p hp => hW.prog.fns _ _ (by simp only [TopState.world, TopState.prog, hfns]; exact fns_find_group G hp)
   refine ⟨hph ▸ hI.phase, by rw [hSc, hsc]; exact hI.sat, by rw [hSc, hsc, henv]; exact hI.names, hsc ▸ hI.inert,
     hsc ▸ hI.sigsOk, hsc ▸ hI.rets, fun h sig hs => by rw [hkind]; exact hI.sigNames h sig (hsc ▸ hs), ?_, ?_, ?_,
     by rw [hgoal, hsc]; exact hI.goal, fun hp => ?_, hsc ▸ hI.typeSig⟩

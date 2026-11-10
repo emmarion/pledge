@@ -38,9 +38,9 @@ export const check: Check = (source, phase, where) => {
   }
 };
 
-const testsDir = join(root, "tests");
-const pledgeFiles = readdirSync(testsDir).filter(f => f.endsWith(".pledge")).sort().map(f =>
-  ({ source: readFileSync(join(testsDir, f), "utf8"), phase: f.startsWith("phase2_") ? 2 : 1, origin: `tests/${f}` }));
+const pledgeFiles = ["tests", "lean/tests/extra"].flatMap(dir => readdirSync(join(root, dir))
+  .filter(f => f.endsWith(".pledge")).sort().map(f => ({ source: readFileSync(join(root, dir, f), "utf8"),
+    phase: f.startsWith("phase2_") ? 2 : 1, origin: `${dir}/${f}` })));
 const tutorial = pages.flatMap(p => [["initial", p.initial], ["solution", p.solution]].map(([which, learner]) =>
   ({ source: [...p.boxes, learner].join("\n"), phase: p.phase, origin: `tutorial/${p.slug}/${which}` })));
 

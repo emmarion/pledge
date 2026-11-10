@@ -40,17 +40,42 @@ def TopState.ctx (st : TopState) (inDecl : Bool := false) : Ctx :=
   { phase := st.phase, globals := st.globals,
     decl := if inDecl then some (st.sc.Γ.length, st.sc.names.length) else none }
 
+/-- The evaluator's view of the program at the top level. -/
+def TopState.prog (st : TopState) : Prog := ⟨st.fns, kindOf st.globals⟩
+
 /-- Evaluates a checked tree at the top level (§11); nothing for a tainted result (§12). -/
 def TopState.eval (st : TopState) (pos : Pos) (tree : Expr) (tainted : Bool) : CheckM (Option Value) :=
   if tainted then pure none
-  else match evalExpr ⟨st.fns, kindOf st.globals⟩ (Act.top st.fns) st.env tree >>= one with
+  else match evalExpr st.prog st.env tree >>= fun r => one r.1 with
     | .ok v => pure (some v)
     | .error msg => failAt pos fun _ => s!"evaluation stopped: {msg}"
 
 def TopState.run (st : TopState) (s : Stmt) : CheckM Env :=
-  match evalStmt ⟨st.fns, kindOf st.globals⟩ (Act.top st.fns) st.env s with
-  | .ok env => pure env
+  match evalStmt st.prog st.env s with
+  | .ok env => pure env.1
   | .error msg => failAt s.pos fun _ => s!"evaluation stopped: {msg}"
+
+/-- `TopState.eval` on an untainted result either fails or returns the value `Eval` relates the tree to. -/
+theorem TopState.eval_cert {st : TopState} {pos : Pos} {tree : Expr} {o : Option Value}
+    (h : st.eval pos tree false = .ok o) : ∃ v, o = some v ∧ Eval st.prog st.env tree [v] := by
+  simp only [TopState.eval, Bool.false_eq_true, ↓reduceIte] at h
+  split at h
+  · rename_i v hv
+    cases h
+    obtain ⟨⟨vs, hvs⟩, -, ho⟩ := bind_eq_ok.1 hv
+    obtain rfl : vs = [v] := one_eq_ok ho
+    exact ⟨v, rfl, hvs⟩
+  · cases h
+
+/-- An environment `TopState.run` returns is the one `EvalStmt` relates the statement to. -/
+theorem TopState.run_cert {st : TopState} {s : Stmt} {env : Env} (h : st.run s = .ok env) :
+    EvalStmt st.prog st.env s env := by
+  unfold TopState.run at h
+  split at h
+  · rename_i r _
+    cases h
+    exact r.2
+  · cases h
 
 def addSig (st : TopState) (s : Sig) (g : Global) : TopState :=
   { st with sc := { st.sc with sigs := st.sc.sigs ++ [s] }, globals := st.globals ++ [g] }

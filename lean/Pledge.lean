@@ -12,6 +12,7 @@ import Pledge.Check.Basic
 import Pledge.Check.Expr
 import Pledge.Check.Top
 import Pledge.Sound.Plain
+import Pledge.Sound.Measure
 import Pledge.Sound.Defs
 import Pledge.Sound.Basic
 import Pledge.Sound.Term

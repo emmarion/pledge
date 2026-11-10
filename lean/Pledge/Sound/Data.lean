@@ -452,8 +452,9 @@ theorem Group.world_Sc (hg : Group st ts cs new done st') :
 
 theorem Group.le (hI : TopInv st ρ) (hg : Group st ts cs new true st') : (st.world ρ).Le (st'.world ρ) := by
   have hfns : st'.fns = st.fns := by rw [hg.eq]
-  refine ⟨⟨fun n d h => by simpa [TopState.world, hfns] using h,
-    fun n k hf hk => ⟨by simpa [TopState.world, hfns] using hf, hg.kindOf_old hk⟩⟩, ?_, List.prefix_refl _, ?_⟩
+  refine ⟨⟨fun n d h => by simpa [TopState.world, TopState.prog, hfns] using h,
+    fun n k hf hk => ⟨by simpa [TopState.world, TopState.prog, hfns] using hf, hg.kindOf_old hk⟩⟩, ?_,
+    List.prefix_refl _, ?_⟩
   · rw [hg.world_Sc]; exact Sigs.sub_append_close _ _ _
   · intro h sig' ws hd us hn hs hr
     rw [hg.world_Sc, List.map_append] at hs
@@ -557,14 +558,15 @@ theorem Group.topInv (hI : TopInv st ρ) (hg : Group st ts cs new true st') : To
           obtain ⟨s, hs⟩ := hS
           exact ⟨_, by rw [hs]; rfl⟩
         have hne := hg.ne_Type hI hn'
-        refine ⟨HeadOk.mono hW' ⟨hg.fns_none hI hn', by simp [TopState.world, kindOf, hg.find?_type hT], hS⟩, ?_⟩
+        refine ⟨HeadOk.mono hW' ⟨hg.fns_none hI hn',
+          by simp [TopState.world, TopState.prog, kindOf, hg.find?_type hT], hS⟩, ?_⟩
         rintro cs' ⟨⟩ -
         refine ⟨hne, let ⟨s, hs⟩ := hSc; ⟨s, hW'.sigs _ _ hs⟩, Complete.mono hW' hne hSc (hg.complete hI hT),
           fun c hc => ?_⟩
         obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hc
         exact hg.find?_ctor (List.mem_filter.1 hp).1
       · have hn' := List.mem_append_right ts (List.mem_map_of_mem (f := (·.2)) hp)
-        exact HeadOk.mono hW' ⟨hg.fns_none hI hn', by simp [TopState.world, kindOf, hg.find?_ctor hp],
+        exact HeadOk.mono hW' ⟨hg.fns_none hI hn', by simp [TopState.world, TopState.prog, kindOf, hg.find?_ctor hp],
           let ⟨_, hs, hh⟩ := hctors p hp; Sigs.find_of_mem (List.mem_append_right _ hs) hh⟩
   · obtain ⟨g, h1, h2⟩ := hI.proved hp
     exact ⟨g, h1, fun W' hW' => h2 W' (hle.trans hW')⟩

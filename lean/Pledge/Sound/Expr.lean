@@ -8,7 +8,7 @@ the parameters, `prevv` being the values of the arguments before them. -/
 def ArgsPost (C : Ctx) (sc : Scope) (n0 : Nat) (W : World) (ρ : List Value) (env : Env) (act : Act)
     (params : Telescope) (prevv : List Value) (a : ArgsOut) : Prop :=
   a.sc.sigs = sc.sigs ∧ a.sc.names = sc.names ∧ (∀ r ∈ a.res, r.tainted = false) ∧
-  ∃ ρ' vs, evalList W.P act env (a.trees.map Arg.expr) = .ok vs ∧ Inv C a.sc n0 W (ρ ++ ρ') env act ∧
+  ∃ ρ' vs, EvalList W.P env (a.trees.map Arg.expr) vs ∧ Inv C a.sc n0 W (ρ ++ ρ') env act ∧
     Term.evalList (ρ ++ ρ') [] (a.res.map (·.term)) = some vs ∧ (∀ v ∈ vs, ∃ V, HasType W.Sc v V) ∧
     TeleSat W.Sc (ρ ++ ρ') params prevv vs
 
@@ -33,7 +33,7 @@ theorem checkArgs_sound {args : List Arg} (ih : ∀ a ∈ args, ExprSound a.expr
     | nil =>
       simp only [checkArgs, pure, Except.pure, Except.ok.injEq] at h
       subst h
-      exact ⟨rfl, rfl, by simp, [], [], by simp [evalList_nil], by simpa using hI, rfl, by simp, .nil⟩
+      exact ⟨rfl, rfl, by simp, [], [], .nil, by simpa using hI, rfl, by simp, .nil⟩
   | cons arg args ihs =>
     intro C sc owner role params prev a n0 W ρ env act prevv hI hm hl hprev h
     obtain ⟨m, e⟩ := arg
@@ -73,8 +73,7 @@ theorem checkArgs_sound {args : List Arg} (ih : ∀ a ∈ args, ExprSound a.expr
         rcases List.mem_cons.1 hr' with rfl | hr'
         · exact (hres r' (by simp)).1
         · exact hres₂ r' hr'
-      · simp only [List.map_cons, Arg.expr]
-        rw [evalList_cons, hev, ok_bind, one_singleton, ok_bind, hev₂]; rfl
+      · exact .cons hev rfl hev₂
       · simp only [List.map_cons]
         rw [← List.append_assoc]
         exact Term.evalList_cons_eq_some.2 ⟨v, vs₂, Term.eval_frame_ρ ρ₂ hv, hvs₂, rfl⟩
@@ -134,8 +133,7 @@ theorem call_core {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSound a
   obtain ⟨rfl, -, her⟩ := finish_inert (fun g' h' => (hg g' h').mult) hI'.inert.taintedBy hun' hf
   refine ⟨hsigs, hnames, fun r hr => ⟨hun' r hr, her r hr⟩, ρ' ++ rs, rs, ?_, by simpa using hI'',
     by simpa using hrv, hty, fun g' hg' envv henv => by simpa using (hw g' hg' envv (hframe henv)).2⟩
-  rw [evalExpr_call hev hd hlt']
-  exact hcall
+  exact .call hev hd hcall
 
 /-- A call (§8, §9): the arguments satisfy the parameters, the measure decreases, so the body runs to results
 satisfying the returns. -/
@@ -239,7 +237,7 @@ theorem ctorApp_core {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSoun
   obtain ⟨rfl, -, her⟩ := finish_inert (Given.ok_mult hg) hI'.inert.taintedBy (by simp [hun]) hf
   refine ⟨hsigs, hnames, fun r hr => ⟨by simp at hr; subst hr; exact hun, her r hr⟩, ρ', [.app sig.head vs], ?_, hI',
     hvs1, hty1, fun g' hg' envv henv => (hw g' hg' envv (Term.evalList_frame_ρ ρ' henv)).2⟩
-  rw [evalExpr_ctor hev hk.fns hk.kind, hhead]
+  rw [hhead]; exact .ctor hev hk.fns hk.kind
 
 theorem ctorApp_sound {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSound a.expr) {C : Ctx} {sc : Scope}
     {g : Option Given} {n0 : Nat} {W : World} {ρ : List Value} {env : Env} {act : Act} {o : Out}
@@ -320,7 +318,7 @@ theorem var_sound (x : Id) : ExprSound (.var x) := by
       refine ⟨rfl, rfl, fun r' hr' => ⟨?_, her r' hr'⟩, [], [v], ?_, by simpa using hI, by simpa using hvs, hty,
         fun g' hg' envv henv' => by simpa using (hw g' hg' envv henv').2⟩
       · simp only [List.mem_singleton] at hr'; subst hr'; exact (hI.lookup_untainted hl :)
-      · rw [evalExpr_var, hx]; simp [henv, pure, Except.pure]
+      · exact .var (by simp [hx, henv])
 
 theorem WantSat.frame {S : Sigs} {ρ env : List Value} {w : Want} {v : Value} (ρ' : List Value)
     (h : WantSat S ρ w env v) : WantSat S (ρ ++ ρ') w env v :=
@@ -345,7 +343,7 @@ theorem checkElems_sound {es : List Expr} (ih : ∀ e ∈ es, ExprSound e) :
       Inv C sc n0 W ρ env act → (∀ g', g = some g' → g'.Ok ρ ∧ g'.wants.length = prev.length + es.length) →
       Term.evalList ρ [] (prev.map (·.term)) = some prevv → checkElems C sc g prev es = .ok o →
       o.sc.sigs = sc.sigs ∧ o.sc.names = sc.names ∧ (∀ r ∈ o.res, r.tainted = false) ∧
-      ∃ ρ' vs, evalList W.P act env o.trees = .ok vs ∧ Inv C o.sc n0 W (ρ ++ ρ') env act ∧
+      ∃ ρ' vs, EvalList W.P env o.trees vs ∧ Inv C o.sc n0 W (ρ ++ ρ') env act ∧
         Term.evalList (ρ ++ ρ') [] (o.res.map (·.term)) = some vs ∧ (∀ v ∈ vs, ∃ V, HasType W.Sc v V) ∧
         ∀ g', g = some g' → ∀ envv, Term.evalList ρ [] g'.env = some envv →
           WantsSat W.Sc (ρ ++ ρ') (g'.wants.drop prev.length) (envv ++ prevv) vs := by
@@ -354,7 +352,7 @@ theorem checkElems_sound {es : List Expr} (ih : ∀ e ∈ es, ExprSound e) :
     intro C sc g prev o n0 W ρ env act prevv hI hg _ h
     simp only [checkElems, pure, Except.pure, Except.ok.injEq] at h
     subst h
-    refine ⟨rfl, rfl, by simp, [], [], by simp [evalList_nil], by simpa using hI, rfl, by simp, ?_⟩
+    refine ⟨rfl, rfl, by simp, [], [], .nil, by simpa using hI, rfl, by simp, ?_⟩
     intro g' hg' envv _
     have : g'.wants.drop prev.length = [] := by simp [(hg g' hg').2]
     rw [this]; trivial
@@ -392,7 +390,7 @@ theorem checkElems_sound {es : List Expr} (ih : ∀ e ∈ es, ExprSound e) :
       rcases List.mem_cons.1 hr' with rfl | hr'
       · exact (hres r' (by simp)).1
       · exact hres₂ r' hr'
-    · rw [evalList_cons, hev, ok_bind, one_singleton, ok_bind, hev₂]; rfl
+    · exact .cons hev rfl hev₂
     · simp only [List.map_cons]
       rw [← List.append_assoc]
       exact Term.evalList_cons_eq_some.2 ⟨v, vs₂, Term.eval_frame_ρ ρ₂ hv, hvs₂, rfl⟩
@@ -441,20 +439,20 @@ theorem tuple_sound (p : Pos) {es : List Expr} (ih : ∀ e ∈ es, ExprSound e) 
   obtain ⟨hsigs, hnames, hres, ρ', vs, hev, hI', hvs, hty, hw⟩ := checkElems_sound ih (prev := []) (prevv := []) hI
     (fun g' hg' => ⟨hg g' hg', by simp [hlen g' hg']⟩) (rfl : Term.evalList ρ [] [] = some []) hoe
   obtain ⟨rfl, -, her⟩ := finish_inert (Given.ok_mult hg) hI'.inert.taintedBy hres hf
-  exact ⟨hsigs, hnames, fun r hr => ⟨hres r hr, her r hr⟩, ρ', vs, by rw [evalExpr_tuple]; exact hev, hI', hvs, hty,
+  exact ⟨hsigs, hnames, fun r hr => ⟨hres r hr, her r hr⟩, ρ', vs, .tuple hev, hI', hvs, hty,
     fun g' hg' envv henv => by simpa using hw g' hg' envv henv⟩
 
 theorem checkStmts_sound {ss : List Stmt} (ih : ∀ s ∈ ss, StmtSound s) :
     ∀ {C : Ctx} {sc : Scope} {o : StmtsOut} {n0 : Nat} {W : World} {ρ : List Value} {env : Env} {act : Act},
       Inv C sc n0 W ρ env act → checkStmts C sc ss = .ok o →
       o.sc.sigs = sc.sigs ∧ ∃ ρ' env', Inv C o.sc n0 W (ρ ++ ρ') env' act ∧
-        ∀ f, evalBlock W.P act env o.trees f = evalExpr W.P act env' f := by
+        ∀ f vs, Eval W.P env' f vs → EvalBlock W.P env o.trees f vs := by
   induction ss with
   | nil =>
     intro C sc o n0 W ρ env act hI h
     simp only [checkStmts, pure, Except.pure, Except.ok.injEq] at h
     subst h
-    exact ⟨rfl, [], env, by simpa using hI, fun f => evalBlock_nil⟩
+    exact ⟨rfl, [], env, by simpa using hI, fun _ _ h => .nil h⟩
   | cons s ss ihs =>
     intro C sc o n0 W ρ env act hI h
     simp only [checkStmts] at h
@@ -465,8 +463,7 @@ theorem checkStmts_sound {ss : List Stmt} (ih : ∀ s ∈ ss, StmtSound s) :
     rw [keep_ok] at hrest
     obtain ⟨hsigs, ρ₁, env₁, hev, hI₁⟩ := ih s List.mem_cons_self C sc n0 W ρ env act o₁ hI ho₁
     obtain ⟨hsigs₂, ρ₂, env₂, hI₂, hb⟩ := ihs (fun s hs => ih s (List.mem_cons_of_mem _ hs)) hI₁ hrest
-    refine ⟨hsigs₂.trans hsigs, ρ₁ ++ ρ₂, env₂, by simpa using hI₂, fun f => ?_⟩
-    rw [evalBlock_cons, hev, ok_bind, hb]
+    exact ⟨hsigs₂.trans hsigs, ρ₁ ++ ρ₂, env₂, by simpa using hI₂, fun f vs h => .cons hev (hb f vs h)⟩
 
 theorem Scope.holes_eta {sc : Scope} (h : sc.holes = []) : ({ sc with holes := [] } : Scope) = sc := by
   cases sc; simp_all
@@ -503,14 +500,14 @@ theorem block_sound {ss : List Stmt} {f : Expr} (ihs : ∀ s ∈ ss, StmtSound s
     s.snaps ++ of.snaps⟩) (Given.ok_mult hg) hI₂.inert.taintedBy (fun r hr => (hres r hr).1) hf
   refine ⟨by simp [hsigs₂, hsigs], rfl, hres, ρ₁ ++ ρ₂, vs, ?_, hI₃, by simpa using hvs, hty,
     fun g' hg' envv henv => ?_⟩
-  · rw [evalExpr_block, hb, hev]
+  · exact .block (hb _ _ hev)
   · simpa using hw g' hg' envv (Term.evalList_frame_ρ ρ₁ henv)
 
 theorem inspect_sound (p : Pos) : StmtSound (.inspect p) := by
   intro C sc n0 W ρ env act o hI h
   simp only [checkStmt, pure, Except.pure, Except.ok.injEq] at h
   subst h
-  exact ⟨rfl, [], env, evalStmt_inspect, by simpa using hI⟩
+  exact ⟨rfl, [], env, .inspect, by simpa using hI⟩
 
 /-- A `match` (§10): the scrutinee's value is headed by a value constructor that survives forcing, so its branch
 exists, runs, and its results satisfy the annotation as it stands before the match. -/
@@ -617,10 +614,9 @@ theorem match_sound {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : Li
     refine ⟨hsigs₁, hnames₁, fun r' hr' => ⟨huntaint htf r' hr', her r' hr'⟩, ρ₁ ++ vsb, vsb, ?_, ?_,
       by rw [← List.append_assoc]; exact hrs, htyb, fun g' hg' envv' henv' => ?_⟩
     · simp only
-      rw [htrees, evalExpr_match, hev₁, ok_bind, one_singleton, ok_bind, hpick, ok_bind,
-        show (Branch.mk b.pat ob.tree).pat = b.pat from rfl, show (Branch.mk b.pat ob.tree).body = ob.tree from rfl,
-        (bindPattern_app (h := ⟨.ctor, c⟩)).2 ⟨hbn.symm, bindIds_of_length hfl⟩, ok_bind, hevb, ok_bind]
-      exact annotation_annTake hann hann' htele'.length_eq
+      rw [htrees]
+      exact .match hev₁ rfl hpick ((bindPattern_app (h := ⟨.ctor, c⟩)).2 ⟨hbn.symm, bindIds_of_length hfl⟩) hevb
+        (annotation_annTake hann hann' htele'.length_eq)
     · simpa using hI₁.extend hsat' rfl rfl ⟨hI₁.inert.holes, hI₁.inert.taintedBy, hI₁.inert.names⟩
     · simpa using (hwo g' hg' envv' (by simpa using Term.evalList_frame_ρ (ρ₁ ++ vsb) henv')).2
 
@@ -655,7 +651,7 @@ theorem let_sound {p : Pos} {bs : List LetBinder} {rhs : Expr} (ih : ExprSound r
   have hb : bindIds env (bs.map (·.name)) vs = .ok (pushed (bs.map (·.name)) vs ++ env) :=
     bindIds_of_length (by simp [hvl])
   refine ⟨by rw [Scope.bind_eq]; exact hsigs, ρ₁, _, ?_, Inv.bind hI₁ (by rw [zip_map_term hrl]; exact hvs) hty ?_ hb⟩
-  · rw [evalStmt_let, hev, ok_bind, take_of_length hvl, ok_bind, hb]
+  · exact .let hev (take_of_length hvl) hb
   · intro r hr
     simp only [List.mem_map] at hr
     obtain ⟨⟨b, r'⟩, hm, rfl⟩ := hr
@@ -692,8 +688,7 @@ theorem patlet_sound {p : Pos} {ct : Bool} {m : Option Mult} {pat : Pattern} {rh
   have hfl := forcings_fields hfs (List.mem_singleton_self _) hsig hws
   refine ⟨by rw [Scope.bind_eq]; exact hsigs₁, ρ₁ ++ ws, _, ?_,
     by simpa using hI₁.pattern hsat hids hws hfl (reach_none hI₁.inert.taintedBy hrt) hI₁.inert.holes⟩
-  rw [evalStmt_patlet, hev₁, ok_bind, one_singleton, ok_bind]
-  exact (bindPattern_app (h := ⟨.ctor, pat.ctor.name⟩)).2 ⟨rfl, bindIds_of_length hfl⟩
+  exact .patlet hev₁ rfl ((bindPattern_app (h := ⟨.ctor, pat.ctor.name⟩)).2 ⟨rfl, bindIds_of_length hfl⟩)
 
 
 theorem Arg.sizeOf_expr_lt {a : Arg} {args : List Arg} (h : a ∈ args) : sizeOf a.expr < 1 + sizeOf args := by

@@ -1,0 +1,29 @@
+data Nat() : Type() {
+  Zero() : Nat();
+  Succ(pred : Nat()) : Nat();
+}
+
+data Count(n : Nat()) : Type() {
+  CZ() : Count(Zero());
+  CS(erased n : Nat(), c : Count(n)) : Count(Succ(n));
+}
+
+fn size(subterm erased n : Nat(), c : Count(n)) -> (r : Nat()) {
+  match c : (r : Nat()) {
+    CZ() => Zero();
+    CS(m, d) => Succ(size(subterm m, d));
+  }
+}
+
+fn double(subterm erased n : Nat(), subterm erased k : Nat(), c : Count(n), d : Count(k)) -> (r : Nat()) {
+  match d : (r : Nat()) {
+    CZ() => match c : (r : Nat()) {
+      CZ() => Zero();
+      CS(m, e) => Succ(Succ(double(subterm m, Zero(), e, CZ())));
+    };
+    CS(j, e) => Succ(double(same n, subterm j, c, e));
+  }
+}
+
+print size(_, CS(_, CS(_, CS(_, CZ()))));
+print double(_, _, CS(_, CS(_, CZ())), CS(_, CZ()));

@@ -1,0 +1,15 @@
+data Nat() : Type() {
+  Zero() : Nat();
+  Succ(pred : Nat()) : Nat();
+}
+data Vec(A : Type(), n : Nat()) : Type() {
+  VNil(erased A : Type()) : Vec(A, Zero());
+  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n)) : Vec(A, Succ(n));
+}
+fn len(erased A : Type(), subterm erased n : Nat(), v : Vec(A, n)) -> (r : Nat()) {
+  match v : (r : Nat()) {
+    VNil(_) => Zero();
+    VCons(_, m, h, t) => Succ(len(A, subterm m, t));
+  }
+}
+print len(Nat(), Succ(Zero()), VCons(Nat(), Zero(), Zero(), VNil(Nat())));

@@ -532,7 +532,7 @@ theorem scrut_sound {s : Expr} (ih : ExprSound s) {C C' : Ctx} {sc : Scope} {n0 
     (hph : C'.phase = C.phase) (her : C'.erased = C.erased) (hgl : C'.globals = C.globals) (hfn : C'.fn = C.fn)
     (h : checkExpr C' sc none s = .ok so) (hr : single pos so.res = .ok r) :
     so.sc.sigs = sc.sigs ∧ so.sc.names = sc.names ∧ r.tainted = false ∧ ∃ ρ₁ v V,
-      evalExpr W.P act env so.tree = .ok [v] ∧ Inv C so.sc n0 W (ρ ++ ρ₁) env act ∧
+      Eval W.P env so.tree [v] ∧ Inv C so.sc n0 W (ρ ++ ρ₁) env act ∧
       r.term.eval (ρ ++ ρ₁) [] = some v ∧ HasType W.Sc v V := by
   obtain ⟨hsigs, hnames, hres, ρ₁, vs, hev, hI₁, hvs, hty, -⟩ :=
     ih C' sc none n0 W ρ env act so (hI.congr_ctx hph her hgl hfn) (by simp) h

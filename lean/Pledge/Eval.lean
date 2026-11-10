@@ -2,139 +2,6 @@ import Pledge.Core
 
 namespace Pledge
 
-mutual
-  /-- `v.isSub w`: `v` is a strict subtree of `w`. -/
-  def Value.isSub (v : Value) : Value → Bool
-    | .app _ args => Value.isSubList v args
-    | .removed => false
-  def Value.isSubList (v : Value) : List Value → Bool
-    | [] => false
-    | a :: as => v == a || v.isSub a || Value.isSubList v as
-end
-
-/-- `v.lt w`: `v` is a strict subtree of `w`. -/
-def Value.lt (v w : Value) : Prop := v.isSub w = true
-
-instance : DecidableRel Value.lt := fun v w => inferInstanceAs (Decidable (v.isSub w = true))
-
-mutual
-  theorem Value.sizeOf_isSub (v : Value) : (w : Value) → v.isSub w = true → sizeOf v < sizeOf w
-    | .app h args, hs => by
-      have := Value.sizeOf_isSubList v args hs
-      simp only [Value.app.sizeOf_spec]; omega
-    | .removed, hs => by simp [Value.isSub] at hs
-  theorem Value.sizeOf_isSubList (v : Value) :
-      (as : List Value) → Value.isSubList v as = true → sizeOf v < sizeOf as
-    | [], hs => by simp [Value.isSubList] at hs
-    | a :: as, hs => by
-      simp only [Value.isSubList, Bool.or_eq_true, beq_iff_eq] at hs
-      simp only [List.cons.sizeOf_spec]
-      rcases hs with (rfl | hs) | hs
-      · omega
-      · have := Value.sizeOf_isSub v a hs; omega
-      · have := Value.sizeOf_isSubList v as hs; omega
-end
-
-theorem Value.lt_wf : WellFounded Value.lt :=
-  Subrelation.wf (fun {v w} h => Value.sizeOf_isSub v w h) (measure sizeOf).wf
-
-/-- `SubsLt as bs`: lists of equal length that agree up to some `k`, where `as` holds a strict
-subtree of the value `bs` holds. -/
-def SubsLt (as bs : List (Option Value)) : Prop :=
-  as.length = bs.length ∧
-  ∃ k x y, as.take k = bs.take k ∧ as[k]? = some (some x) ∧ bs[k]? = some (some y) ∧ x.lt y
-
-/-- An activation's measure is below another's (SOUNDNESS.md part 6). -/
-def Act.lt (a b : Act) : Prop := a.group < b.group ∨ a.group = b.group ∧ SubsLt a.subs b.subs
-
-theorem Act.lt_of_group {a b : Act} (h : a.group < b.group) : Act.lt a b := .inl h
-
-theorem Act.lt_of_subs {a b : Act} {k : Nat} {x y : Value} (hg : a.group = b.group)
-    (hl : a.subs.length = b.subs.length) (ht : a.subs.take k = b.subs.take k)
-    (ha : a.subs[k]? = some (some x)) (hb : b.subs[k]? = some (some y)) (hxy : x.lt y) : Act.lt a b :=
-  .inr ⟨hg, hl, k, x, y, ht, ha, hb, hxy⟩
-
-def OptLt : Option Value → Option Value → Prop
-  | some x, some y => x.lt y
-  | _, _ => False
-
-instance : DecidableRel OptLt := fun a b => match a, b with
-  | some x, some y => inferInstanceAs (Decidable (x.lt y))
-  | none, _ => isFalse id
-  | some _, none => isFalse id
-
-theorem SubsLt.nil_left {bs} : ¬ SubsLt [] bs := fun ⟨_, _, _, _, _, h, _⟩ => by simp at h
-
-theorem SubsLt.nil_right {as} : ¬ SubsLt as [] := fun ⟨_, _, _, _, _, _, h, _⟩ => by simp at h
-
-theorem SubsLt.cons_iff {a b as bs} :
-    SubsLt (a :: as) (b :: bs) ↔ as.length = bs.length ∧ OptLt a b ∨ a = b ∧ SubsLt as bs := by
-  constructor
-  · rintro ⟨hl, k, x, y, ht, ha, hb, hxy⟩
-    cases k with
-    | zero => simp at ha hb; subst ha hb; exact .inl ⟨by simpa using hl, hxy⟩
-    | succ k =>
-      simp only [List.take_succ_cons, List.cons.injEq] at ht
-      exact .inr ⟨ht.1, by simpa using hl, k, x, y, ht.2, by simpa using ha, by simpa using hb, hxy⟩
-  · rintro (⟨hl, h⟩ | ⟨rfl, hl, k, x, y, ht, ha, hb, hxy⟩)
-    · match a, b, h with
-      | some x, some y, h => exact ⟨by simp [hl], 0, x, y, by simp, rfl, rfl, h⟩
-    · exact ⟨by simp [hl], k + 1, x, y, by simp [ht], ha, hb, hxy⟩
-
-instance SubsLt.dec : (as bs : List (Option Value)) → Decidable (SubsLt as bs)
-  | [], _ => isFalse SubsLt.nil_left
-  | _ :: _, [] => isFalse SubsLt.nil_right
-  | _ :: as, _ :: bs => have := SubsLt.dec as bs; decidable_of_iff _ SubsLt.cons_iff.symm
-
-instance : DecidableRel Act.lt := fun _ _ => inferInstanceAs (Decidable (_ ∨ _ ∧ _))
-
-theorem OptLt.acc : ∀ a, Acc OptLt a
-  | none => ⟨_, fun b h => by cases b <;> simp [OptLt] at h⟩
-  | some v => by
-    induction Value.lt_wf.apply v with
-    | intro v _ ih =>
-      exact ⟨_, fun b h => by
-        cases b with
-        | none => simp [OptLt] at h
-        | some w => exact ih w h⟩
-
-theorem SubsLt.acc_len : ∀ n (as : List (Option Value)), as.length = n → Acc SubsLt as
-  | 0, as, h => ⟨_, fun _ hb => absurd (List.length_eq_zero_iff.1 h ▸ hb) SubsLt.nil_right⟩
-  | _ + 1, [], h => by simp at h
-  | n + 1, a :: as, h => by
-    have ih := SubsLt.acc_len n
-    suffices ∀ a, Acc OptLt a → ∀ as, Acc SubsLt as → as.length = n → Acc SubsLt (a :: as) from
-      this a (OptLt.acc a) as (ih as (by simpa using h)) (by simpa using h)
-    intro a ha
-    induction ha with
-    | intro a _ iha =>
-      intro as has
-      induction has with
-      | intro as _ ihs =>
-        intro hl
-        refine ⟨_, fun cs hc => ?_⟩
-        match cs, hc with
-        | [], hc => exact absurd hc SubsLt.nil_left
-        | c :: cs, hc =>
-          rcases SubsLt.cons_iff.1 hc with ⟨hl', hca⟩ | ⟨rfl, hcs⟩
-          · exact iha c hca cs (ih cs (by omega)) (by omega)
-          · exact ihs cs hcs (hcs.1.trans hl)
-
-theorem Act.lt_wf : WellFounded Act.lt := by
-  suffices ∀ g subs, Acc Act.lt ⟨g, subs⟩ from ⟨fun ⟨g, subs⟩ => this g subs⟩
-  intro g
-  induction g using Nat.strongRecOn with
-  | _ g ihg =>
-    intro subs
-    induction SubsLt.acc_len _ subs rfl with
-    | intro subs _ ihs =>
-      refine ⟨_, fun ⟨g', subs'⟩ h => ?_⟩
-      rcases h with h | ⟨h, hs⟩
-      · exact ihg g' h subs'
-      · cases h; exact ihs subs' hs
-
-instance : WellFoundedRelation Act := ⟨Act.lt, Act.lt_wf⟩
-
 /-- What the evaluator knows of the program: its functions, and whether a name that is not a
 function's names a type constructor or a value constructor. -/
 structure Prog where
@@ -207,27 +74,6 @@ theorem pickBranch_mem {m v bs b} (h : pickBranch m v bs = .ok b) : b ∈ bs := 
       · cases h
     · cases h
 
-/-- The measure of a call to `d` with arguments `vs`. -/
-def calleeAct (d : FnDef) (vs : List Value) : Act :=
-  let s := (d.subterm.zip vs).filterMap fun (b, v) => if b then some (some v) else none
-  ⟨d.group, s ++ List.replicate (d.pad - s.length) none⟩
-
-/-- The measure of top-level code: above every function's group. -/
-def Act.top (F : Fns) : Act := ⟨F.foldr (fun d n => max d.group n) 0 + 1, []⟩
-
-theorem Act.lt_top {F : Fns} {n d} (h : F.find n = some d) (vs : List Value) :
-    Act.lt (calleeAct d vs) (Act.top F) := by
-  refine Act.lt_of_group ?_
-  have hm := List.mem_of_find?_eq_some h
-  simp only [calleeAct, Act.top]
-  clear h
-  induction F with
-  | nil => cases hm
-  | cons e F ih =>
-    simp only [List.foldr_cons]
-    rcases List.mem_cons.1 hm with rfl | hm
-    · omega
-    · have := ih hm; omega
 
 def annTake : Tele → List Value → Except String (List Value)
   | .binders bs, vs => take bs.length vs
@@ -242,64 +88,6 @@ theorem sizeOf_body_lt {b : Branch} {bs : List Branch} (h : b ∈ bs) : sizeOf b
   have := List.sizeOf_lt_of_mem h
   cases b; simp [Branch.body] at *; omega
 
-macro "eval_decreasing" : tactic =>
-  `(tactic| first | exact Prod.Lex.left _ _ ‹_› | (apply Prod.Lex.right; simp <;> omega))
-
-mutual
-  /-- Evaluates an expression under the activation `act` (§11). -/
-  def evalExpr (P : Prog) (act : Act) (env : Env) : Expr → Except String (List Value)
-    | .var x => match x.name.bind (List.lookup · env) with
-      | some v => pure [v]
-      | none => throw s!"unbound {x.name}"
-    | .app h args => do
-      let vs ← evalList P act env (args.map Arg.expr)
-      match P.fns.find h.name with
-      | some d =>
-        if _ : Act.lt (calleeAct d vs) act then do
-          take d.returns (← evalExpr P (calleeAct d vs) (← bindIds d.globals d.params vs) d.body)
-        else throw s!"the call to {h.name} does not decrease"
-      | none => match P.kind h.name with
-        | some k => pure [.app ⟨k, h.name⟩ vs]
-        | none => throw s!"unknown name {h.name}"
-    | .tuple _ es => evalList P act env es
-    | .block ss e => evalBlock P act env ss e
-    | .match _ m s ann bs => do
-      let v ← one (← evalExpr P act env s)
-      match _ : pickBranch m v bs with
-      | .ok br => do annTake ann (← evalExpr P act (← bindPattern env m br.pat v) br.body)
-      | .error e => throw e
-    | .sorry _ _ => throw "sorry was reached"
-    | .removed => pure [.removed]
-  termination_by e => (act, sizeOf e)
-  decreasing_by
-    all_goals
-      try have := sizeOf_body_lt (pickBranch_mem ‹_›)
-      try have := sizeOf_map_expr args
-      eval_decreasing
-  /-- Evaluates expressions left to right, each to one value. -/
-  def evalList (P : Prog) (act : Act) (env : Env) : List Expr → Except String (List Value)
-    | [] => pure []
-    | e :: es => do
-      let v ← one (← evalExpr P act env e)
-      pure (v :: (← evalList P act env es))
-  termination_by es => (act, sizeOf es)
-  decreasing_by all_goals eval_decreasing
-  def evalBlock (P : Prog) (act : Act) (env : Env) : List Stmt → Expr → Except String (List Value)
-    | [], e => evalExpr P act env e
-    | s :: ss, e => do evalBlock P act (← evalStmt P act env s) ss e
-  termination_by ss e => (act, sizeOf ss + sizeOf e)
-  decreasing_by all_goals eval_decreasing
-  /-- Runs a statement, giving the environment after it. -/
-  def evalStmt (P : Prog) (act : Act) (env : Env) : Stmt → Except String Env
-    | .let _ bs rhs => do bindIds env (bs.map (·.name)) (← take bs.length (← evalExpr P act env rhs))
-    | .patlet _ _ m pat rhs => do bindPattern env m pat (← one (← evalExpr P act env rhs))
-    | .inspect _ => pure env
-  termination_by s => (act, sizeOf s)
-  decreasing_by all_goals eval_decreasing
-end
-
-section Unfold
-variable {P : Prog} {act : Act} {env : Env}
 
 theorem ok_bind {ε α β} {a : α} {f : α → Except ε β} : (Except.ok a >>= f) = f a := rfl
 
@@ -309,176 +97,227 @@ theorem bind_eq_ok {ε α β} {x : Except ε α} {f : α → Except ε β} {b : 
     (x >>= f) = .ok b ↔ ∃ a, x = .ok a ∧ f a = .ok b := by
   cases x <;> simp [bind, Except.bind]
 
-theorem evalExpr_var {x : Id} : evalExpr P act env (.var x) = (match x.name.bind (List.lookup · env) with
-    | some v => pure [v]
-    | none => throw s!"unbound {x.name}") := by
-  rw [evalExpr]
-
-theorem evalExpr_app {h : Name} {args : List Arg} : evalExpr P act env (.app h args) = (do
-    let vs ← evalList P act env (args.map Arg.expr)
-    match P.fns.find h.name with
-    | some d =>
-      if Act.lt (calleeAct d vs) act then do
-        take d.returns (← evalExpr P (calleeAct d vs) (← bindIds d.globals d.params vs) d.body)
-      else throw s!"the call to {h.name} does not decrease"
-    | none => match P.kind h.name with
-      | some k => pure [.app ⟨k, h.name⟩ vs]
-      | none => throw s!"unknown name {h.name}") := by
-  rw [evalExpr]; rfl
-
-/-- A call whose arguments evaluate to `vs` and whose measure decreases runs the callee's body. -/
-theorem evalExpr_call {h : Name} {args : List Arg} {vs : List Value} {d : FnDef}
-    (hvs : evalList P act env (args.map Arg.expr) = .ok vs) (hd : P.fns.find h.name = some d)
-    (hlt : Act.lt (calleeAct d vs) act) : evalExpr P act env (.app h args) = (do
-      take d.returns (← evalExpr P (calleeAct d vs) (← bindIds d.globals d.params vs) d.body)) := by
-  rw [evalExpr_app, hvs, ok_bind]; simp only [hd, hlt, ite_true]
-
-/-- An application of a type constructor or value constructor builds a value. -/
-theorem evalExpr_ctor {h : Name} {args : List Arg} {vs : List Value} {k : HeadKind}
-    (hvs : evalList P act env (args.map Arg.expr) = .ok vs) (hd : P.fns.find h.name = none)
-    (hk : P.kind h.name = some k) : evalExpr P act env (.app h args) = .ok [.app ⟨k, h.name⟩ vs] := by
-  rw [evalExpr_app, hvs, ok_bind]; simp only [hd, hk]; rfl
-
-theorem evalExpr_tuple {p : Pos} {es : List Expr} : evalExpr P act env (.tuple p es) = evalList P act env es := by
-  rw [evalExpr]
-
-theorem evalExpr_block {ss : List Stmt} {e : Expr} :
-    evalExpr P act env (.block ss e) = evalBlock P act env ss e := by
-  rw [evalExpr]
-
-theorem evalExpr_match {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Branch} :
-    evalExpr P act env (.match p m s ann bs) = (do
-      let v ← one (← evalExpr P act env s)
-      let br ← pickBranch m v bs
-      annTake ann (← evalExpr P act (← bindPattern env m br.pat v) br.body)) := by
-  rw [evalExpr]
-  cases evalExpr P act env s with
-  | error => rfl
-  | ok vs =>
-    simp only [ok_bind]
-    cases one vs with
-    | error => rfl
-    | ok v => simp only [ok_bind]; split <;> simp_all [bind, Except.bind] <;> rfl
-
-theorem evalExpr_sorry {p : Pos} {t : Tele} : evalExpr P act env (.sorry p t) = throw "sorry was reached" := by
-  rw [evalExpr]
-
-theorem evalExpr_removed : evalExpr P act env .removed = .ok [.removed] := by
-  rw [evalExpr]; rfl
-
-theorem evalList_nil : evalList P act env [] = .ok [] := by
-  rw [evalList]; rfl
-
-theorem evalList_cons {e : Expr} {es : List Expr} : evalList P act env (e :: es) = (do
-    let v ← one (← evalExpr P act env e)
-    pure (v :: (← evalList P act env es))) := by
-  rw [evalList]
-
-theorem evalBlock_nil {e : Expr} : evalBlock P act env [] e = evalExpr P act env e := by
-  rw [evalBlock]
-
-theorem evalBlock_cons {s : Stmt} {ss : List Stmt} {e : Expr} :
-    evalBlock P act env (s :: ss) e = (do evalBlock P act (← evalStmt P act env s) ss e) := by
-  rw [evalBlock]
-
-theorem evalStmt_let {p : Pos} {bs : List LetBinder} {rhs : Expr} : evalStmt P act env (.let p bs rhs) = (do
-    bindIds env (bs.map (·.name)) (← take bs.length (← evalExpr P act env rhs))) := by
-  rw [evalStmt]
-
-theorem evalStmt_patlet {p : Pos} {c : Bool} {m : Option Mult} {pat : Pattern} {rhs : Expr} :
-    evalStmt P act env (.patlet p c m pat rhs) =
-      (do bindPattern env m pat (← one (← evalExpr P act env rhs))) := by
-  rw [evalStmt]
-
-theorem evalStmt_inspect {p : Pos} : evalStmt P act env (.inspect p) = .ok env := by
-  rw [evalStmt]; rfl
-
-end Unfold
-
 /-- `P'` extends `P`: it keeps `P`'s functions, and keeps every name `P` takes for a type
 constructor or value constructor as one of the same kind. -/
 structure Prog.Ext (P P' : Prog) : Prop where
   fns : ∀ n d, P.fns.find n = some d → P'.fns.find n = some d
   kind : ∀ n k, P.fns.find n = none → P.kind n = some k → P'.fns.find n = none ∧ P'.kind n = some k
 
+
 mutual
-  /-- Evaluation that succeeds is unchanged by extending the program. -/
-  theorem evalExpr_ext {P P' : Prog} (hP : P.Ext P') {act : Act} {env : Env} {vs : List Value} :
-      (e : Expr) → evalExpr P act env e = .ok vs → evalExpr P' act env e = .ok vs
-    | .var _, h => by rw [evalExpr_var] at h ⊢; exact h
-    | .app f args, h => by
-      rw [evalExpr_app] at h ⊢
-      obtain ⟨ws, hl, h⟩ := bind_eq_ok.1 h
-      rw [evalList_ext hP (args.map Arg.expr) hl, ok_bind]
-      split at h
-      · rename_i d hd
-        rw [hP.fns _ _ hd]
-        simp only at h ⊢
-        split at h
-        · rename_i hlt
-          simp only [hlt, ite_true]
-          obtain ⟨env', hb, h⟩ := bind_eq_ok.1 h
-          obtain ⟨rs, hr, h⟩ := bind_eq_ok.1 h
-          rw [hb, ok_bind, evalExpr_ext hP d.body hr, ok_bind]; exact h
-        · cases h
-      · rename_i hd
-        split at h
-        · rename_i k hk
-          obtain ⟨hd', hk'⟩ := hP.kind _ _ hd hk
-          simp only [hd', hk']; exact h
-        · cases h
-    | .tuple _ es, h => by rw [evalExpr_tuple] at h ⊢; exact evalList_ext hP es h
-    | .block ss e, h => by rw [evalExpr_block] at h ⊢; exact evalBlock_ext hP ss e h
-    | .match _ m s ann bs, h => by
-      rw [evalExpr_match] at h ⊢
-      obtain ⟨ws, hs, h⟩ := bind_eq_ok.1 h
-      obtain ⟨v, hv, h⟩ := bind_eq_ok.1 h
-      obtain ⟨br, hbr, h⟩ := bind_eq_ok.1 h
-      obtain ⟨env', hb, h⟩ := bind_eq_ok.1 h
-      obtain ⟨rs, hr, h⟩ := bind_eq_ok.1 h
-      have := sizeOf_body_lt (pickBranch_mem hbr)
-      rw [evalExpr_ext hP s hs, ok_bind, hv, ok_bind, hbr, ok_bind, hb, ok_bind, evalExpr_ext hP br.body hr, ok_bind]
-      exact h
-    | .sorry _ _, h => by rw [evalExpr_sorry] at h; cases h
-    | .removed, h => by rw [evalExpr_removed] at h ⊢; exact h
-  termination_by e => (act, sizeOf e)
-  decreasing_by
-    all_goals
-      try have := sizeOf_map_expr args
-      eval_decreasing
-  theorem evalList_ext {P P' : Prog} (hP : P.Ext P') {act : Act} {env : Env} {vs : List Value} :
-      (es : List Expr) → evalList P act env es = .ok vs → evalList P' act env es = .ok vs
-    | [], h => by rw [evalList_nil] at h ⊢; exact h
-    | e :: es, h => by
-      rw [evalList_cons] at h ⊢
-      obtain ⟨ws, he, h⟩ := bind_eq_ok.1 h
-      obtain ⟨v, hv, h⟩ := bind_eq_ok.1 h
-      obtain ⟨us, hs, h⟩ := bind_eq_ok.1 h
-      rw [evalExpr_ext hP e he, ok_bind, hv, ok_bind, evalList_ext hP es hs, ok_bind]; exact h
-  termination_by es => (act, sizeOf es)
-  decreasing_by all_goals eval_decreasing
-  theorem evalBlock_ext {P P' : Prog} (hP : P.Ext P') {act : Act} {env : Env} {vs : List Value} :
-      (ss : List Stmt) → (e : Expr) → evalBlock P act env ss e = .ok vs → evalBlock P' act env ss e = .ok vs
-    | [], e, h => by rw [evalBlock_nil] at h ⊢; exact evalExpr_ext hP e h
-    | s :: ss, e, h => by
-      rw [evalBlock_cons] at h ⊢
-      obtain ⟨env', hs, h⟩ := bind_eq_ok.1 h
-      rw [evalStmt_ext hP s hs, ok_bind]; exact evalBlock_ext hP ss e h
-  termination_by ss e => (act, sizeOf ss + sizeOf e)
-  decreasing_by all_goals eval_decreasing
-  theorem evalStmt_ext {P P' : Prog} (hP : P.Ext P') {act : Act} {env env' : Env} :
-      (s : Stmt) → evalStmt P act env s = .ok env' → evalStmt P' act env s = .ok env'
-    | .let _ bs rhs, h => by
-      rw [evalStmt_let] at h ⊢
-      obtain ⟨ws, he, h⟩ := bind_eq_ok.1 h
-      rw [evalExpr_ext hP rhs he, ok_bind]; exact h
-    | .patlet _ _ m pat rhs, h => by
-      rw [evalStmt_patlet] at h ⊢
-      obtain ⟨ws, he, h⟩ := bind_eq_ok.1 h
-      rw [evalExpr_ext hP rhs he, ok_bind]; exact h
-    | .inspect _, h => by rw [evalStmt_inspect] at h ⊢; exact h
-  termination_by s => (act, sizeOf s)
-  decreasing_by all_goals eval_decreasing
+  /-- `Eval P env e vs`: in the program `P`, with the names in scope valued by `env`, the expression `e`
+  evaluates to the values `vs` (§11, §12, §16): big-step, eager, left to right. No rule applies to `sorry`, to an
+  unbound name or to a `removed` value that is inspected, so those have no evaluation. -/
+  inductive Eval (P : Prog) : Env → Expr → List Value → Prop where
+    | var {env : Env} {x : Id} {v : Value} : x.name.bind (List.lookup · env) = some v → Eval P env (.var x) [v]
+    | call {env : Env} {h : Name} {args : List Arg} {vs : List Value} {d : FnDef} {rs : List Value} :
+        EvalList P env (args.map Arg.expr) vs → P.fns.find h.name = some d → CallRel P d vs rs →
+        Eval P env (.app h args) rs
+    | ctor {env : Env} {h : Name} {args : List Arg} {vs : List Value} {k : HeadKind} :
+        EvalList P env (args.map Arg.expr) vs → P.fns.find h.name = none → P.kind h.name = some k →
+        Eval P env (.app h args) [.app ⟨k, h.name⟩ vs]
+    | tuple {env : Env} {p : Pos} {es : List Expr} {vs : List Value} :
+        EvalList P env es vs → Eval P env (.tuple p es) vs
+    | block {env : Env} {ss : List Stmt} {e : Expr} {vs : List Value} :
+        EvalBlock P env ss e vs → Eval P env (.block ss e) vs
+    | «match» {env : Env} {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Branch}
+        {ws : List Value} {v : Value} {br : Branch} {env' : Env} {rs rs' : List Value} :
+        Eval P env s ws → one ws = .ok v → pickBranch m v bs = .ok br → bindPattern env m br.pat v = .ok env' →
+        Eval P env' br.body rs → annTake ann rs = .ok rs' → Eval P env (.match p m s ann bs) rs'
+    | removed {env : Env} : Eval P env .removed [.removed]
+  /-- Expressions evaluated left to right, each to one value. -/
+  inductive EvalList (P : Prog) : Env → List Expr → List Value → Prop where
+    | nil {env : Env} : EvalList P env [] []
+    | cons {env : Env} {e : Expr} {es : List Expr} {ws : List Value} {v : Value} {vs : List Value} :
+        Eval P env e ws → one ws = .ok v → EvalList P env es vs → EvalList P env (e :: es) (v :: vs)
+  /-- A call to `d` on the arguments `vs` returns `rs`: the parameters are bound on top of the environment where
+  `d` was declared, and the body runs. -/
+  inductive CallRel (P : Prog) : FnDef → List Value → List Value → Prop where
+    | mk {d : FnDef} {vs : List Value} {env : Env} {bs rs : List Value} :
+        bindIds d.globals d.params vs = .ok env → Eval P env d.body bs → take d.returns bs = .ok rs →
+        CallRel P d vs rs
+  /-- A block's statements in order, then its final expression. -/
+  inductive EvalBlock (P : Prog) : Env → List Stmt → Expr → List Value → Prop where
+    | nil {env : Env} {e : Expr} {vs : List Value} : Eval P env e vs → EvalBlock P env [] e vs
+    | cons {env env' : Env} {s : Stmt} {ss : List Stmt} {e : Expr} {vs : List Value} :
+        EvalStmt P env s env' → EvalBlock P env' ss e vs → EvalBlock P env (s :: ss) e vs
+  /-- A statement runs from one environment to the next. -/
+  inductive EvalStmt (P : Prog) : Env → Stmt → Env → Prop where
+    | «let» {env env' : Env} {p : Pos} {bs : List LetBinder} {rhs : Expr} {ws vs : List Value} :
+        Eval P env rhs ws → take bs.length ws = .ok vs → bindIds env (bs.map (·.name)) vs = .ok env' →
+        EvalStmt P env (.let p bs rhs) env'
+    | patlet {env env' : Env} {p : Pos} {c : Bool} {m : Option Mult} {pat : Pattern} {rhs : Expr}
+        {ws : List Value} {v : Value} :
+        Eval P env rhs ws → one ws = .ok v → bindPattern env m pat v = .ok env' →
+        EvalStmt P env (.patlet p c m pat rhs) env'
+    | inspect {env : Env} {p : Pos} : EvalStmt P env (.inspect p) env
+end
+
+theorem Except.ok_inj {ε α} {x : Except ε α} {a b : α} (ha : x = .ok a) (hb : x = .ok b) : a = b := by
+  rw [ha] at hb; cases hb; rfl
+
+theorem Option.some_inj' {α} {x : Option α} {a b : α} (ha : x = some a) (hb : x = some b) : a = b := by
+  rw [ha] at hb; cases hb; rfl
+
+mutual
+  /-- Evaluation is deterministic. -/
+  theorem Eval.det {P : Prog} {env : Env} {e : Expr} {vs vs' : List Value} :
+      Eval P env e vs → Eval P env e vs' → vs = vs'
+    | .var h, .var h' => by cases Option.some_inj' h h'; rfl
+    | .call hl hd hc, .call hl' hd' hc' => by
+      cases EvalList.det hl hl'; cases Option.some_inj' hd hd'; exact CallRel.det hc hc'
+    | .call _ hd _, .ctor _ hd' _ => by rw [hd] at hd'; cases hd'
+    | .ctor _ hd _, .call _ hd' _ => by rw [hd] at hd'; cases hd'
+    | .ctor hl _ hk, .ctor hl' _ hk' => by cases EvalList.det hl hl'; cases Option.some_inj' hk hk'; rfl
+    | .tuple h, .tuple h' => EvalList.det h h'
+    | .block h, .block h' => EvalBlock.det h h'
+    | .match hs ho hp hb he ha, .match hs' ho' hp' hb' he' ha' => by
+      cases Eval.det hs hs'
+      cases Except.ok_inj ho ho'
+      cases Except.ok_inj hp hp'
+      cases Except.ok_inj hb hb'
+      cases Eval.det he he'
+      exact Except.ok_inj ha ha'
+    | .removed, .removed => rfl
+  termination_by structural h _ => h
+  theorem EvalList.det {P : Prog} {env : Env} {es : List Expr} {vs vs' : List Value} :
+      EvalList P env es vs → EvalList P env es vs' → vs = vs'
+    | .nil, .nil => rfl
+    | .cons he ho hs, .cons he' ho' hs' => by
+      cases Eval.det he he'; cases Except.ok_inj ho ho'; cases EvalList.det hs hs'; rfl
+  termination_by structural h _ => h
+  theorem CallRel.det {P : Prog} {d : FnDef} {vs rs rs' : List Value} :
+      CallRel P d vs rs → CallRel P d vs rs' → rs = rs'
+    | .mk hb he ht, .mk hb' he' ht' => by
+      cases Except.ok_inj hb hb'; cases Eval.det he he'; exact Except.ok_inj ht ht'
+  termination_by structural h _ => h
+  theorem EvalBlock.det {P : Prog} {env : Env} {ss : List Stmt} {e : Expr} {vs vs' : List Value} :
+      EvalBlock P env ss e vs → EvalBlock P env ss e vs' → vs = vs'
+    | .nil h, .nil h' => Eval.det h h'
+    | .cons hs hb, .cons hs' hb' => by cases EvalStmt.det hs hs'; exact EvalBlock.det hb hb'
+  termination_by structural h _ => h
+  theorem EvalStmt.det {P : Prog} {env : Env} {s : Stmt} {env' env'' : Env} :
+      EvalStmt P env s env' → EvalStmt P env s env'' → env' = env''
+    | .let he ht hb, .let he' ht' hb' => by
+      cases Eval.det he he'; cases Except.ok_inj ht ht'; exact Except.ok_inj hb hb'
+    | .patlet he ho hb, .patlet he' ho' hb' => by
+      cases Eval.det he he'; cases Except.ok_inj ho ho'; exact Except.ok_inj hb hb'
+    | .inspect, .inspect => rfl
+  termination_by structural h _ => h
+end
+
+mutual
+  /-- Evaluation is unchanged by extending the program. -/
+  theorem Eval.ext {P P' : Prog} (hP : P.Ext P') {env : Env} {e : Expr} {vs : List Value} :
+      Eval P env e vs → Eval P' env e vs
+    | .var h => .var h
+    | .call hl hd hc => .call (EvalList.ext hP hl) (hP.fns _ _ hd) (CallRel.ext hP hc)
+    | .ctor hl hd hk => .ctor (EvalList.ext hP hl) (hP.kind _ _ hd hk).1 (hP.kind _ _ hd hk).2
+    | .tuple h => .tuple (EvalList.ext hP h)
+    | .block h => .block (EvalBlock.ext hP h)
+    | .match hs ho hp hb he ha => .match (Eval.ext hP hs) ho hp hb (Eval.ext hP he) ha
+    | .removed => .removed
+  termination_by structural h => h
+  theorem EvalList.ext {P P' : Prog} (hP : P.Ext P') {env : Env} {es : List Expr} {vs : List Value} :
+      EvalList P env es vs → EvalList P' env es vs
+    | .nil => .nil
+    | .cons he ho hs => .cons (Eval.ext hP he) ho (EvalList.ext hP hs)
+  termination_by structural h => h
+  theorem CallRel.ext {P P' : Prog} (hP : P.Ext P') {d : FnDef} {vs rs : List Value} :
+      CallRel P d vs rs → CallRel P' d vs rs
+    | .mk hb he ht => .mk hb (Eval.ext hP he) ht
+  termination_by structural h => h
+  theorem EvalBlock.ext {P P' : Prog} (hP : P.Ext P') {env : Env} {ss : List Stmt} {e : Expr} {vs : List Value} :
+      EvalBlock P env ss e vs → EvalBlock P' env ss e vs
+    | .nil h => .nil (Eval.ext hP h)
+    | .cons hs hb => .cons (EvalStmt.ext hP hs) (EvalBlock.ext hP hb)
+  termination_by structural h => h
+  theorem EvalStmt.ext {P P' : Prog} (hP : P.Ext P') {env : Env} {s : Stmt} {env' : Env} :
+      EvalStmt P env s env' → EvalStmt P' env s env'
+    | .let he ht hb => .let (Eval.ext hP he) ht hb
+    | .patlet he ho hb => .patlet (Eval.ext hP he) ho hb
+    | .inspect => .inspect
+  termination_by structural h => h
+end
+
+theorem one_eq_ok {vs : List Value} {v : Value} (h : one vs = .ok v) : vs = [v] := by
+  unfold one at h; split at h <;> cases h; rfl
+
+/-- `x`'s result, with the fact that `x` returned it. -/
+def certify {ε α} : (x : Except ε α) → Except ε { a // x = .ok a }
+  | .ok a => .ok ⟨a, rfl⟩
+  | .error e => .error e
+
+mutual
+  /-- Evaluates an expression (§11). It is `partial`, a stopgap until a totality theorem covers every program: a
+  result it returns is certified by its type to be what `Eval` relates the expression to, but neither its
+  termination nor the absence of an error result is established about it. -/
+  partial def evalExpr (P : Prog) (env : Env) : (e : Expr) → Except String { vs // Eval P env e vs }
+    | .var x => match h : x.name.bind (List.lookup · env) with
+      | some v => pure ⟨[v], .var h⟩
+      | none => throw s!"unbound {x.name}"
+    | .app h args => do
+      let ⟨vs, hvs⟩ ← evalList P env (args.map Arg.expr)
+      match hd : P.fns.find h.name with
+      | some d => do
+        let ⟨rs, hr⟩ ← evalCall P d vs
+        pure ⟨rs, .call hvs hd hr⟩
+      | none => match hk : P.kind h.name with
+        | some _ => pure ⟨_, .ctor hvs hd hk⟩
+        | none => throw s!"unknown name {h.name}"
+    | .tuple _ es => do
+      let ⟨vs, h⟩ ← evalList P env es
+      pure ⟨vs, .tuple h⟩
+    | .block ss e => do
+      let ⟨vs, h⟩ ← evalBlock P env ss e
+      pure ⟨vs, .block h⟩
+    | .match _ m s ann bs => do
+      let ⟨ws, hs⟩ ← evalExpr P env s
+      let ⟨v, ho⟩ ← certify (one ws)
+      let ⟨br, hp⟩ ← certify (pickBranch m v bs)
+      let ⟨env', hb⟩ ← certify (bindPattern env m br.pat v)
+      let ⟨rs, he⟩ ← evalExpr P env' br.body
+      let ⟨rs', ha⟩ ← certify (annTake ann rs)
+      pure ⟨rs', .match hs ho hp hb he ha⟩
+    | .sorry _ _ => throw "sorry was reached"
+    | .removed => pure ⟨_, .removed⟩
+  /-- Evaluates expressions left to right, each to one value; `partial` as `evalExpr` is. -/
+  partial def evalList (P : Prog) (env : Env) : (es : List Expr) → Except String { vs // EvalList P env es vs }
+    | [] => pure ⟨[], .nil⟩
+    | e :: es => do
+      let ⟨ws, he⟩ ← evalExpr P env e
+      let ⟨v, ho⟩ ← certify (one ws)
+      let ⟨vs, hs⟩ ← evalList P env es
+      pure ⟨v :: vs, .cons he ho hs⟩
+  /-- Runs a call; `partial` as `evalExpr` is. -/
+  partial def evalCall (P : Prog) (d : FnDef) (vs : List Value) : Except String { rs // CallRel P d vs rs } := do
+    let ⟨env, hb⟩ ← certify (bindIds d.globals d.params vs)
+    let ⟨bs, he⟩ ← evalExpr P env d.body
+    let ⟨rs, ht⟩ ← certify (take d.returns bs)
+    pure ⟨rs, .mk hb he ht⟩
+  /-- Runs a block; `partial` as `evalExpr` is. -/
+  partial def evalBlock (P : Prog) (env : Env) :
+      (ss : List Stmt) → (e : Expr) → Except String { vs // EvalBlock P env ss e vs }
+    | [], e => do
+      let ⟨vs, h⟩ ← evalExpr P env e
+      pure ⟨vs, .nil h⟩
+    | s :: ss, e => do
+      let ⟨env', hs⟩ ← evalStmt P env s
+      let ⟨vs, hb⟩ ← evalBlock P env' ss e
+      pure ⟨vs, .cons hs hb⟩
+  /-- Runs a statement, giving the environment after it; `partial` as `evalExpr` is. -/
+  partial def evalStmt (P : Prog) (env : Env) : (s : Stmt) → Except String { env' // EvalStmt P env s env' }
+    | .let _ bs rhs => do
+      let ⟨ws, he⟩ ← evalExpr P env rhs
+      let ⟨vs, ht⟩ ← certify (take bs.length ws)
+      let ⟨env', hb⟩ ← certify (bindIds env (bs.map (·.name)) vs)
+      pure ⟨env', .let he ht hb⟩
+    | .patlet _ _ m pat rhs => do
+      let ⟨ws, he⟩ ← evalExpr P env rhs
+      let ⟨v, ho⟩ ← certify (one ws)
+      let ⟨env', hb⟩ ← certify (bindPattern env m pat v)
+      pure ⟨env', .patlet he ho hb⟩
+    | .inspect _ => pure ⟨env, .inspect⟩
 end
 
 end Pledge

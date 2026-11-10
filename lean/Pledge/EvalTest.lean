@@ -24,18 +24,16 @@ def fn (name : String) (params : List String) (subterm : List Bool) (body : Expr
 def plus : FnDef := fn "plus" ["m", "n"] [true, false] (matchNat (v "m")
   [br "Zero" [] (v "n"), br "Succ" ["p"] (ap "Succ" [ap "plus" [v "p", v "n"]])]) 0
 
-def loop : FnDef := fn "loop" ["m"] [true] (ap "loop" [v "m"]) 1
-
 def ack : FnDef := fn "ack" ["m", "n"] [true, true] (matchNat (v "m")
   [br "Zero" [] (ap "Succ" [v "n"]),
    br "Succ" ["m1"] (matchNat (v "n")
      [br "Zero" [] (ap "ack" [v "m1", nat 1]),
       br "Succ" ["n1"] (ap "ack" [v "m1", ap "ack" [v "m", v "n1"]])])]) 2
 
-def P : Prog := ⟨[plus, loop, ack], fun n => if n = "Nat" then some .type else if n = "Zero" ∨ n = "Succ" then
+def P : Prog := ⟨[plus, ack], fun n => if n = "Nat" then some .type else if n = "Zero" ∨ n = "Succ" then
   some .ctor else none⟩
 
-def run (e : Expr) : Except String (List Value) := evalExpr P (Act.top P.fns) [] e
+def run (e : Expr) : Except String (List Value) := (evalExpr P [] e).map (·.1)
 
 def isOk (r : Except String (List Value)) (vs : List Value) : Bool := match r with
   | .ok ws => ws == vs
@@ -45,8 +43,8 @@ def isOk (r : Except String (List Value)) (vs : List Value) : Bool := match r wi
 #guard isOk (run (ap "plus" [nat 0, nat 0])) [natV 0]
 #guard isOk (run (ap "ack" [nat 2, nat 2])) [natV 7]
 #guard showValue (natV 2) = "Succ(Succ(Zero()))"
-#guard match run (ap "loop" [nat 1]) with
-  | .error e => e = "the call to loop does not decrease"
+#guard match run (matchNat .removed [br "Zero" [] (nat 0)]) with
+  | .error e => e = "a removed value was inspected"
   | .ok _ => false
 #guard isOk (run (matchNat (nat 1) [br "Zero" [] (nat 3), br "Succ" ["k"] (ap "Succ" [ap "Succ" [v "k"]])]))
   [natV 2]

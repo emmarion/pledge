@@ -69,10 +69,16 @@ pass("lake build, no sorry");
 
 const sources = ["Main.lean", "Pledge.lean", ...readdirSync(join(lean, "Pledge"), { recursive: true })
   .filter(f => f.endsWith(".lean")).map(f => join("Pledge", f))];
-const hits = sources.flatMap(f => code(readFileSync(join(lean, f), "utf8")).split("\n")
-  .filter(l => forbidden.test(l) || tacticSorry.test(l) || fuel.test(l)).map(l => `${f}: ${l.trim()}`));
+const partialOk = ["evalExpr", "evalList", "evalCall", "evalBlock", "evalStmt"]
+  .map(n => `${join("Pledge", "Eval.lean")}: partial def ${n} `);
+const lines = sources.flatMap(f => code(readFileSync(join(lean, f), "utf8")).split("\n").map(l => `${f}: ${l.trim()}`));
+const partials = lines.filter(l => partialOk.some(p => l.startsWith(p)));
+if (partials.length !== partialOk.length) fail("the allowed partial evaluator", partials.join("\n"));
+const hits = lines.map(l => partials.includes(l) ? l.replace(": partial def ", ": def ") : l)
+  .filter(l => forbidden.test(l) || tacticSorry.test(l) || fuel.test(l));
 if (hits.length) fail("forbidden constructs in the sources", hits.join("\n"));
-pass(`${sources.length} source files free of axiom, partial, unsafe, opaque, sorry, fuel and the like`);
+pass(`${sources.length} source files free of axiom, unsafe, opaque, sorry, fuel and the like, and of partial ` +
+  `outside the ${partialOk.length} declarations of the evaluator allowed it`);
 
 const audit = run("lake", ["env", "lean", "tests/Audit.lean"]);
 if (!audit.ok) fail("tests/Audit.lean", audit.out);

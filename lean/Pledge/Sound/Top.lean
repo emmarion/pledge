@@ -60,8 +60,8 @@ theorem TopInv.init : TopInv (TopState.init 1) [] := by
       cases hg
       simp only [Global.name, beq_iff_eq] at hn
       subst hn
-      exact ⟨HeadOk.mono hW ⟨by simp [TopState.world, Fns.find, TopState.init],
-        by simp [TopState.world, kindOf, TopState.init, Global.name], _, hTy⟩, by simp⟩
+      exact ⟨HeadOk.mono hW ⟨by simp [TopState.world, TopState.prog, Fns.find, TopState.init],
+        by simp [TopState.world, TopState.prog, kindOf, TopState.init, Global.name], _, hTy⟩, by simp⟩
     · cases hg
 
 /-- A group of `data` declarations adds closed signatures that keep the top level's invariant. -/
@@ -273,53 +273,64 @@ theorem run_no_empty_goal (source : String) (hp : Program.plain (parse source 1)
     (run source 1).goalProved ≠ some true :=
   no_empty_goal _ _ _ hp d hd hc p hn args hg hname
 
-/-- No top-level evaluation the checker performs fails: the evaluator runs every checked tree to a value. -/
+/-- A top-level expression the checker accepts has an evaluation (`Eval`) to one value of a type, and any value
+`TopState.eval` returns for it is that value, so it has that type. -/
 theorem TopState.eval_ok {st : TopState} {ρ : List Value} {C : Ctx} {g : Option Given} {e : Expr} {o : Out}
     {pos : Pos} (hI : TopInv st ρ) (hph : C.phase = 1) (her : C.erased = false) (hgl : C.globals = st.globals)
     (hfn : C.fn = none) (hg : ∀ g', g = some g' → g'.Ok ρ) (hp : e.plain = true) (h : checkExpr C st.sc g e = .ok o)
-    {r : Res} (hr : single e.pos o.res = .ok r) : ∃ v, st.eval pos o.tree r.tainted = .ok (some v) := by
-  obtain ⟨-, -, hres, ρ', vs, hev, -, hvs, -, -⟩ :=
+    {r : Res} (hr : single e.pos o.res = .ok r) :
+    (∃ v V, Eval st.prog st.env o.tree [v] ∧ HasType (st.world ρ).Sc v V) ∧
+      ∀ v, st.eval pos o.tree r.tainted = .ok (some v) → ∃ V, HasType (st.world ρ).Sc v V := by
+  obtain ⟨-, -, hres, ρ', vs, hev, -, hvs, hty, -⟩ :=
     Expr.sound e hp C st.sc g _ _ ρ st.env _ o (hI.inv hph her hgl hfn) hg h
   rw [single_ok hr] at hvs hres
   obtain ⟨v, -, rfl⟩ := Term.evalList_singleton.1 (by simpa using hvs)
-  refine ⟨v, ?_⟩
-  simp only [TopState.eval, (hres r (by simp)).1, Bool.false_eq_true, ↓reduceIte]
-  have : evalExpr ⟨st.fns, kindOf st.globals⟩ (Act.top st.fns) st.env o.tree = .ok [v] := hev
-  rw [this]; rfl
+  obtain ⟨V, hV⟩ := hty v (by simp)
+  refine ⟨⟨v, V, hev, hV⟩, fun w hw => ?_⟩
+  rw [(hres r (by simp)).1] at hw
+  obtain ⟨w', hw', hcert⟩ := TopState.eval_cert hw
+  obtain rfl := Option.some.inj hw'
+  obtain rfl : v = w := by simpa using Eval.det hev hcert
+  exact ⟨V, hV⟩
 
 theorem TopState.run_ok {st : TopState} {ρ : List Value} {C : Ctx} {s : Stmt} {o : StmtOut} (hI : TopInv st ρ)
     (hph : C.phase = 1) (her : C.erased = false) (hgl : C.globals = st.globals) (hfn : C.fn = none)
-    (hp : s.plain = true) (h : checkStmt C st.sc s = .ok o) : ∃ env, st.run o.tree = .ok env := by
+    (hp : s.plain = true) (h : checkStmt C st.sc s = .ok o) : ∃ env, EvalStmt st.prog st.env o.tree env := by
   obtain ⟨-, ρ', env', hev, -⟩ := Stmt.sound s hp C st.sc _ _ ρ st.env _ o (hI.inv hph her hgl hfn) h
-  refine ⟨env', ?_⟩
-  have : evalStmt ⟨st.fns, kindOf st.globals⟩ (Act.top st.fns) st.env o.tree = .ok env' := hev
-  simp only [TopState.run, this]; rfl
+  exact ⟨env', hev⟩
 
-/-- No evaluation fails at a state the checker reaches on a plain program: an expression checked there at the top
-level, as `print`, `qed` against a type goal and a `comptime` pattern `let` check theirs, evaluates by
-`TopState.eval` to a value, so the top level never reports "evaluation stopped" for it. -/
-theorem reached_eval_ok {pre : Program} (hp : Program.plain pre = true) {C : Ctx} {g : Option Given} {e : Expr}
-    {o : Out} {r : Res} {pos : Pos} (hph : C.phase = 1) (her : C.erased = false)
-    (hgl : C.globals = (topItems (.init 1) pre).1.globals) (hfn : C.fn = none)
+/-- Evaluation at a state `st` the checker reaches on a plain program: an expression checked there at the top
+level, as `print`, `qed` against a type goal and a `comptime` pattern `let` check theirs, has an evaluation (`Eval`)
+to one value, typed under a valuation `ρ` satisfying the state's scope, and any value `TopState.eval` returns for it
+is typed so too. `TopState.eval` runs the `partial` evaluator, so this does not establish that it returns a value
+rather than an error, or that it returns at all. -/
+theorem reached_eval_ok {pre : Program} (hp : Program.plain pre = true) {st : TopState}
+    (hst : st = (topItems (.init 1) pre).1) {C : Ctx} {g : Option Given} {e : Expr} {o : Out} {r : Res} {pos : Pos}
+    (hph : C.phase = 1) (her : C.erased = false) (hgl : C.globals = st.globals) (hfn : C.fn = none)
     (hg : ∀ g', g = some g' → g'.env = [] ∧ ∀ w ∈ g'.wants, w.mult = .many) (he : e.plain = true)
-    (h : checkExpr C (topItems (.init 1) pre).1.sc g e = .ok o) (hr : single e.pos o.res = .ok r) :
-    ∃ v, (topItems (.init 1) pre).1.eval pos o.tree r.tainted = .ok (some v) := by
+    (h : checkExpr C st.sc g e = .ok o) (hr : single e.pos o.res = .ok r) :
+    ∃ ρ, Sat (st.world ρ).Sc st.sc.Γ ρ ∧ (∃ v V, Eval st.prog st.env o.tree [v] ∧ HasType (st.world ρ).Sc v V) ∧
+      ∀ v, st.eval pos o.tree r.tainted = .ok (some v) → ∃ V, HasType (st.world ρ).Sc v V := by
+  subst hst
   obtain ⟨ρ, -, hI⟩ := topItems_sound (ρ := []) (prog := pre) TopInv.init hp
-  refine TopState.eval_ok hI hph her hgl hfn (fun g' h' => ⟨⟨[], ?_⟩, (hg g' h').2⟩) he h hr
+  refine ⟨ρ, hI.sat, TopState.eval_ok hI hph her hgl hfn (fun g' h' => ⟨⟨[], ?_⟩, (hg g' h').2⟩) he h hr⟩
   rw [(hg g' h').1]; rfl
 
-/-- No statement's evaluation fails at a state the checker reaches on a plain program: a statement checked there at
-the top level runs by `TopState.run`, so the top level never reports "evaluation stopped" for it. -/
-theorem reached_run_ok {pre : Program} (hp : Program.plain pre = true) {C : Ctx} {s : Stmt} {o : StmtOut}
-    (hph : C.phase = 1) (her : C.erased = false) (hgl : C.globals = (topItems (.init 1) pre).1.globals)
-    (hfn : C.fn = none) (hs : s.plain = true) (h : checkStmt C (topItems (.init 1) pre).1.sc s = .ok o) :
-    ∃ env, (topItems (.init 1) pre).1.run o.tree = .ok env := by
+/-- At a state `st` the checker reaches on a plain program, a statement checked there at the top level has a run
+(`EvalStmt`). `TopState.run` runs the `partial` evaluator, so this does not establish that it returns an
+environment rather than an error, or that it returns at all; an environment it returns is this one
+(`TopState.run_cert`, `EvalStmt.det`). -/
+theorem reached_run_ok {pre : Program} (hp : Program.plain pre = true) {st : TopState}
+    (hst : st = (topItems (.init 1) pre).1) {C : Ctx} {s : Stmt} {o : StmtOut} (hph : C.phase = 1)
+    (her : C.erased = false) (hgl : C.globals = st.globals) (hfn : C.fn = none) (hs : s.plain = true)
+    (h : checkStmt C st.sc s = .ok o) : ∃ env, EvalStmt st.prog st.env o.tree env := by
+  subst hst
   obtain ⟨ρ, -, hI⟩ := topItems_sound (ρ := []) (prog := pre) TopInv.init hp
   exact TopState.run_ok hI hph her hgl hfn hs h
 
 /-- `data Unit() : Type() { tt() : Unit(); } goal Unit(); qed tt();`, which the checker accepts with its goal
-proved, so the goal clause of `runProgram_sound` is not vacuous. Kernel reduction does not seem to get through the
-evaluator's well-founded recursion (`decide +kernel` gets stuck), so this is checked by `#guard`, not a theorem. -/
+proved, so the goal clause of `runProgram_sound` is not vacuous. The evaluator is `partial`, which kernel reduction
+does not unfold, so this is checked by `#guard`, not a theorem. -/
 def unitProgram : Program :=
   [.data ⟨⟨"Unit", 0⟩, [], [⟨⟨"tt", 0⟩, [], .app ⟨"Unit", 0⟩ []⟩]⟩,
    .goal 0 (.type (.app ⟨"Unit", 0⟩ [])),

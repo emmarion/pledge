@@ -59,7 +59,7 @@ theorem World.Le.extend (W : World) (ρ' : List Value) : W.Le { W with ρ := W.�
 theorem TopState.world_extend {st st' : TopState} {ρ : List Value} (ρ' : List Value)
     (hok : SigsOk ρ.length st.sc.sigs) (hs : st'.sc.sigs = st.sc.sigs) (hf : st'.fns = st.fns)
     (hg : st'.globals = st.globals) : st'.world (ρ ++ ρ') = { st.world ρ with ρ := ρ ++ ρ' } := by
-  simp only [TopState.world, hs, hf, hg, World.mk.injEq, and_true, true_and]
+  simp only [TopState.world, TopState.prog, hs, hf, hg, World.mk.injEq, and_true, true_and]
   exact List.map_congr_left fun sig hsig => Sig.close_append ρ' (hok sig hsig).1
 
 /-- A top-level item that changes only the scope, the environment and what is proved keeps the invariant, given
@@ -98,9 +98,8 @@ theorem checkedStmt_sound {st st' : TopState} {ρ : List Value} {s : Stmt} (hI :
   cases h
   obtain ⟨hsigs, ρ', env', hev, hI'⟩ := Stmt.sound s hp _ _ _ _ _ _ _ o hInv ho
   rw [keep_ok, hI'.inert.taintedBy] at henv
-  have : evalStmt ⟨st.fns, kindOf st.globals⟩ (Act.top st.fns) st.env o.tree = .ok env' := hev
-  simp only [Option.isSome_none, Bool.false_eq_true, ↓reduceIte, TopState.run, this] at henv
-  cases henv
+  simp only [Option.isSome_none, Bool.false_eq_true, ↓reduceIte] at henv
+  cases EvalStmt.det (TopState.run_cert henv) hev
   exact ⟨ρ', TopInv.step hI hI' hsigs rfl rfl rfl rfl rfl hI.proved⟩
 
 theorem comptimeLet_sound {st st' : TopState} {ρ : List Value} {p : Pos} {pat : Pattern} {rhs : Expr}
@@ -120,9 +119,9 @@ theorem comptimeLet_sound {st st' : TopState} {ρ : List Value} {p : Pos} {pat :
   rw [single_ok hr] at hvs hres
   obtain ⟨v, hv, rfl⟩ := Term.evalList_singleton.1 (by simpa using hvs)
   have hrt : r.tainted = false := (hres r (by simp)).1
-  have : evalExpr ⟨st.fns, kindOf st.globals⟩ (Act.top st.fns) st.env o.tree = .ok [v] := hev
-  simp only [TopState.eval, hrt, Bool.false_eq_true, ↓reduceIte, this] at hv'
-  cases hv'
+  rw [hrt] at hv'
+  obtain ⟨v'', rfl, hcert⟩ := TopState.eval_cert hv'
+  obtain rfl : v = v'' := by simpa using Eval.det hev hcert
   simp only at h
   split at h
   · simp [failAt_eq, bind, Except.bind] at h
