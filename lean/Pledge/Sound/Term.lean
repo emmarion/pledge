@@ -365,7 +365,8 @@ structure TermInv (sc : Scope) (n0 : Nat) (Sc : Sigs) (ρ : List Value) : Prop w
   sigs : SigsClose sc.sigs ρ Sc
   sigsOk : SigsOk n0 sc.sigs
   noJunk : Sc.find junkHead = none
-  names : ∀ n r, sc.lookup n = some r → ∃ v, r.term.eval ρ [] = some v ∧ (r.tainted = false → ∃ V, HasType Sc v V)
+  names : ∀ n r, sc.lookup n = some r → ∃ v, r.term.eval ρ [] = some v ∧ (∃ A, WType Sc v A) ∧
+    (r.tainted = false → ∃ V, HasType Sc v V)
 
 /-- `TermInv` with `WSat` and no typing: what `telescope_cons` needs, values of tainted results included. -/
 structure WTermInv (sc : Scope) (n0 : Nat) (Sc : Sigs) (ρ : List Value) : Prop where
@@ -374,16 +375,16 @@ structure WTermInv (sc : Scope) (n0 : Nat) (Sc : Sigs) (ρ : List Value) : Prop 
   sigs : SigsClose sc.sigs ρ Sc
   sigsOk : SigsOk n0 sc.sigs
   noJunk : Sc.find junkHead = none
-  names : ∀ n r, sc.lookup n = some r → ∃ v, r.term.eval ρ [] = some v
+  names : ∀ n r, sc.lookup n = some r → ∃ v, r.term.eval ρ [] = some v ∧ ∃ A, WType Sc v A
 
 theorem TermInv.weak {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List Value} (h : TermInv sc n0 Sc ρ) :
     WTermInv sc n0 Sc ρ :=
-  ⟨h.sat.1, h.n0_le, h.sigs, h.sigsOk, h.noJunk, fun n r hn => let ⟨v, hv, _⟩ := h.names n r hn; ⟨v, hv⟩⟩
+  ⟨h.sat.1, h.n0_le, h.sigs, h.sigsOk, h.noJunk, fun n r hn => let ⟨v, hv, hw, _⟩ := h.names n r hn; ⟨v, hv, hw⟩⟩
 
 theorem Inv.termInv {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {act : Act}
     (hI : Inv C sc n0 W ρ act) : TermInv sc n0 W.Sc ρ :=
   ⟨hI.sat, hI.length, hI.sigs ρ hI.agree, hI.sigsOk, hI.noJunk, fun n r hn =>
-    let ⟨v, hv, h⟩ := hI.names n r hn; ⟨v, hv, h.2.2⟩⟩
+    let ⟨v, hv, h⟩ := hI.names n r hn; ⟨v, hv, h.2.1, h.2.2⟩⟩
 
 mutual
 /-- A checked skeleton term has a value when every name has one. -/
@@ -440,11 +441,497 @@ theorem checkTerms_eval {C : Ctx} {sc : Scope} {ρ : List Value}
       exact ⟨v :: vs, Term.evalList_cons_eq_some.2 ⟨v, vs, hv, hvs, rfl⟩⟩
 end
 
+namespace TermFill
+
+mutual
+theorem eval_noRemoved {ρ env : List Value} (hρ : ∀ v ∈ ρ, v.noRemoved = true)
+    (he : ∀ v ∈ env, v.noRemoved = true) : ∀ (t : Term) {v : Value}, t.eval ρ env = some v → v.noRemoved = true
+  | .entry _, v, h => by simp only [Term.eval] at h; exact hρ v (List.mem_of_getElem? h)
+  | .bound _, v, h => by simp only [Term.eval] at h; exact he v (List.mem_of_getElem? h)
+  | .app _ as, v, h => by
+    obtain ⟨vs, hvs, rfl⟩ := Term.eval_app.1 h
+    simpa [Value.noRemoved] using evalList_noRemoved hρ he as hvs
+theorem evalList_noRemoved {ρ env : List Value} (hρ : ∀ v ∈ ρ, v.noRemoved = true)
+    (he : ∀ v ∈ env, v.noRemoved = true) :
+    ∀ (as : List Term) {vs : List Value}, Term.evalList ρ env as = some vs → Value.noRemovedList vs = true
+  | [], vs, h => by cases h; rfl
+  | a :: as, vs, h => by
+    obtain ⟨v, vs', hv, hvs, rfl⟩ := Term.evalList_cons_eq_some.1 h
+    simp [Value.noRemovedList, eval_noRemoved hρ he a hv, evalList_noRemoved hρ he as hvs]
+end
+
+theorem checkTerms_length {C : Ctx} {sc : Scope} : ∀ (args : List WTerm) {owner role : String} {params : Telescope}
+    {prev rs : List Res}, checkTerms C sc owner role params prev args = .ok rs → rs.length = args.length
+  | [], _, _, _, _, rs, h => by
+    simp only [checkTerms, pure, Except.pure, Except.ok.injEq] at h; subst h; rfl
+  | a :: as, _, _, params, _, rs, h => by
+    cases params with
+    | nil => simp [checkTerms, internal, failAt_eq] at h
+    | cons p ps =>
+      simp only [checkTerms] at h
+      obtain ⟨r, -, h⟩ := bind_eq_ok.1 h
+      obtain ⟨-, -, h⟩ := bind_eq_ok.1 h
+      obtain ⟨rest, hrest, h⟩ := bind_eq_ok.1 h
+      simp only [pure, Except.pure, Except.ok.injEq] at h
+      subst h
+      simp [checkTerms_length as hrest]
+
+/-- A checked skeleton term has a value with a type by its head. -/
+theorem checkTerm_wtype {C : Ctx} {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List Value} (hT : WTermInv sc n0 Sc ρ) :
+    ∀ (t : WTerm) {r : Res}, checkTerm C sc t = .ok r → ∃ v, r.term.eval ρ [] = some v ∧ ∃ A, WType Sc v A
+  | .var x, r, h => by
+    simp only [checkTerm] at h
+    split at h
+    · rename_i r' hl
+      simp only [pure, Except.pure, Except.ok.injEq] at h
+      subst h
+      exact hT.names _ r' hl
+    · simp [notValue, failAt_eq] at h
+  | .app hd args, r, h => by
+    obtain ⟨k, role, sig, rs, hsig, har, hrs, rfl⟩ : ∃ k role sig rs, sc.sig hd.pos ⟨k, hd.name⟩ = .ok sig ∧
+        arity hd.pos hd.name sig.params.length args.length = .ok () ∧
+        checkTerms C sc hd.name role sig.params [] args = .ok rs ∧
+        r = ⟨.app sig.head (rs.map (·.term)), rs.any (·.tainted) || sc.taintedBy.isSome, false⟩ := by
+      unfold checkTerm at h
+      split at h
+      · simp [failAt_eq, error_bind] at h
+      all_goals first
+        | (simp [notApplied, failAt_eq, error_bind] at h; done)
+        | (obtain ⟨k, -, h⟩ := bind_eq_ok.1 h
+           obtain ⟨sig, hsig, h⟩ := bind_eq_ok.1 h
+           obtain ⟨u, har, h⟩ := bind_eq_ok.1 h
+           obtain ⟨rs, hrs, h⟩ := bind_eq_ok.1 h
+           simp only [pure, Except.pure, Except.ok.injEq] at h
+           exact ⟨k, _, sig, rs, hsig, har, hrs, h.symm⟩)
+    have hfind := Scope.sig_ok hsig
+    obtain ⟨hbelow, hbounds⟩ := hT.sigsOk sig (List.mem_of_find?_eq_some hfind)
+    obtain ⟨vs, hvs⟩ := checkTerms_eval (fun n r hn => let ⟨v, hv, _⟩ := hT.names n r hn; ⟨v, hv⟩) args hrs
+    have hl : vs.length = sig.params.length := by
+      rw [Term.length_evalList hvs, List.length_map, checkTerms_length args hrs, arity_ok har]
+    obtain ⟨A, hA⟩ : ∃ A, sig.ret.eval ρ vs = some A := by
+      refine Term.eval_isSome _ ?_ (by rw [hl]; exact hbounds)
+      simp only [Sig.entriesBelow, Bool.and_eq_true] at hbelow
+      exact Term.entriesBelow_mono hT.n0_le _ hbelow.2
+    rw [← Sigs.find_head hfind] at hfind
+    obtain ⟨sig', hc, -⟩ := hT.sigs.find hfind
+    have hne : sig.head ≠ junkHead := fun e => by rw [e, hT.noJunk] at hc; cases hc
+    refine ⟨_, Term.eval_app.2 ⟨vs, hvs, rfl⟩, A, ?_⟩
+    simp only [WType, hne, ↓reduceIte]
+    exact ⟨sig', hc, by rw [hT.sigs.ret_eval hfind hc]; exact hA⟩
+
+/-- A checked annotation's type has a value, and its `is` term a value with that type by its head. -/
+theorem annotate_weval {C : Ctx} {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List Value} {ann : Ann} {ty : Term}
+    {is : Option Term} {tainted : Bool} (hT : WTermInv sc n0 Sc ρ) (h : annotate C sc ann = .ok (ty, is, tainted)) :
+    ∃ A, ty.eval ρ [] = some A ∧ ∀ e, is = some e → ∃ v, e.eval ρ [] = some v ∧ WType Sc v A := by
+  cases ann with
+  | is t =>
+    simp only [annotate] at h
+    obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
+    obtain ⟨ty', hty, h⟩ := bind_eq_ok.1 h
+    simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl, -⟩ := h
+    obtain ⟨v, hv, A, hA⟩ := checkTerm_wtype hT t hr
+    exact ⟨A, typeOf_eval hT.sat hT.sigs hT.noJunk hv hA (Scope.typeOf_ok hty),
+      fun e he => by cases he; exact ⟨v, hv, hA⟩⟩
+  | type t =>
+    simp only [annotate] at h
+    obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
+    obtain ⟨u, -, h⟩ := bind_eq_ok.1 h
+    simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl, -⟩ := h
+    obtain ⟨v, hv, -⟩ := checkTerm_wtype hT t hr
+    exact ⟨v, hv, fun e he => by cases he⟩
+
+end TermFill
+
 /-- A checked annotation's type and `is` term have values (§6). -/
 theorem annotate_eval {C : Ctx} {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List Value} {ann : Ann} {ty : Term}
     {is : Option Term} {tainted : Bool} (hT : WTermInv sc n0 Sc ρ) (h : annotate C sc ann = .ok (ty, is, tainted)) :
-    (∃ A, ty.eval ρ [] = some A) ∧ ∀ e, is = some e → ∃ v, e.eval ρ [] = some v := by
-  sorry
+    (∃ A, ty.eval ρ [] = some A) ∧ ∀ e, is = some e → ∃ v, e.eval ρ [] = some v :=
+  let ⟨A, hA, his⟩ := TermFill.annotate_weval hT h
+  ⟨⟨A, hA⟩, fun e he => let ⟨v, hv, _⟩ := his e he; ⟨v, hv⟩⟩
+
+namespace TermFill
+
+/-- What opening a binder to the value `v` needs under `ρ`: `v` has the type by its head, and has it if `typed`,
+and is the `is` term's value. -/
+def OpenOk (S : Sigs) (ρ : List Value) (o : Opening) (typed : Bool) (v : Value) : Prop :=
+  (∃ A, o.type.eval ρ [] = some A ∧ v.noRemoved = true ∧ WType S v A ∧ (typed = true → HasType S v A)) ∧
+    ∀ e, o.is = some e → e.eval ρ [] = some v
+
+theorem wsat_push {S : Sigs} {Γ : Entries} {ρ : List Value} {en : Entry} {v A : Value} (hΓ : WSat S Γ ρ)
+    (hA : en.type.eval (ρ ++ [v]) [] = some A) (hr : v.noRemoved = true) (hw : WType S v A)
+    (hru : ∀ r, en.rule = some r → r.eval (ρ ++ [v]) [] = some v) : WSat S (Γ ++ [en]) (ρ ++ [v]) := by
+  refine ⟨by simp [hΓ.1], fun i en' hen => ?_⟩
+  by_cases hi : i < Γ.length
+  · rw [List.getElem?_append_left hi] at hen
+    obtain ⟨w, B, hw', hB, h1, h2, h3⟩ := hΓ.2 i en' hen
+    exact ⟨w, B, getElem?_append_of_some hw', Term.eval_frame_ρ _ hB, h1, h2,
+      fun r h => Term.eval_frame_ρ _ (h3 r h)⟩
+  · rw [List.getElem?_append_right (Nat.le_of_not_lt hi)] at hen
+    have h0 : i - Γ.length = 0 := by
+      have := (List.getElem?_eq_some_iff.1 hen).1; simp at this; omega
+    rw [h0] at hen
+    simp only [List.getElem?_cons_zero, Option.some.injEq] at hen
+    subst hen
+    refine ⟨v, A, ?_, hA, hr, hw, hru⟩
+    rw [List.getElem?_append_right (by rw [hΓ.1]; omega), hΓ.1, h0]
+    rfl
+
+theorem opening_entry {C : Ctx} {sc : Scope} {name : Id} {ann : Ann} {mult : Option Mult} {kind : String}
+    {o : Opening} (h : opening C sc name ann mult kind = .ok o) :
+    annotate C sc ann = .ok (o.type, o.is, o.tainted) ∧ o.id = sc.Γ.length ∧ ∃ en : Entry, o.sc.Γ = sc.Γ ++ [en] ∧
+      en.type = o.type.subst [] ∧ en.rule = o.is.map (fun e => (e.subst []).canon sc.Γ) ∧ o.sc.sigs = sc.sigs ∧
+      o.sc.names = pushed [name] [⟨.entry sc.Γ.length, false, false⟩] ++ sc.names := by
+  obtain ⟨ha, hid, mk, hsc⟩ := opening_shape h
+  rw [hsc]
+  simp only [openTele, openTele.go]
+  refine ⟨ha, hid, _, rfl, ?_⟩
+  simp
+
+/-- Opening a binder to a value meeting it pushes an entry that value meets. -/
+theorem opening_facts {C : Ctx} {sc : Scope} {name : Id} {ann : Ann} {mult : Option Mult} {kind : String}
+    {o : Opening} {n0 : Nat} {Sc : Sigs} {ρ : List Value} {v : Value} {t : Bool} (hT : WTermInv sc n0 Sc ρ)
+    (h : opening C sc name ann mult kind = .ok o) (hv : OpenOk Sc ρ o t v) :
+    ∃ en A, o.sc.Γ = sc.Γ ++ [en] ∧ en.type.eval (ρ ++ [v]) [] = some A ∧ v.noRemoved = true ∧ WType Sc v A ∧
+      (t = true → HasType Sc v A) ∧ (∀ r, en.rule = some r → r.eval (ρ ++ [v]) [] = some v) ∧
+      o.sc.sigs = sc.sigs ∧ o.sc.names = pushed [name] [⟨.entry sc.Γ.length, false, false⟩] ++ sc.names := by
+  obtain ⟨-, -, en, hΓ, hty, hrule, hsigs, hnames⟩ := opening_entry h
+  obtain ⟨⟨A, hA, hr, hw, hV⟩, his⟩ := hv
+  refine ⟨en, A, hΓ, ?_, hr, hw, hV, fun r hr' => ?_, hsigs, hnames⟩
+  · rw [hty, Term.eval_subst (rfl : Term.evalList (ρ ++ [v]) [] [] = some [])]; exact Term.eval_frame_ρ _ hA
+  · rw [hrule] at hr'
+    obtain ⟨e, he, rfl⟩ := Option.map_eq_some_iff.1 hr'
+    exact Term.eval_frame_ρ [v] (by rw [hT.sat.eval_canon, Term.eval_subst rfl]; exact his e he)
+
+theorem lookup_push {name : Id} {r0 r : Res} {l : List (String × Res)} {n : String}
+    (h : (pushed [name] [r0] ++ l).lookup n = some r) : r = r0 ∨ l.lookup n = some r := by
+  rw [lookup_append] at h
+  cases hx : (pushed [name] [r0]).lookup n with
+  | some r' =>
+    rw [hx, Option.some_or, Option.some.injEq] at h
+    subst h
+    obtain ⟨i, hi⟩ := pushed_mem (lookup_mem hx)
+    cases i <;> simp_all
+  | none => rw [hx, Option.none_or] at h; exact .inr h
+
+theorem wopen {C : Ctx} {sc : Scope} {name : Id} {ann : Ann} {mult : Option Mult} {kind : String}
+    {o : Opening} {n0 : Nat} {Sc : Sigs} {ρ : List Value} {v : Value} {t : Bool} (hT : WTermInv sc n0 Sc ρ)
+    (h : opening C sc name ann mult kind = .ok o) (hv : OpenOk Sc ρ o t v) : WTermInv o.sc n0 Sc (ρ ++ [v]) := by
+  obtain ⟨en, A, hΓ, hA, hr, hw, -, hru, hsigs, hnames⟩ := opening_facts hT h hv
+  have hlen := hT.sat.1
+  refine ⟨by rw [hΓ]; exact wsat_push hT.sat hA hr hw hru, by simp; have := hT.n0_le; omega, ?_, ?_, hT.noJunk,
+    fun n r hl => ?_⟩
+  · rw [hsigs]; exact hT.sigs.frame [v] fun sig hs => Sig.entriesBelow_mono hT.n0_le (hT.sigsOk sig hs).1
+  · rw [hsigs]; exact hT.sigsOk
+  · rw [Scope.lookup, hnames] at hl
+    rcases lookup_push hl with rfl | hl
+    · exact ⟨v, by simp [Term.eval, ← hlen], A, hw⟩
+    · obtain ⟨w, hw', B, hB⟩ := hT.names n r hl
+      exact ⟨w, Term.eval_frame_ρ [v] hw', B, hB⟩
+
+theorem topen {C : Ctx} {sc : Scope} {name : Id} {ann : Ann} {mult : Option Mult} {kind : String}
+    {o : Opening} {n0 : Nat} {Sc : Sigs} {ρ : List Value} {v : Value} (hT : TermInv sc n0 Sc ρ)
+    (h : opening C sc name ann mult kind = .ok o) (hv : OpenOk Sc ρ o true v) : TermInv o.sc n0 Sc (ρ ++ [v]) := by
+  have hW := wopen hT.weak h hv
+  obtain ⟨en, A, hΓ, hA, hr, hw, hV, hru, -, hnames⟩ := opening_facts hT.weak h hv
+  have hlen := hT.sat.1.1
+  refine ⟨by rw [hΓ]; exact hT.sat.push ⟨A, hA, hr, hw, fun _ => hV rfl, hru⟩, hW.n0_le, hW.sigs, hW.sigsOk,
+    hW.noJunk, fun n r hl => ?_⟩
+  rw [Scope.lookup, hnames] at hl
+  rcases lookup_push hl with rfl | hl
+  · exact ⟨v, by simp [Term.eval, ← hlen], ⟨A, hw⟩, fun _ => ⟨A, hV rfl⟩⟩
+  · obtain ⟨w, hw', hB, hV'⟩ := hT.names n r hl
+    exact ⟨w, Term.eval_frame_ρ [v] hw', hB, hV'⟩
+
+/-- The scopes a sequence of `opening`s passes through, from a scope to `fin`. -/
+inductive Chain (C : Ctx) (kind : String) (fin : Scope) : Scope → List Opening → Prop
+  | nil : Chain C kind fin fin []
+  | cons {sc : Scope} {name : Id} {ann : Ann} {mult : Option Mult} {o : Opening} {os : List Opening} :
+      opening C sc name ann mult kind = .ok o → Chain C kind fin o.sc os → Chain C kind fin sc (o :: os)
+
+theorem chain_shape {C : Ctx} {kind : String} {fin : Scope} {sc : Scope} {os : List Opening}
+    (hc : Chain C kind fin sc os) : sc.Γ <+: fin.Γ ∧ fin.Γ.length = sc.Γ.length + os.length ∧
+      os.map (·.id) = List.range' sc.Γ.length os.length := by
+  induction hc with
+  | nil => exact ⟨List.prefix_refl _, by simp, rfl⟩
+  | cons ho _ ih =>
+    obtain ⟨-, hid, en, hΓ, -⟩ := opening_entry ho
+    rw [hΓ] at ih
+    obtain ⟨h1, h2, h3⟩ := ih
+    refine ⟨(List.prefix_append _ _).trans h1, by rw [h2]; simp; omega, ?_⟩
+    simp [List.range'_succ, hid, h3]
+
+/-- `R`, position by position, on two lists of the same length. -/
+def Pairs {α β : Type} (R : α → β → Prop) : List α → List β → Prop
+  | [], [] => True
+  | a :: as, b :: bs => R a b ∧ Pairs R as bs
+  | _, _ => False
+
+theorem pairs_of_getElem {α β : Type} {R : α → β → Prop} : ∀ {l : List α} {l' : List β}, l.length = l'.length →
+    (∀ (i : Nat) a b, l[i]? = some a → l'[i]? = some b → R a b) → Pairs R l l'
+  | [], [], _, _ => trivial
+  | a :: l, b :: l', hl, h => ⟨h 0 a b rfl rfl, pairs_of_getElem (by simpa using hl)
+      fun i a b ha hb => h (i + 1) a b (by simpa using ha) (by simpa using hb)⟩
+  | [], _ :: _, hl, _ | _ :: _, [], hl, _ => by simp at hl
+
+/-- The want `w` is the binder opened as `o`, abstracted over `ids` in `Γ`. -/
+def WantAbs (Γ : Entries) (ids : List Nat) (o : Opening) (w : Want) : Prop :=
+  ∃ T, w.type = some T ∧ abstract? Γ o.type ids = some T ∧
+    (∀ e', w.is = some e' → ∃ e, o.is = some e ∧ abstract? Γ e ids = some e') ∧
+    ∀ e, o.is = some e → ∃ e', w.is = some e' ∧ abstract? Γ e ids = some e'
+
+theorem abstracted_abs {Γ : Entries} {name : Option String} {mult : Option Mult} {pos : Pos} {ids : List Nat}
+    {o : Opening} {t : TBinder} (h : abstracted Γ name mult pos o.type o.is ids = .ok t) :
+    WantAbs Γ ids o (Want.of t) := by
+  obtain ⟨-, hty, his, -⟩ := abstracted_ok h
+  refine ⟨t.type, rfl, hty, fun e' he' => ?_, his⟩
+  cases hi : o.is with
+  | some e =>
+    obtain ⟨e'', h1, h2⟩ := his e hi
+    simp only [Want.of, h1, Option.some.injEq] at he'
+    subst he'
+    exact ⟨e, rfl, h2⟩
+  | none =>
+    rw [hi] at h
+    unfold abstracted at h
+    obtain ⟨ty, -, h⟩ := bind_eq_ok.1 h
+    obtain ⟨is', hmis, h⟩ := bind_eq_ok.1 h
+    simp only [pure, Except.pure, Except.ok.injEq] at h
+    subst h
+    simp [Option.mapM, pure, Except.pure] at hmis
+    subst hmis
+    simp [Want.of] at he'
+
+mutual
+theorem mapEntries_entriesBelow {n : Nat} {f : Nat → Term} :
+    ∀ t : Term, (∀ i, t.occurs i = true → (f i).entriesBelow n = true) → (t.mapEntries f).entriesBelow n = true
+  | .entry i, h => h i (by simp [Term.occurs])
+  | .bound _, _ => rfl
+  | .app _ as, h => mapEntriesList_entriesBelow as h
+theorem mapEntriesList_entriesBelow {n : Nat} {f : Nat → Term} :
+    ∀ as : List Term, (∀ i, Term.occursList i as = true → (f i).entriesBelow n = true) →
+      Term.entriesBelowList n (Term.mapEntriesList f as) = true
+  | [], _ => rfl
+  | a :: as, h => by
+    simp only [Term.mapEntriesList, Term.entriesBelowList, Bool.and_eq_true]
+    exact ⟨mapEntries_entriesBelow a fun i hi => h i (by simp [Term.occursList, hi]),
+      mapEntriesList_entriesBelow as fun i hi => h i (by simp [Term.occursList, hi])⟩
+end
+
+/-- An abstracted term mentions only entries below `n` when every entry of the original term below `n` is
+abstracted or below `n`, with rules below `n`. -/
+theorem abstract_entriesBelow {Γ : Entries} {t w : Term} {ids : List Nat} {n : Nat}
+    (h : abstract? Γ t ids = some w) (ht : ∀ i, t.occurs i = true → i ∉ ids → i < n)
+    (hr : ∀ i en r, i < n → Γ[i]? = some en → en.rule = some r → r.entriesBelow n = true) :
+    w.entriesBelow n = true := by
+  simp only [abstract?] at h
+  split at h
+  · cases h
+    refine mapEntries_entriesBelow t fun i hi => ?_
+    cases hk : ids.idxOf? i with
+    | some k => simp [hk, Term.entriesBelow]
+    | none =>
+      have hin := ht i hi (List.idxOf?_eq_none_iff.1 hk)
+      simp only [hk, Option.map_none, Option.getD_none]
+      cases hen : Γ[i]? with
+      | none => simp [Term.entriesBelow, hin]
+      | some en =>
+        cases hru : en.rule with
+        | none => simp [hru, Term.entriesBelow, hin]
+        | some r =>
+          simp only [Option.bind_some, hru, Option.elim_some]
+          refine mapEntries_entriesBelow r fun j hj => ?_
+          cases hk' : ids.idxOf? j with
+          | some k => simp [Term.entriesBelow]
+          | none =>
+            simp only [Option.map_none, Option.getD_none, Term.entriesBelow, decide_eq_true_eq]
+            exact Term.lt_of_occurs r (hr i en r hin hen hru) hj
+  · cases h
+
+/-- A term checked in a later scope `Γm`, abstracted over the telescope's entries in the final scope `Γ'`, takes
+under `ρ` and the binders' values the value the term has under `ρ` extended by them. -/
+theorem abs_eval {Sc : Sigs} {Γ0 Γm Γ' : Entries} {ρ prev outerv : List Value} {outer : List Nat} {N : Nat}
+    {u w : Term} {x : Value} (h0 : WSat Sc Γ0 ρ) (hp0 : Γ0 <+: Γ') (hl : Γ'.length = Γ0.length + N)
+    (houter : Term.evalList ρ [] (outer.map .entry) = some outerv) (hm : WSat Sc Γm (ρ ++ prev)) (hpm : Γm <+: Γ')
+    (hab : abstract? Γ' u (outer ++ List.range' Γ0.length N) = some w) (hu : u.eval (ρ ++ prev) [] = some x) :
+    w.eval ρ (outerv ++ prev) = some x := by
+  have hρ := h0.1
+  have hol : outerv.length = outer.length := by simpa using Term.length_evalList houter
+  have henv : ∀ k i : Nat, (outer ++ List.range' Γ0.length N)[k]? = some i →
+      (outerv ++ prev)[k]? = (ρ ++ prev)[i]? := by
+    intro k i hk
+    by_cases hk' : k < outer.length
+    · rw [List.getElem?_append_left hk'] at hk
+      rw [List.getElem?_append_left (hol ▸ hk')]
+      have := (Term.evalList_eq_some_iff.1 houter).2 k (.entry i) (by simp [hk])
+      simp only [Term.eval] at this
+      rw [← this]
+      have hi : i < ρ.length :=
+        (List.getElem?_eq_some_iff.1 (this.trans (List.getElem?_eq_getElem (by rw [hol]; exact hk')))).1
+      exact (List.getElem?_append_left hi).symm
+    · rw [List.getElem?_append_right (by omega)] at hk
+      rw [List.getElem?_append_right (by omega), hol]
+      have hlt : k - outer.length < N := by have := (List.getElem?_eq_some_iff.1 hk).1; simpa using this
+      rw [List.getElem?_range' hlt] at hk
+      cases hk
+      rw [List.getElem?_append_right (by omega), hρ]
+      congr 1; omega
+  have hum : u.entriesBelow Γm.length = true := by rw [← hm.1]; exact Term.entriesBelow_of_eval u hu
+  have hw1 : w.eval (ρ ++ prev) (outerv ++ prev) = some x := by
+    have hab' := hab
+    rw [abstract?_prefix hpm hum] at hab'
+    rw [abstract?_eval hm.rulesHold hab' henv]; exact hu
+  have hwb : w.entriesBelow ρ.length = true := by
+    refine abstract_entriesBelow hab (fun i hi hni => ?_) (fun i en r hi hen hr => ?_)
+    · have h1 := Term.lt_of_occurs u hum hi
+      have h2 := hpm.length_le
+      refine Decidable.byContradiction fun hn =>
+        hni (List.mem_append_right _ (List.mem_range'.2 ⟨i - Γ0.length, ?_, ?_⟩))
+      all_goals omega
+    · obtain ⟨l, rfl⟩ := hp0
+      rw [List.getElem?_append_left (by omega)] at hen
+      obtain ⟨v, -, hv, -, -, -, hrv⟩ := h0.2 i en hen
+      exact Term.entriesBelow_of_eval r (hrv r hr)
+  rw [Term.eval_entriesBelow (show ρ.take ρ.length = (ρ ++ prev).take ρ.length by simp) _ w hwb]
+  exact hw1
+
+/-- One binder of a checked telescope, as a want: it can be opened, and a value meeting it meets the binder. -/
+theorem want_open {C : Ctx} {kind : String} {sc0 scm fin : Scope} {name : Id} {ann : Ann} {mult : Option Mult}
+    {o : Opening} {w : Want} {n0 N : Nat} {Sc : Sigs} {ρ prev outerv : List Value} {outer : List Nat}
+    (h0 : WSat Sc sc0.Γ ρ) (hp0 : sc0.Γ <+: fin.Γ) (hl : fin.Γ.length = sc0.Γ.length + N)
+    (houter : Term.evalList ρ [] (outer.map .entry) = some outerv) (hT : WTermInv scm n0 Sc (ρ ++ prev))
+    (hpm : scm.Γ <+: fin.Γ) (h : opening C scm name ann mult kind = .ok o)
+    (hw : WantAbs fin.Γ (outer ++ List.range' sc0.Γ.length N) o w) :
+    ((∀ T, w.type = some T → ∃ A, T.eval ρ (outerv ++ prev) = some A ∧ A.noRemoved = true) ∧
+      (∀ e, w.is = some e → ∃ v, e.eval ρ (outerv ++ prev) = some v ∧ v.noRemoved = true ∧
+        ∀ T A, w.type = some T → T.eval ρ (outerv ++ prev) = some A → WType Sc v A)) ∧
+    ∀ t v, WantSat Sc ρ w (outerv ++ prev) t v → OpenOk Sc (ρ ++ prev) o t v := by
+  obtain ⟨A, hA, his⟩ := annotate_weval hT (opening_entry h).1
+  obtain ⟨T, hT', hab, hisb, hisf⟩ := hw
+  have key := fun {u w : Term} {x : Value} => @abs_eval Sc _ _ _ ρ prev outerv outer N u w x h0 hp0 hl houter hT.sat hpm
+  have hTA := key hab hA
+  have hnr := hT.sat.noRemoved
+  refine ⟨⟨fun T' hT'' => ?_, fun e' he' => ?_⟩, fun t v hv => ?_⟩
+  · rw [hT'] at hT''; cases hT''
+    exact ⟨A, hTA, eval_noRemoved hnr (by simp) _ hA⟩
+  · obtain ⟨e, he, habe⟩ := hisb e' he'
+    obtain ⟨x, hx, hxA⟩ := his e he
+    refine ⟨x, key habe hx, eval_noRemoved hnr (by simp) _ hx, fun T' A' hT'' hA' => ?_⟩
+    rw [hT'] at hT''; cases hT''; rw [hTA] at hA'; cases hA'; exact hxA
+  · obtain ⟨B, hB, hr, hwB, hty⟩ := hv.1 T hT'
+    rw [hTA] at hB; cases hB
+    refine ⟨⟨A, hA, hr, hwB, hty⟩, fun e he => ?_⟩
+    obtain ⟨e', he', habe⟩ := hisf e he
+    obtain ⟨x, hx, -⟩ := his e he
+    have := hv.2 e' he'
+    rw [key habe hx] at this; cases this; exact hx
+
+/-- The binders of a chain of openings, as wants, can be opened (`WantsCons`). -/
+theorem chain_cons {C : Ctx} {kind : String} {sc0 fin : Scope} {n0 N : Nat} {Sc : Sigs} {ρ outerv : List Value}
+    {outer : List Nat} (h0 : WSat Sc sc0.Γ ρ) (hp0 : sc0.Γ <+: fin.Γ) (hl : fin.Γ.length = sc0.Γ.length + N)
+    (houter : Term.evalList ρ [] (outer.map .entry) = some outerv) {scm : Scope} {os : List Opening}
+    (hc : Chain C kind fin scm os) : ∀ {ws : List Want} {prev : List Value}, WTermInv scm n0 Sc (ρ ++ prev) →
+      Pairs (WantAbs fin.Γ (outer ++ List.range' sc0.Γ.length N)) os ws → WantsCons Sc ρ ws (outerv ++ prev) := by
+  induction hc with
+  | nil =>
+    intro ws prev _ hp
+    cases ws with
+    | nil => trivial
+    | cons => exact (hp : False).elim
+  | cons ho hc ih =>
+    intro ws prev hT hp
+    cases ws with
+    | nil => exact (hp : False).elim
+    | cons w ws =>
+      obtain ⟨hw, hws⟩ := hp
+      obtain ⟨hhead, htr⟩ := want_open h0 hp0 hl houter hT (chain_shape (.cons ho hc)).1 ho hw
+      refine ⟨hhead.1, hhead.2, fun v hv => ?_⟩
+      have := ih (prev := prev ++ [v]) (by simpa using wopen hT ho (htr false v hv)) hws
+      simpa using this
+
+/-- Values meeting the binders of a chain of openings as wants extend an invariant `P` along the chain. -/
+theorem chain_sat {C : Ctx} {kind : String} {sc0 fin : Scope} {n0 N : Nat} {Sc : Sigs} {ρ outerv : List Value}
+    {outer : List Nat} (P : Scope → List Value → Prop) (hPW : ∀ s ρ', P s ρ' → WTermInv s n0 Sc ρ')
+    (Q : Bool → Prop) (step : ∀ {s : Scope} {name : Id} {ann : Ann} {mult : Option Mult} {o : Opening}
+      {ρ' : List Value} {v : Value} {t : Bool}, opening C s name ann mult kind = .ok o → P s ρ' → Q t →
+      OpenOk Sc ρ' o t v → P o.sc (ρ' ++ [v]))
+    (h0 : WSat Sc sc0.Γ ρ) (hp0 : sc0.Γ <+: fin.Γ) (hl : fin.Γ.length = sc0.Γ.length + N)
+    (houter : Term.evalList ρ [] (outer.map .entry) = some outerv) {scm : Scope} {os : List Opening}
+    (hc : Chain C kind fin scm os) : ∀ {ws : List Want} {prev vs : List Value} {ts : List Bool},
+      P scm (ρ ++ prev) → Pairs (WantAbs fin.Γ (outer ++ List.range' sc0.Γ.length N)) os ws → (∀ t ∈ ts, Q t) →
+      WantsSat Sc ρ ws (outerv ++ prev) ts vs → P fin (ρ ++ prev ++ vs) := by
+  induction hc with
+  | nil =>
+    intro ws prev vs ts hP hp _ hs
+    cases ws with
+    | cons => exact (hp : False).elim
+    | nil =>
+      cases ts with
+      | cons => exact (hs : False).elim
+      | nil =>
+        cases vs with
+        | cons => exact (hs : False).elim
+        | nil => simpa using hP
+  | cons ho hc ih =>
+    intro ws prev vs ts hP hp hQ hs
+    cases ws with
+    | nil => exact (hp : False).elim
+    | cons w ws =>
+      cases ts with
+      | nil => exact (hs : False).elim
+      | cons t ts =>
+        cases vs with
+        | nil => exact (hs : False).elim
+        | cons v vs =>
+          obtain ⟨hw, hws⟩ := hp
+          obtain ⟨hv, hvs⟩ := hs
+          obtain ⟨-, htr⟩ := want_open h0 hp0 hl houter (hPW _ _ hP) (chain_shape (.cons ho hc)).1 ho hw
+          have hP' := step ho hP (hQ t List.mem_cons_self) (htr t v hv)
+          have := ih (prev := prev ++ [v]) (vs := vs) (by simpa using hP') hws
+            (fun t' h => hQ t' (List.mem_cons_of_mem _ h)) (by simpa using hvs)
+          simpa using this
+
+theorem telescope_go_chain {C : Ctx} {kind : String} : ∀ (bs : List Binder) (sc : Scope) (seen : List String)
+    (acc : List (Binder × Opening)) {res : Scope × List String × List (Binder × Opening)},
+    telescope.go C kind sc seen acc bs = .ok res →
+    ∃ new, res.2.2 = acc ++ new ∧ new.map (·.1) = bs ∧ Chain C kind res.1 sc (new.map (·.2))
+  | [], sc, seen, acc, res, h => by
+    simp only [telescope.go, pure, Except.pure, Except.ok.injEq] at h
+    subst h
+    exact ⟨[], by simp, rfl, .nil⟩
+  | b :: bs, sc, seen, acc, res, h => by
+    simp only [telescope.go] at h
+    obtain ⟨seen', -, h⟩ := bind_eq_ok.1 h
+    obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
+    obtain ⟨new, h1, h2, h3⟩ := telescope_go_chain bs _ _ _ h
+    exact ⟨(b, o) :: new, by simp [h1], by simp [h2], .cons ho h3⟩
+
+/-- A checked telescope is a chain of openings, whose binders, as wants, are the openings abstracted. -/
+theorem telescope_chain {C : Ctx} {sc : Scope} {bs : List Binder} {kind : String} {outer : List Nat}
+    {out : Checked} (h : telescope C sc bs kind outer = .ok out) :
+    ∃ os, Chain C kind out.sc sc os ∧
+      Pairs (WantAbs out.sc.Γ (outer ++ List.range' sc.Γ.length bs.length)) os (out.tele.map Want.of) := by
+  have hsh := telescope_shape h
+  unfold telescope at h
+  obtain ⟨⟨sc', seen, opens⟩, hgo, h⟩ := bind_eq_ok.1 h
+  obtain ⟨tele, htele, h⟩ := bind_eq_ok.1 h
+  simp only [pure, Except.pure, Except.ok.injEq] at h
+  subst h
+  obtain ⟨new, hnew, h1, hc⟩ := telescope_go_chain bs sc [] [] hgo
+  simp only [List.nil_append] at hnew
+  subst hnew
+  obtain ⟨hl, hi⟩ := mapM_ok htele
+  have hlen : opens.length = bs.length := by rw [← h1, List.length_map]
+  refine ⟨_, hc, pairs_of_getElem (by simp [hl, hlen]) fun i o w ho hw => ?_⟩
+  rw [← hsh.2.1]
+  rw [List.getElem?_map, Option.map_eq_some_iff] at ho hw
+  obtain ⟨⟨b', o'⟩, hbo, rfl⟩ := ho
+  obtain ⟨t, ht, rfl⟩ := hw
+  have hbm : bs[i]? = some b' := by rw [← h1, List.getElem?_map, hbo]; rfl
+  exact abstracted_abs (hi i (b', b', o') t (List.getElem?_zip_eq_some.2 ⟨hbm, hbo⟩) ht)
+
+end TermFill
 
 /-- Opening a checked telescope to values satisfying it, after the values `outerv` of the entries `outer` it was
 abstracted over first, satisfies the scope it was checked in, extended by those values (cf. stage 1's
@@ -453,7 +940,12 @@ theorem telescope_sound {C : Ctx} {sc : Scope} {bs : List Binder} {kind : String
     {n0 : Nat} {Sc : Sigs} {ρ outerv vs : List Value} (hT : TermInv sc n0 Sc ρ)
     (h : telescope C sc bs kind outer = .ok out) (houter : Term.evalList ρ [] (outer.map .entry) = some outerv)
     (hvs : TeleSat Sc ρ out.tele outerv vs) : TermInv out.sc n0 Sc (ρ ++ vs) := by
-  sorry
+  obtain ⟨os, hc, hp⟩ := TermFill.telescope_chain h
+  obtain ⟨-, -, hl, hp0, -⟩ := telescope_shape h
+  have := TermFill.chain_sat (n0 := n0) (TermInv · n0 Sc ·) (fun _ _ h => h.weak) (· = true)
+    (fun ho hP ht hv => by subst ht; exact TermFill.topen hP ho hv) hT.sat.1 hp0 hl houter hc (prev := [])
+    (ts := out.tele.map fun _ => true) (by simpa using hT) hp (by simp) (by simpa using TeleSat.wantsSat hT.noJunk hvs)
+  simpa using this
 
 /-- `telescope_sound` for values that only meet the telescope by their heads, as a tainted call's arguments may. -/
 theorem telescope_wsound {C : Ctx} {sc : Scope} {bs : List Binder} {kind : String} {outer : List Nat} {out : Checked}
@@ -461,7 +953,12 @@ theorem telescope_wsound {C : Ctx} {sc : Scope} {bs : List Binder} {kind : Strin
     (h : telescope C sc bs kind outer = .ok out) (houter : Term.evalList ρ [] (outer.map .entry) = some outerv)
     (hvs : WantsSat Sc ρ (out.tele.map Want.of) outerv (out.tele.map fun _ => false) vs) :
     WTermInv out.sc n0 Sc (ρ ++ vs) := by
-  sorry
+  obtain ⟨os, hc, hp⟩ := TermFill.telescope_chain h
+  obtain ⟨-, -, hl, hp0, -⟩ := telescope_shape h
+  have := TermFill.chain_sat (n0 := n0) (WTermInv · n0 Sc ·) (fun _ _ h => h) (fun _ => True)
+    (fun ho hP _ hv => TermFill.wopen hP ho hv) hT.sat hp0 hl houter hc (prev := [])
+    (by simpa using hT) hp (by simp) (by simpa using hvs)
+  simpa using this
 
 /-- A checked telescope can be opened (`WantsCons`): an `is` binder's type is its term's type (§6), so whatever
 values the other binders take, by their types' heads, an `is` binder's value has its type by its head. -/
@@ -469,13 +966,63 @@ theorem telescope_cons {C : Ctx} {sc : Scope} {bs : List Binder} {kind : String}
     {n0 : Nat} {Sc : Sigs} {ρ outerv : List Value} (hT : WTermInv sc n0 Sc ρ)
     (h : telescope C sc bs kind outer = .ok out) (houter : Term.evalList ρ [] (outer.map .entry) = some outerv) :
     WantsCons Sc ρ (out.tele.map Want.of) outerv := by
-  sorry
+  obtain ⟨os, hc, hp⟩ := TermFill.telescope_chain h
+  obtain ⟨-, -, hl, hp0, -⟩ := telescope_shape h
+  simpa using TermFill.chain_cons hT.sat hp0 hl houter hc (prev := []) (by simpa using hT) hp
+
+namespace TermFill
+
+theorem letWants_go_chain {C : Ctx} : ∀ (bs : List LetBinder) (sc : Scope) (untyped : List String)
+    (acc : List (Option Opening)) {res : Scope × List (Option Opening)}, letWants.go C sc untyped acc bs = .ok res →
+    bs.all (·.ann.isSome) = true →
+    ∃ new, res.2 = acc ++ new.map some ∧ new.length = bs.length ∧ Chain C "binder" res.1 sc new
+  | [], sc, untyped, acc, res, h, _ => by
+    simp only [letWants.go, pure, Except.pure, Except.ok.injEq] at h
+    subst h
+    exact ⟨[], by simp, rfl, .nil⟩
+  | b :: bs, sc, untyped, acc, res, h, hall => by
+    simp only [List.all_cons, Bool.and_eq_true] at hall
+    simp only [letWants.go] at h
+    split at h
+    · split at h
+      · simp [failAt_eq, bind, Except.bind] at h
+      · obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
+        obtain ⟨new, h1, h2, h3⟩ := letWants_go_chain bs _ _ _ h hall.2
+        exact ⟨o :: new, by simp [h1], by simp [h2], .cons ho h3⟩
+    · rename_i hn
+      simp [hn] at hall
+
+/-- A tuple `let` whose binders are all annotated gives its right-hand side a chain of openings, abstracted. -/
+theorem letWants_chain {C : Ctx} {sc : Scope} {bs : List LetBinder} {ws : List Want} (h : letWants C sc bs = .ok ws)
+    (hall : bs.all (·.ann.isSome) = true) :
+    ∃ fin os, Chain C "binder" fin sc os ∧ Pairs (WantAbs fin.Γ (List.range' sc.Γ.length os.length)) os ws := by
+  unfold letWants at h
+  obtain ⟨⟨sc', opens⟩, hgo, h⟩ := bind_eq_ok.1 h
+  obtain ⟨new, hnew, hlen, hc⟩ := letWants_go_chain bs sc [] [] hgo hall
+  simp only [List.nil_append] at hnew
+  subst hnew
+  obtain ⟨hl, hi⟩ := mapM_ok h
+  have hids := (chain_shape hc).2.2
+  refine ⟨sc', new, hc, pairs_of_getElem (by simp [hl, hlen]) fun i o w ho hw => ?_⟩
+  obtain ⟨b, hb⟩ : ∃ b, bs[i]? = some b :=
+    ⟨_, List.getElem?_eq_getElem (by rw [← hlen]; exact (List.getElem?_eq_some_iff.1 ho).1)⟩
+  have := hi i (b, some o) w (List.getElem?_zip_eq_some.2 ⟨hb, by simp [ho]⟩) hw
+  obtain ⟨t, ht, this⟩ := bind_eq_ok.1 this
+  simp only [pure, Except.pure, Except.ok.injEq] at this
+  subst this
+  have hids' : (new.map some).map (fun o => (o.map (·.id)).getD sc'.Γ.length) = new.map (·.id) := by simp
+  rw [hids', hids] at ht
+  exact abstracted_abs ht
+
+end TermFill
 
 /-- What a tuple `let` whose binders are all annotated gives its right-hand side can be opened. -/
 theorem letWants_cons {C : Ctx} {sc : Scope} {bs : List LetBinder} {ws : List Want} {n0 : Nat} {Sc : Sigs}
     {ρ : List Value} (hT : WTermInv sc n0 Sc ρ) (h : letWants C sc bs = .ok ws) (hall : bs.all (·.ann.isSome) = true) :
     WantsCons Sc ρ ws [] := by
-  sorry
+  obtain ⟨fin, os, hc, hp⟩ := TermFill.letWants_chain h hall
+  obtain ⟨hp0, hl, -⟩ := TermFill.chain_shape hc
+  simpa using TermFill.chain_cons (outer := []) (outerv := []) hT.sat hp0 hl rfl hc (prev := []) (by simpa using hT) hp
 
 /-- What a `match` annotation or `sorry`'s telescope stands for: written, it is a telescope checked in the scope,
 over no outer entries; `_`, it is the whole telescope given at the position, with its environment (§10, §12). -/
