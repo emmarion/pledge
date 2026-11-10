@@ -394,7 +394,7 @@ function forcings(ctx: Ctx, local: Local, id: EntryId, scrutSpan: Span, pats: re
     const forced = force(local.scope, id, sig, pat?.span ?? at, (b, i) =>
       ({ origin: { kind: `${name}.${b.name ?? i + 1}`, span: pat?.fields[i]?.span ?? at,
         blank: pat?.fields[i]?.name === null },
-      ...(erased ? { erased } : {}) }));
+      ...(erased ? { erased } : {}) }), (b, i) => pat ? pat.fields[i]?.name ?? null : `@${b.name ?? i + 1}`);
     return { name, forced, pat };
   });
 }

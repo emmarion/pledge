@@ -45,7 +45,7 @@ function add(scope: Scope, name: string | null, type: Term, rule: Term | null = 
 }
 
 function forced(scope: Scope, scrutinee: Term, ctor: Signature, names: string[] = []) {
-  const r = force(scope, id(scrutinee), ctor, span, fresh("field"));
+  const r = force(scope, id(scrutinee), ctor, span, fresh("field"), b => `@${b.name}`);
   if (!r.ok) return r;
   const named = r.fields.reduce((s, id, i) => names[i] ? withName(s, id, names[i]) : s, r.scope);
   return { ...r, scope: named, fields: r.fields.map(ref) };
@@ -151,13 +151,14 @@ test("IsZeroHere is refuted against IsZero(Succ(m)) in the Succ branch only", ()
   if (r.ok) return;
   const d = r.derivation();
   assert.deepEqual(d.map(l => l.text), [
+    "IsZeroHere() =>",
     "1. IsZero(Succ(m)) = IsZero(Zero())   (the scrutinee's type and IsZeroHere's; rewritten by n)",
     "2. Succ(m) = Zero()   (argument 1 of IsZero in 1)",
     "refuted: Succ and Zero are different heads",
   ]);
-  const nRef = d[0]?.refs.find(x => x.entry === (id(n)));
+  const nRef = d[1]?.refs.find(x => x.entry === (id(n)));
   assert.ok(nRef);
-  assert.equal(d[0]?.text.slice(nRef.span.start, nRef.span.end), "n");
+  assert.equal(d[1]?.text.slice(nRef.span.start, nRef.span.end), "n");
   assert.equal(entry(s, id(n)).rule, null);
   assert.equal(entry(s, id(p)).rule, null);
   assert.equal(text(s, n), "n");

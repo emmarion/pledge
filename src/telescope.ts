@@ -1,7 +1,7 @@
 import type { Span } from "./syntax.ts";
 import type { Rendered } from "./api.ts";
 import { addRule, app, canon, create, entry, identical, occurs, ref, rewrites, same, sameHead, subst,
-  typeOf } from "./terms.ts";
+  typeOf, withName } from "./terms.ts";
 import type { App, Binder, EntryId, Fresh, Head, OpenTerm, Ref, Scope, Signature, Telescope, Term } from "./terms.ts";
 import { cat, entryRef, join, render } from "./render.ts";
 import { unfolds } from "./context.ts";
@@ -79,17 +79,22 @@ export function unify(scope: Scope, lhs: Term, rhs: Term, at: Span,
 }
 
 export function force(scope: Scope, scrutinee: EntryId, ctor: Signature, at: Span,
-    fresh: (b: Binder, i: number) => Fresh): Forced {
+    fresh: (b: Binder, i: number) => Fresh, shown: (b: Binder, i: number) => string | null): Forced {
   const opened = open(scope, ctor.params, [], fresh);
-  const { scope: now, failed } = solve(opened.scope, [
+  const solved = (from: Scope) => solve(from, [
     { lhs: ref(scrutinee), rhs: app(ctor.head, ...opened.env), why: "scrutinee", parent: null },
-    { lhs: entry(opened.scope, scrutinee).type, rhs: subst(ctor.ret, opened.env), why: "scrutinee type", parent: null },
+    { lhs: entry(from, scrutinee).type, rhs: subst(ctor.ret, opened.env), why: "scrutinee type", parent: null },
   ], at, () => true);
-  return failed ? { ok: false, derivation: () => derivation(ctor, failed) }
+  const { scope: now, failed } = solved(opened.scope);
+  const named = () => opened.entries.reduce((s, id, i) => {
+    const name = shown(ctor.params[i]!, i);
+    return name === null ? s : withName(s, id, name);
+  }, opened.scope);
+  return failed ? { ok: false, derivation: () => derivation(ctor, opened.env, solved(named()).failed!) }
     : { ok: true, scope: now, fields: opened.entries };
 }
 
-function derivation(ctor: Signature, { eq: failing, failure, log }: Failed): Rendered[] {
+function derivation(ctor: Signature, fields: readonly Term[], { eq: failing, failure, log }: Failed): Rendered[] {
   const adder = (id: EntryId): Seen | undefined => log.find(s => s.gave?.x === id);
   const used = ({ scope, lhs, rhs }: Seen): EntryId[] =>
     [...new Set([...rewrites(scope, lhs), ...rewrites(scope, rhs)].map(s => s.by))]
@@ -116,7 +121,7 @@ function derivation(ctor: Signature, { eq: failing, failure, log }: Failed): Ren
       ...(gave ? [", so ", entryRef(scope, gave.x), " is ", term(gave.e)] : []));
   });
   const { scope } = failing;
-  return [...lines, "heads" in failure
+  return [cat(render(scope, app(ctor.head, ...fields), { canonical: false }), " =>"), ...lines, "heads" in failure
     ? cat(`refuted: ${failure.heads[0].name} and ${failure.heads[1].name} are different heads`)
     : "rigid" in failure ? cat("refuted: ", ...join(failure.rigid.map(t => render(scope, t, { canonical: false })),
       " and "), " cannot be equated")

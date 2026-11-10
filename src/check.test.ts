@@ -184,6 +184,7 @@ test("infoAt: termination inside ack, refutations at §10's inner match", () => 
   const info = ok(iz).infoAt(offset(iz, "match p", 2));
   assert.deepEqual(info.refutations?.map(r => r.ctor), ["IsZeroHere"]);
   assert.deepEqual(info.refutations?.[0]?.derivation().map(l => l.text), [
+    "IsZeroHere() =>",
     "1. IsZero(Succ(m)) = IsZero(Zero())   (the scrutinee's type and IsZeroHere's; rewritten by n)",
     "2. Succ(m) = Zero()   (argument 1 of IsZero in 1)",
     "refuted: Succ and Zero are different heads",
