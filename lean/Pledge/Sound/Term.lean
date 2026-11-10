@@ -382,7 +382,8 @@ theorem TermInv.weak {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List Value} (h : 
 
 theorem Inv.termInv {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {act : Act}
     (hI : Inv C sc n0 W ρ act) : TermInv sc n0 W.Sc ρ :=
-  ⟨hI.sat, hI.length, hI.sigs ρ hI.agree, hI.sigsOk, hI.noJunk, hI.names⟩
+  ⟨hI.sat, hI.length, hI.sigs ρ hI.agree, hI.sigsOk, hI.noJunk, fun n r hn =>
+    let ⟨v, hv, h⟩ := hI.names n r hn; ⟨v, hv, h.2.2⟩⟩
 
 mutual
 /-- A checked skeleton term has a value when every name has one. -/

@@ -115,9 +115,20 @@ def ActOk (fn : Option FnCtx) (ρ : List Value) (act : Act) : Prop :=
   ∀ f, fn = some f → ∃ ss, Term.evalList ρ [] f.subterms = some ss ∧
     act.subs = ss.map some ++ List.replicate (act.subs.length - ss.length) none
 
+/-- What a result's ideal value is meant to be: without `removed`, with a type by its head, and with a type when
+the result is untainted (§12). -/
+def ResOk (S : Sigs) (r : Res) (v : Value) : Prop :=
+  v.noRemoved = true ∧ (∃ A, WType S v A) ∧ (r.tainted = false → ∃ V, HasType S v V)
+
+/-- `ResOk`, result by result. -/
+def ResOks (S : Sigs) : List Res → List Value → Prop
+  | [], [] => True
+  | r :: rs, v :: vs => ResOk S r v ∧ ResOks S rs vs
+  | _, _ => False
+
 /-- The invariant of the main lemma in an untainted scope, inside a declaration whose top level had `n0` entries:
 `ρ` is the ideal valuation of the scope's entries, agreeing with the world on the top-level ones; every name has an
-ideal value, typed when the name is untainted. -/
+ideal value, as `ResOk` says. -/
 structure Inv (C : Ctx) (sc : Scope) (n0 : Nat) (W : World) (ρ : List Value) (act : Act) : Prop where
   holes : sc.holes = []
   untainted : sc.taintedBy = none
@@ -127,7 +138,7 @@ structure Inv (C : Ctx) (sc : Scope) (n0 : Nat) (W : World) (ρ : List Value) (a
   sigs : ∀ ρ', ρ'.take n0 = W.ρ.take n0 → SigsClose sc.sigs ρ' W.Sc
   sigsOk : SigsOk n0 sc.sigs
   noJunk : W.Sc.find junkHead = none
-  names : ∀ n r, sc.lookup n = some r → ∃ v, r.term.eval ρ [] = some v ∧ (r.tainted = false → ∃ V, HasType W.Sc v V)
+  names : ∀ n r, sc.lookup n = some r → ∃ v, r.term.eval ρ [] = some v ∧ ResOk W.Sc r v
   globals : GlobalsOk n0 C.phase C.globals C.fn sc.sigs W act
   act : ActOk C.fn ρ act
 
@@ -151,15 +162,14 @@ def ResRel (S : Sigs) (phase : Nat) (mult : Nat → Mult) (rs : List Res) (ideal
     ideal[i]? = some v → r.tainted = false → MultRel S phase (mult i) a v
 
 /-- What checking an expression in an untainted scope is meant to guarantee (§12, §16): if the scope after it is
-untainted, its results have ideal values under an extension of the valuation satisfying that scope, the untainted
-ones typed, all meeting what the position is given; and, for every run-time environment related to the ideal
+untainted, its results have ideal values under an extension of the valuation satisfying that scope (`ResOk`: the
+untainted ones typed), all meeting what the position is given; and, for every run-time environment related to the ideal
 valuation, its tree evaluates to run-time values related to the ideal values of its untainted results. -/
 def ExprPost (C : Ctx) (sc : Scope) (g : Option Given) (n0 : Nat) (W : World) (ρ : List Value) (act : Act)
     (o : Out) : Prop :=
   o.sc.taintedBy = none → ∃ ρ' vs, Inv C o.sc n0 W (ρ ++ ρ') act ∧
     Term.evalList (ρ ++ ρ') [] (o.res.map (·.term)) = some vs ∧
-    (∀ (i : Nat) (r : Res) (v : Value), o.res[i]? = some r → vs[i]? = some v → r.tainted = false →
-      ∃ V, HasType W.Sc v V) ∧
+    (∀ (i : Nat) (r : Res) (v : Value), o.res[i]? = some r → vs[i]? = some v → ResOk W.Sc r v) ∧
     (∀ g', g = some g' → ∀ envv, Term.evalList ρ [] g'.env = some envv →
       WantsSat W.Sc (ρ ++ ρ') g'.wants envv (o.res.map (!·.tainted)) vs) ∧
     ∀ env, EnvRel W.Sc C.phase sc ρ env → ∃ us, Eval W.P env o.tree us ∧ ResRel W.Sc C.phase (C.posMult g) o.res vs us
@@ -205,8 +215,7 @@ def TopState.world (st : TopState) (ρ : List Value) : World :=
 /-- What the top level knows while its scope is untainted (§12). -/
 structure TopLive (st : TopState) (ρ : List Value) : Prop where
   sat : Sat (st.world ρ).Sc st.sc.Γ ρ
-  names : ∀ n r, st.sc.lookup n = some r →
-    ∃ v, r.term.eval ρ [] = some v ∧ (r.tainted = false → ∃ V, HasType (st.world ρ).Sc v V)
+  names : ∀ n r, st.sc.lookup n = some r → ∃ v, r.term.eval ρ [] = some v ∧ ResOk (st.world ρ).Sc r v
   env : EnvRel (st.world ρ).Sc st.phase st.sc ρ st.env
   globals : ∀ W', (st.world ρ).Le W' → ∀ act, (∀ d ∈ st.fns, d.group < act.group) →
     GlobalsOk st.sc.Γ.length st.phase st.globals none st.sc.sigs W' act

@@ -43,7 +43,18 @@ def StmtShape (s : Stmt) : Prop :=
     (sc.taintedBy.isSome → o.sc.taintedBy.isSome)
 
 theorem var_shape (x : Id) : ExprShape (.var x) := by
-  sorry
+  intro C sc g o hh h
+  unfold checkExpr at h
+  obtain ⟨o₀, h₀, hf⟩ := bind_eq_ok.1 h
+  obtain ⟨-, hsc, -⟩ := finish_spec hf
+  simp only at h₀
+  split at h₀
+  · simp [failAt_eq] at h₀
+  · split at h₀
+    · obtain rfl := produced_eq hh h₀
+      rw [hsc]
+      exact ⟨rfl, rfl, hh, List.prefix_refl _, id⟩
+    · simp [notValue, failAt_eq] at h₀
 
 theorem app_shape {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprShape a.expr)
     (hh : ∀ a ∈ args, a.expr.holeFree = true) : ExprShape (.app h args) := by
@@ -60,8 +71,22 @@ theorem match_shape {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : Li
     ExprShape (.match p m s ann bs) := by
   sorry
 
+theorem Entries.eraseRules_prefix {Γ Γ' : Entries} (h : Γ <+: Γ') : Γ.eraseRules <+: Γ'.eraseRules := by
+  obtain ⟨t, rfl⟩ := h
+  exact ⟨Entries.eraseRules t, by simp [Entries.eraseRules]⟩
+
 theorem sorry_shape (p : Pos) (t : Tele) : ExprShape (.sorry p t) := by
-  sorry
+  intro C sc g o hh h
+  unfold checkExpr at h
+  obtain ⟨o₀, h₀, hf⟩ := bind_eq_ok.1 h
+  obtain ⟨-, hsc, -⟩ := finish_spec hf
+  simp only at h₀
+  obtain ⟨⟨tele, env⟩, -, h₀⟩ := bind_eq_ok.1 h₀
+  obtain ⟨hpre, -⟩ := opened_shape sc tele env "sorry" p fun _ => true
+  have hh' : (opened sc tele env "sorry" p fun _ => true).1.holes = [] := hh
+  obtain rfl := produced_eq hh' h₀
+  rw [hsc]
+  exact ⟨rfl, rfl, hh, Entries.eraseRules_prefix hpre, id⟩
 
 theorem removed_shape : ExprShape .removed := by
   intro C sc g o _ h

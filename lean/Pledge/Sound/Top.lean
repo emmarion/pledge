@@ -185,7 +185,8 @@ evaluator, so this does not establish that it returns a value rather than an err
 theorem reached_eval_ok (phase : Nat) {pre : Program} (hp : Program.holeFree pre = true) {st : TopState}
     (hst : st = (topItems (.init phase) pre).1) (ht : st.sc.taintedBy = none) {C : Ctx} {g : Option Given} {e : Expr}
     {o : Out} {r : Res} (hph : C.phase = phase) (her : C.erased = false) (hgl : C.globals = st.globals)
-    (hfn : C.fn = none) (hg : ∀ g', g = some g' → g'.env = [] ∧ g'.whole = false ∧ g'.wants.all (·.mult == .many))
+    (hfn : C.fn = none) (hg : ∀ g', g = some g' → g'.env = [] ∧ ∀ w ∈ g'.wants, w.mult = .many ∧ w.is = none ∧
+      ∀ t, w.type = some t → t.entriesBelow st.sc.Γ.length = true)
     (he : e.holeFree = true) (h : checkExpr C st.sc g e = .ok o) (hr : single e.pos o.res = .ok r)
     (hrt : r.tainted = false) :
     ∃ ρ a v V, Eval st.prog st.env o.tree [a] ∧ Rel (st.world ρ).Sc phase a v ∧ HasType (st.world ρ).Sc v V := by

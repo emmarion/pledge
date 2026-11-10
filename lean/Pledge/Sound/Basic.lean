@@ -154,17 +154,6 @@ theorem solveHoles_nil {sc : Scope} (h : sc.holes = []) (l r : Term) (pos : Pos)
     solveHoles sc l r pos = .ok sc := by
   unfold solveHoles; rw [h]; rfl
 
-/-- What a result's ideal value is meant to be: without `removed`, with a type by its head, and with a type when
-the result is untainted (§12). -/
-def ResOk (S : Sigs) (r : Res) (v : Value) : Prop :=
-  v.noRemoved = true ∧ (∃ A, WType S v A) ∧ (r.tainted = false → ∃ V, HasType S v V)
-
-/-- `ResOk`, result by result. -/
-def ResOks (S : Sigs) : List Res → List Value → Prop
-  | [], [] => True
-  | r :: rs, v :: vs => ResOk S r v ∧ ResOks S rs vs
-  | _, _ => False
-
 theorem ResOks.getElem {S : Sigs} : ∀ {rs : List Res} {vs : List Value}, ResOks S rs vs →
     ∀ (i : Nat) (r : Res) (v : Value), rs[i]? = some r → vs[i]? = some v → ResOk S r v
   | _ :: _, _ :: _, h, 0, _, _, hr, hv => by cases hr; cases hv; exact h.1
@@ -586,8 +575,7 @@ is untainted. -/
 theorem Inv.bind {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {act : Act}
     {ids : List Id} {rs : List Res} {vs : List Value} (hI : Inv C sc n0 W ρ act)
     (hvs : Term.evalList ρ [] (rs.map (·.term)) = some vs)
-    (hty : ∀ (i : Nat) (r : Res) (v : Value), rs[i]? = some r → vs[i]? = some v → r.tainted = false →
-      ∃ V, HasType W.Sc v V) :
+    (hty : ∀ (i : Nat) (r : Res) (v : Value), rs[i]? = some r → vs[i]? = some v → ResOk W.Sc r v) :
     Inv C (sc.bind ids rs) n0 W ρ act := by
   rw [Scope.bind_eq]
   refine ⟨hI.holes, hI.untainted, hI.sat, hI.n0_world, hI.agree, hI.sigs, hI.sigsOk, hI.noJunk, ?_, hI.globals,

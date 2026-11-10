@@ -225,6 +225,15 @@ theorem solve_sound {S Sc : Sigs} {may : Nat → Bool} {ρ : List Value} {Γ : E
       exact ⟨A, by rw [hΓ'.eval_canon]; exact hA, by rw [hΓ'.eval_canon]; exact typeOf_eval hΓ hS hJ he hwA hte⟩
   | _ => trivial
 
+/-- `solve` only gives entries rules, whatever the valuation. -/
+theorem solve_eraseRules {S : Sigs} {may : Nat → Bool} {Γ Γ' : Entries} {log log' : List Step} {eqs : List Eqn}
+    (h : solve S may Γ log eqs = .ok Γ' log') : Γ'.eraseRules = Γ.eraseRules := by
+  induction Γ, log, eqs using solve.induct_unfolding S may with
+  | case1 Γ log => cases h; rfl
+  | case7 Γ log q qs _ hne x e _ en hx _ te hte _ _ _ hp ih =>
+    exact (ih h).trans (Entries.eraseRules_addRule Γ x e)
+  | _ => first | (cases h; done) | (rename_i ih; exact ih h)
+
 theorem solve_ok {S Sc : Sigs} {may : Nat → Bool} {ρ : List Value} {Γ Γ' : Entries} {log log' : List Step}
     {eqs : List Eqn} (hΓ : WSat Sc Γ ρ) (hS : SigsClose S ρ Sc) (hJ : Sc.find junkHead = none)
     (hq : ∀ q ∈ eqs, q.Holds ρ) (h : solve S may Γ log eqs = .ok Γ' log') :
@@ -371,6 +380,22 @@ theorem openTele_ids_length (Γ : Entries) (tele : Telescope) (env : List Term)
 theorem openTele_length (Γ : Entries) (tele : Telescope) (env : List Term) (mk : TBinder → Nat → Entry → Entry) :
     (openTele Γ tele env mk).Γ.length = Γ.length + tele.length := by
   obtain ⟨_, h, hl, _⟩ := openTele_shape Γ tele env mk; simp [h, hl]
+
+/-- Forcing only adds the fields' entries and gives entries rules, whatever the valuation. -/
+theorem force_eraseRules {S : Sigs} {Γ Γ' : Entries} {scrut : Term} {ctor : Sig} {mk : TBinder → Nat → Entry → Entry}
+    {fields : List Nat} (h : force S Γ scrut ctor mk = .ok Γ' fields) :
+    Γ'.eraseRules = (openTele Γ ctor.params [] mk).Γ.eraseRules ∧ Γ.eraseRules <+: Γ'.eraseRules ∧
+      fields = (openTele Γ ctor.params [] mk).ids := by
+  simp only [force] at h
+  split at h
+  · cases h
+  · split at h
+    · rename_i Γ'' _ hs
+      cases h
+      have he := solve_eraseRules hs
+      obtain ⟨Δ, hΔ, -⟩ := openTele_shape Γ ctor.params [] mk
+      exact ⟨he, ⟨Δ.eraseRules, by rw [he, hΔ]; simp [Entries.eraseRules]⟩, rfl⟩
+    all_goals cases h
 
 /-- What `force` returns when the scrutinee's value is headed by the value constructor forced. -/
 def ForceGood (Sc : Sigs) (Γ : Entries) (ρ ws : List Value) (Γo : Entries) : Forced → Prop

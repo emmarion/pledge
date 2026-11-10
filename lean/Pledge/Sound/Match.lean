@@ -53,7 +53,9 @@ theorem Inv.pattern {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Val
     Inv C (Scope.bind { sc with Γ := Γ', taintedBy := tb, holes := hs } fields (fieldRes ids)) n0 W (ρ ++ ws) act := by
   subst htb hhs
   refine (hI.extend (sc' := { sc with Γ := Γ', taintedBy := none, holes := [] }) hsat rfl rfl rfl rfl).bind
-    (evalList_fieldRes (by rw [hids, hI.sat.1.1])) fun i r v hr hv _ => hws.typed v (List.mem_of_getElem? hv)
+    (evalList_fieldRes (by rw [hids, hI.sat.1.1])) fun i r v hr hv => by
+      obtain ⟨V, hV⟩ := hws.typed v (List.mem_of_getElem? hv)
+      exact ⟨hV.noRemoved, ⟨V, hV.wtype hI.noJunk⟩, fun _ => ⟨V, hV⟩⟩
 
 /-- Along the bridge, a closed signature has the checker's signature's multiplicities. -/
 theorem SigsClose.mults {S Sc : Sigs} {ρ : List Value} (hS : SigsClose S ρ Sc) {h : Head} {sig : Sig}
