@@ -1,4 +1,4 @@
-import Pledge.Sound.Expr
+import Pledge.Sound.Stmt
 
 namespace Pledge
 
@@ -78,12 +78,20 @@ theorem fnGroup_sound {st st' : TopState} {ρ : List Value} {fs : List Fn} (hI :
 by the values of its new entries. -/
 theorem topStmt_sound {st st' : TopState} {ρ : List Value} {s : Stmt} (hI : TopInv st ρ) (hp : s.plain = true)
     (h : topItem st (.stmt s) = .ok st') : ∃ ρ', (st.world ρ).Le (st'.world (ρ ++ ρ')) ∧ TopInv st' (ρ ++ ρ') := by
-  sorry
+  have hInv := hI.inv (C := st.ctx) hI.phase rfl rfl rfl
+  cases s with
+  | patlet p ct m pat rhs =>
+    cases ct
+    · exact checkedStmt_sound hI hInv hp h
+    · simp only [Stmt.plain, Bool.and_eq_true, Option.isNone_iff_eq_none] at hp
+      obtain ⟨rfl, hp⟩ := hp
+      exact comptimeLet_sound hI hInv hp h
+  | _ => exact checkedStmt_sound hI hInv hp h
 
 theorem print_sound {st st' : TopState} {ρ : List Value} {p : Pos} {e : Expr} (hI : TopInv st ρ)
     (hp : e.plain = true) (h : topItem st (.print p e) = .ok st') :
     ∃ ρ', (st.world ρ).Le (st'.world (ρ ++ ρ')) ∧ TopInv st' (ρ ++ ρ') := by
-  sorry
+  exact print_sound' hI (hI.inv hI.phase rfl rfl rfl) hp h
 
 theorem goal_sound {st st' : TopState} {ρ : List Value} {p : Pos} {g : Goal} (hI : TopInv st ρ)
     (hp : g.plain = true) (h : topItem st (.goal p g) = .ok st') : (st.world ρ).Le (st'.world ρ) ∧ TopInv st' ρ := by
@@ -94,7 +102,7 @@ theorem goal_sound {st st' : TopState} {ρ : List Value} {p : Pos} {g : Goal} (h
 theorem qed_sound {st st' : TopState} {ρ : List Value} {p : Pos} {e : Expr} (hI : TopInv st ρ)
     (hp : e.plain = true) (h : topItem st (.qed p e) = .ok st') :
     ∃ ρ', (st.world ρ).Le (st'.world (ρ ++ ρ')) ∧ TopInv st' (ρ ++ ρ') := by
-  sorry
+  exact qed_sound' hI (hI.inv hI.phase rfl rfl rfl) hp h
 
 theorem TopState.world_snaps (st : TopState) (snaps : List Snapshot) (ρ : List Value) :
     ({ st with snaps } : TopState).world ρ = st.world ρ := rfl
