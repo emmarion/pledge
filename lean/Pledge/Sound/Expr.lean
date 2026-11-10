@@ -1,6 +1,7 @@
 import Pledge.Sound.Match
 import Pledge.Sound.Call
 import Pledge.Sound.Simple
+import Pledge.Sound.Erased
 
 namespace Pledge
 
@@ -135,8 +136,8 @@ constructor heading the scrutinee's ideal value is not absurd (its results would
 part), so the evaluator's only branch is the right one, its fields bound to `removed`. -/
 theorem matchErased_sound {p : Pos} {s : Expr} {ann : Tele} {bs : List Branch}
     (ihs : ExprSound s) (ihss : ExprShape s) (ihb : ∀ b ∈ bs, ExprSound b.body) (ihbs : ∀ b ∈ bs, ExprShape b.body) :
-    ExprSound (.match p (some .erased) s ann bs) := by
-  sorry
+    ExprSound (.match p (some .erased) s ann bs) :=
+  Erased.match ihs ihss ihb
 
 theorem match_sound {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Branch}
     (ihs : ExprSound s) (ihss : ExprShape s) (ihb : ∀ b ∈ bs, ExprSound b.body) (ihbs : ∀ b ∈ bs, ExprShape b.body) :
@@ -179,8 +180,8 @@ theorem patletMany_sound {p : Pos} {ct : Bool} {m : Option Mult} {pat : Pattern}
 
 /-- An erased pattern `let` (§16): the right-hand side is not run, and the fields are bound to `removed`. -/
 theorem patletErased_sound {p : Pos} {ct : Bool} {pat : Pattern} {rhs : Expr} (ih : ExprSound rhs)
-    (ihs : ExprShape rhs) : StmtSound (.patlet p ct (some .erased) pat rhs) := by
-  sorry
+    (ihs : ExprShape rhs) : StmtSound (.patlet p ct (some .erased) pat rhs) :=
+  Erased.patlet ih ihs
 
 theorem patlet_sound {p : Pos} {ct : Bool} {m : Option Mult} {pat : Pattern} {rhs : Expr} (ih : ExprSound rhs)
     (ihs : ExprShape rhs) : StmtSound (.patlet p ct m pat rhs) := by
