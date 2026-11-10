@@ -1,4 +1,5 @@
 import Pledge.Sound.Stmt
+import Pledge.Sound.Fn
 
 namespace Pledge
 
@@ -71,8 +72,8 @@ theorem dataGroup_sound {st st' : TopState} {ρ : List Value} {ds : List Data} (
 specification (`FnSpec`), by well-founded induction on the measure of its activations (`Act.lt_wf`), applying the
 main lemma `Expr.sound` to its body. -/
 theorem fnGroup_sound {st st' : TopState} {ρ : List Value} {fs : List Fn} (hI : TopInv st ρ)
-    (hp : fs.all Fn.plain = true) (h : fnGroup st fs = .ok st') : (st.world ρ).Le (st'.world ρ) ∧ TopInv st' ρ := by
-  sorry
+    (hp : fs.all Fn.plain = true) (h : fnGroup st fs = .ok st') : (st.world ρ).Le (st'.world ρ) ∧ TopInv st' ρ :=
+  FnGroup.fnGroup_ok hI hp h
 
 /-- A top-level statement, `comptime` pattern `let` included (§11), keeps the invariant for the valuation extended
 by the values of its new entries. -/
