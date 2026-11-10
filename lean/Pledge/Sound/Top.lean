@@ -1,5 +1,6 @@
 import Pledge.Sound.Stmt
 import Pledge.Sound.Fn
+import Pledge.Sound.Data
 
 namespace Pledge
 
@@ -35,7 +36,7 @@ theorem TopInv.init : TopInv (TopState.init 1) [] := by
   refine ⟨rfl, ⟨rfl, fun i en h => by simp [TopState.init] at h⟩,
     fun n r h => by simp [TopState.init, Scope.lookup] at h,
     ⟨rfl, rfl, by simp [TopState.init]⟩, ?_, ?_, ?_, by simp [TopState.init], by simp [TopState.init], ?_,
-    by simp [TopState.init], by simp [TopState.init]⟩
+    by simp [TopState.init], by simp [TopState.init], ⟨_, hTy⟩⟩
   · intro sig hs
     simp only [TopState.init, List.mem_singleton] at hs
     subst hs
@@ -66,7 +67,8 @@ theorem TopInv.init : TopInv (TopState.init 1) [] := by
 /-- A group of `data` declarations adds closed signatures that keep the top level's invariant. -/
 theorem dataGroup_sound {st st' : TopState} {ρ : List Value} {ds : List Data} (hI : TopInv st ρ)
     (hp : ds.all Data.plain = true) (h : dataGroup st ds = .ok st') : (st.world ρ).Le (st'.world ρ) ∧ TopInv st' ρ := by
-  sorry
+  obtain ⟨_, hg⟩ := dataGroup_group hp h
+  exact ⟨hg.le hI, hg.topInv hI⟩
 
 /-- A group of functions keeps the top level's invariant: in every later world, each of its functions meets its
 specification (`FnSpec`), by well-founded induction on the measure of its activations (`Act.lt_wf`), applying the
@@ -95,8 +97,8 @@ theorem print_sound {st st' : TopState} {ρ : List Value} {p : Pos} {e : Expr} (
   exact print_sound' hI (hI.inv hI.phase rfl rfl rfl) hp h
 
 theorem goal_sound {st st' : TopState} {ρ : List Value} {p : Pos} {g : Goal} (hI : TopInv st ρ)
-    (hp : g.plain = true) (h : topItem st (.goal p g) = .ok st') : (st.world ρ).Le (st'.world ρ) ∧ TopInv st' ρ := by
-  sorry
+    (hp : g.plain = true) (h : topItem st (.goal p g) = .ok st') : (st.world ρ).Le (st'.world ρ) ∧ TopInv st' ρ :=
+  goalItem_sound hI hp h
 
 /-- A `qed` that checks proves the goal in every later world: for `qed e;`, `e`'s value has the goal's type; for
 `qed f;`, `f`'s telescopes agree with the goal's (`difference … = none`) and `f` meets its specification. -/
@@ -174,7 +176,52 @@ theorem no_empty_goal (prog : Program) (has : String → Bool) (err : Option (Po
     (hp : Program.plain prog = true) (d : Data) (hd : Top.data d ∈ prog ∨ ∃ p ds, Top.mutualData p ds ∈ prog ∧ d ∈ ds)
     (hc : d.ctors = []) (p : Pos) (hn : Name) (args : List WTerm) (hg : Top.goal p (.type (.app hn args)) ∈ prog)
     (hname : hn.name = d.name.name) : (runProgram 1 prog has err).goalProved ≠ some true := by
-  sorry
+  intro hgp
+  obtain ⟨hnone, hpr⟩ : (topItems (.init 1) prog).2 = none ∧ (topItems (.init 1) prog).1.proved = true := by
+    simp only [runProgram] at hgp
+    split at hgp
+    · simp only [Option.some.injEq, Bool.and_eq_true] at hgp
+      refine ⟨?_, hgp.2⟩
+      cases hf : (topItems (TopState.init 1) prog).2 with
+      | none => rfl
+      | some _ => simp [hf] at hgp
+    · cases hgp
+  have hplain : ∀ {pre post : List Top} {t : Top}, prog = pre ++ t :: post →
+      Program.plain pre = true ∧ t.plain = true ∧ Program.plain post = true := fun he => by
+    rw [he] at hp
+    simpa [Program.plain] using hp
+  obtain ⟨t, ds, ht, hdds, htop, htp⟩ : ∃ t ds, t ∈ prog ∧ d ∈ ds ∧ (∀ s, topItem s t = dataGroup s ds) ∧
+      (t.plain = true → ds.all Data.plain = true) := by
+    rcases hd with hd | ⟨p', ds, hd, hdds⟩
+    · exact ⟨_, [d], hd, List.mem_singleton_self _, fun _ => rfl, fun h => by simpa [Top.plain] using h⟩
+    · exact ⟨_, ds, hd, hdds, fun _ => rfl, fun h => by simpa [Top.plain] using h⟩
+  obtain ⟨pre, post, hsplit⟩ := List.append_of_mem ht
+  obtain ⟨s', -, hs', hpost⟩ := topItems_split (hsplit ▸ hnone)
+  obtain ⟨hp1, hp2, hp3⟩ := hplain hsplit
+  obtain ⟨ρ₁, -, hI₁⟩ := topItems_sound (ρ := []) (prog := pre) TopInv.init hp1
+  rw [htop] at hs'
+  obtain ⟨new, hgr⟩ := dataGroup_group (htp hp2) hs'
+  have hI' := hgr.topInv hI₁
+  obtain ⟨ρ₂, hle, hIF⟩ := topItems_sound (prog := post) hI' hp3
+  rw [hpost, ← hsplit] at hle hIF
+  obtain ⟨g, hgF, hgoal⟩ := hIF.proved hpr
+  have hT := List.mem_map_of_mem (f := (·.name.name)) hdds
+  have hcomp := ((hI'.globals _ hle (Act.top s'.fns) fun _ h => Act.top_group h).type (hgr.find?_type hT)).2 _ rfl rfl
+  rw [ownedBy_empty (List.nodup_append.1 hgr.nodup).1 hdds hc] at hcomp
+  obtain ⟨preg, postg, hsplitg⟩ := List.append_of_mem hg
+  obtain ⟨sg, -, hsg, hpostg⟩ := topItems_split (hsplitg ▸ hnone)
+  obtain ⟨-, goal, rfl, ty, is, tn, hann, -, rfl⟩ := goal_spec hsg
+  have hgF' := topItems_goal (hplain hsplitg).2.2 (hpostg ▸ hsplitg ▸ hnone) rfl
+  rw [hpostg, ← hsplitg, hgF] at hgF'
+  cases hgF'
+  obtain ⟨r, hr, rfl⟩ := annotate_type hann
+  obtain ⟨k, ts, hrt⟩ := checkTerm_app_head hr
+  obtain ⟨v, V, hV, hv⟩ := hgoal _ (World.Le.refl _)
+  simp only [hrt, Term.eval_app] at hV
+  obtain ⟨us, -, rfl⟩ := hV
+  obtain rfl : k = .type := hIF.hasType_kind hv
+  obtain ⟨h', ws, sig, -, hf, hret⟩ := hv.inv_type
+  exact List.not_mem_nil (hcomp.2.2.1 h' sig ws _ us hf hret hname).2
 
 /-- No top-level evaluation the checker performs fails: the evaluator runs every checked tree to a value. -/
 theorem TopState.eval_ok {st : TopState} {ρ : List Value} {C : Ctx} {g : Option Given} {e : Expr} {o : Out}

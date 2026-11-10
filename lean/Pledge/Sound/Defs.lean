@@ -176,5 +176,6 @@ structure TopInv (st : TopState) (ρ : List Value) : Prop where
     GlobalsOk st.sc.Γ.length st.globals none st.sc.sigs W' act
   goal : ∀ g, st.goal = some g → g.tainted = false ∧ GoalBelow st.sc.Γ.length g
   proved : st.proved = true → ∃ g, st.goal = some g ∧ ∀ W', (st.world ρ).Le W' → GoalHolds W' g
+  typeSig : ∃ s, st.sc.sigs.find Head.Type = some s
 
 end Pledge
