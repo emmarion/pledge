@@ -204,9 +204,6 @@ theorem Scope.Inert.bind {sc : Scope} {ids : List Id} {rs : List Res} (hin : sc.
     exact hr r' (List.of_mem_zip hm).2
   · exact hin.names q hq
 
-theorem fieldRes_untainted (ids : List Nat) : ∀ r ∈ fieldRes ids, r.tainted = false := by
-  simp [fieldRes]
-
 theorem reach_none {sc : Scope} {r : Res} {pos : Pos} (h : sc.taintedBy = none) (hr : r.tainted = false) :
     reach sc r pos = none := by
   simp [reach, h, hr]

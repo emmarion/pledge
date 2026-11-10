@@ -103,17 +103,6 @@ theorem checkedStmt_sound {st st' : TopState} {ρ : List Value} {s : Stmt} (hI :
   cases henv
   exact ⟨ρ', TopInv.step hI hI' hsigs rfl rfl rfl rfl rfl hI.proved⟩
 
-theorem evalList_fieldRes {ρ ws : List Value} :
-    Term.evalList (ρ ++ ws) [] ((fieldRes (List.range' ρ.length ws.length)).map (·.term)) = some ws := by
-  rw [Term.evalList_eq_some_iff]
-  refine ⟨by simp [fieldRes], fun i a ha => ?_⟩
-  simp only [fieldRes, List.map_map, Function.comp_def, List.getElem?_map] at ha
-  obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.1 ha
-  obtain ⟨hi, hx⟩ := List.getElem?_eq_some_iff.1 hx
-  simp only [List.length_range', List.getElem_range'] at hi hx
-  subst hx
-  simp [Term.eval, List.getElem?_append_right]
-
 theorem comptimeLet_sound {st st' : TopState} {ρ : List Value} {p : Pos} {pat : Pattern} {rhs : Expr}
     (hI : TopInv st ρ) (hInv : Inv st.ctx st.sc st.sc.Γ.length (st.world ρ) ρ st.env (Act.top st.fns))
     (hp : rhs.plain = true) (h : comptimeLet st p none pat rhs = .ok st') :
@@ -159,7 +148,7 @@ theorem comptimeLet_sound {st st' : TopState} {ρ : List Value} {p : Pos} {pat :
     have hI₂ := Inv.extend (sc' := { o.sc with Γ := Γ, taintedBy := none }) hI₁ hsat rfl rfl
       ⟨hI₁.inert.holes, rfl, hI₁.inert.names⟩
     have hI₃ := Inv.bind hI₂ (ids := pat.fields) (rs := fieldRes ids)
-      (by rw [hids, hl]; exact evalList_fieldRes) (TeleSat.hasType hws)
+      (by rw [hids, hl]; exact (evalList_fieldRes rfl)) (TeleSat.hasType hws)
       (fun r hr => by simp only [fieldRes, List.mem_map] at hr; obtain ⟨_, -, rfl⟩ := hr; rfl) hb
     rw [Scope.bind_eq, List.append_assoc] at hI₃
     exact ⟨ρ₁ ++ ws, TopInv.step hI hI₃ hsigs rfl rfl rfl rfl rfl hI.proved⟩
