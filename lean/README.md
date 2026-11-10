@@ -298,3 +298,10 @@ The statements are also weaker than they may first read:
 - `Program.holeFree` also asks that no type constructor or value
   constructor is named `sorry`. Since `sorry` is a keyword, the parser
   is believed never to produce one, but no theorem says so.
+- For a type goal, `GoalHolds` says that the goal's term evaluates to
+  some `V` and that a value has type `V`. It does not say that `V` is
+  itself a type, that is, has type `Type()`; the checker's `isType`
+  check is believed to ensure it, but no headline theorem states it.
+- Whether the final top-level scope is untainted, which the `Sat`
+  clause for the final scope depends on, is read from `topItems`'s
+  state; `Outcome` has no field for it.
