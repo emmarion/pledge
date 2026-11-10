@@ -208,9 +208,9 @@ constructor named `sorry`; `sorry` and multiplicities allowed), under any phase:
 of the final top-level entries, the program's signatures closed by it typing values, with `W.P` the evaluator's
 view of the program; it satisfies the final scope if that scope is untainted; and if the goal is reported proved,
 the first values of `W.ρ` satisfy the scope at the `qed` that proved it (`ProvedAt`), and the goal holds
-(`GoalHolds`): a type goal's type has a value, and the function a `qed` names computes, from run-time arguments
-related to ideal ones satisfying a function goal's parameters, run-time results related to ideal ones satisfying its
-returns. -/
+(`GoalHolds`): a type goal's type has a value of type `Type()` that some value has as its type, and the function a
+`qed` names computes, from run-time arguments related to ideal ones satisfying a function goal's parameters,
+run-time results related to ideal ones satisfying its returns. -/
 theorem runProgram_sound (phase : Nat) (prog : Program) (has : String → Bool) (err : Option (Pos × String))
     (hp : Program.holeFree prog = true) :
     ∃ W : World, W.P = (topItems (.init phase) prog).1.prog ∧
@@ -234,8 +234,8 @@ theorem runProgram_sound (phase : Nat) (prog : Program) (has : String → Bool) 
 
 /-- A proved type goal has a value: there is a valuation `ρ` of the final top-level entries, satisfying the final
 scope if that scope is untainted, whose first values satisfy the scope at the `qed` that proved the goal
-(`ProvedAt`), under which the goal's type `t` evaluates to a type `V`, and some value has type `V` by the program's
-signatures closed by `ρ`. -/
+(`ProvedAt`), under which the goal's type `t` evaluates to a value `V` of type `Type()`, and some value has type `V`,
+by the program's signatures closed by `ρ`. -/
 theorem type_goal_inhabited (phase : Nat) (prog : Program) (has : String → Bool) (err : Option (Pos × String))
     (hp : Program.holeFree prog = true) {g : CheckedGoal} {t : Term}
     (hproved : (runProgram phase prog has err).goalProved = some true)
@@ -244,7 +244,8 @@ theorem type_goal_inhabited (phase : Nat) (prog : Program) (has : String → Boo
       ((topItems (.init phase) prog).1.sc.taintedBy = none →
         Sat ((runProgram phase prog has err).sigs.map (Sig.close ρ)) (runProgram phase prog has err).entries ρ) ∧
       ProvedAt phase prog g ρ ∧
-      ∃ v V, t.eval ρ [] = some V ∧ HasType ((runProgram phase prog has err).sigs.map (Sig.close ρ)) v V := by
+      ∃ v V, t.eval ρ [] = some V ∧ HasType ((runProgram phase prog has err).sigs.map (Sig.close ρ)) v V ∧
+        HasType ((runProgram phase prog has err).sigs.map (Sig.close ρ)) V Value.TYPE := by
   obtain ⟨W, -, hSc, -, hl, hsat, hgoal⟩ := runProgram_sound phase prog has err hp
   obtain ⟨g', hg', hat, hh⟩ := hgoal hproved
   rw [hg] at hg'
@@ -345,7 +346,7 @@ theorem no_empty_goal (phase : Nat) (prog : Program) (has : String → Bool) (er
   cases hgF'
   obtain ⟨r, hr, rfl⟩ := annotate_type hann
   obtain ⟨k, ts, hrt⟩ := checkTerm_app_head hr
-  obtain ⟨v, V, hV, hv⟩ := hgoal _ (World.Le.refl _)
+  obtain ⟨v, V, hV, hv, -⟩ := hgoal _ (World.Le.refl _)
   simp only [hrt, Term.eval_app] at hV
   obtain ⟨us, -, rfl⟩ := hV
   obtain rfl : k = .type := hIF.hasType_kind hv

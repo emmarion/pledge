@@ -48,12 +48,6 @@ theorem GlobalsOk.mono {n m phase : Nat} {gs : List Global} {fn : Option FnCtx} 
   | .type .., h' => exact h'
   | .ctor _, h' => exact h'
 
-theorem GoalBelow.mono {n m : Nat} {g : CheckedGoal} (hnm : n ≤ m) (h : GoalBelow n g) : GoalBelow m g := by
-  unfold GoalBelow at h ⊢
-  split at h
-  · exact Term.entriesBelow_mono hnm _ h
-  · exact fun b hb => TBinder.entriesBelow_mono hnm (h b hb)
-
 theorem World.Le.extend (W : World) (ρ' : List Value) : W.Le { W with ρ := W.ρ ++ ρ' } :=
   ⟨Prog.Ext.refl _, Sigs.Sub.refl _, List.prefix_append _ _, fun _ _ _ _ _ h h' => (by
     simp only at h'; rw [h] at h'; cases h'), id⟩
@@ -139,8 +133,7 @@ theorem step {st st' : TopState} {ρ ρ' : List Value} (hI : TopInv st ρ) (hs :
     by rw [hs]; exact hI.sigsOk.mono hn, by rw [hs]; exact hI.noJunk, by rw [hs]; exact hI.rets,
     by rw [hs, hgl]; exact hI.sigNames, by rw [hf, hgl]; exact hI.fnNames, by rw [hf, hgr]; exact hI.groups,
     by rw [hs]; exact hI.typeSig, fun g hg => ?_, fun hp => ?_, fun ht' => ?_⟩
-  · obtain ⟨h1, h2⟩ := hI.goal g (by rw [← hgoal]; exact hg)
-    exact ⟨h1.mono hn, fun ht' => h2 (none_of htaint ht')⟩
+  · exact hI.goal_le hle hgoal hn (none_of htaint) g hg
   · obtain ⟨g, hg, hh⟩ := hpr hp
     exact ⟨g, hg, fun W' hW => hh W' (hle.trans hW)⟩
   · have ht := none_of htaint ht'
@@ -401,7 +394,7 @@ theorem given_ok {st : TopState} {ρ : List Value} {goal : CheckedGoal} {t : Ter
     (ht : st.sc.taintedBy = none) (hgoal : st.goal = some goal) (hk : goal.kind = .type t) :
     goal.given.Ok (st.world ρ).Sc ρ := by
   have hb := (hI.goal goal hgoal).1.type hk
-  obtain ⟨A, hA⟩ := Term.eval_isSome (env := []) t (by rw [hI.len]; exact hb) ((hI.goal goal hgoal).2 ht t hk)
+  obtain ⟨A, hA⟩ := Term.eval_isSome (env := []) t (by rw [hI.len]; exact hb) (((hI.goal goal hgoal).2 ht).1 t hk)
   rw [given_eq hk]
   refine ⟨⟨[], rfl⟩, fun _ envv henv => ?_⟩
   cases henv
@@ -411,7 +404,7 @@ theorem given_ok {st : TopState} {ρ : List Value} {goal : CheckedGoal} {t : Ter
 end TopStmt
 
 /-- `qed e;` against a type goal (§12): if it proves the goal, `e`'s untainted result has an ideal value of the goal's
-type, in an untainted scope. -/
+type, in an untainted scope, and that type has type `Type()`. -/
 theorem typeQed_sound {st st' : TopState} {ρ : List Value} {p : Pos} {e : Expr} {goal : CheckedGoal} {t : Term}
     (hI : TopInv st ρ) (hp : e.holeFree = true) (hgoal : st.goal = some goal) (hk : goal.kind = .type t)
     (h : (do
@@ -448,8 +441,12 @@ theorem typeQed_sound {st st' : TopState} {ρ : List Value} {p : Pos} {e : Expr}
     have hρ : (ρ ++ ρ₁).take st.sc.Γ.length = W'.ρ.take st.sc.Γ.length := by
       rw [hW.take_of_le (by simp [TopState.world, hI.len])]
       simp [TopState.world, ← hI.len]
+    have hA' : t.eval W'.ρ [] = some A := by rw [← Term.eval_entriesBelow hρ [] t hb, hA]
+    obtain ⟨V, hV, hVT⟩ := ((hI.goal goal hgoal).2 ht).2 W' hW t hk (by simp at hpr; exact hpr.2)
+    rw [hA'] at hV
+    cases hV
     simp only [GoalHolds, hk]
-    exact ⟨v, A, by rw [← Term.eval_entriesBelow hρ [] t hb, hA], (hvA rfl).mono_sigs hW.sigs⟩
+    exact ⟨v, A, hA', (hvA rfl).mono_sigs hW.sigs, hVT⟩
 
 /-- Telescopes with no `difference` agree by value, binder by binder, under a valuation satisfying the scope's rules,
 multiplicities included. -/

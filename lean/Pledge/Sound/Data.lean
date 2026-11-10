@@ -524,8 +524,8 @@ theorem Group.topInv (hI : TopInv st ρ) (hg : Group st ts cs new true st')
   obtain ⟨heq, -, -, hown, hok, hsigs, htypes, hctors⟩ := id hg
   subst heq
   refine ⟨hI.len, hI.noRemoved, hI.holes, fun sig hs => ?_, hJ, fun sig hs => ?_, fun h sig hs => ?_,
-    fun d hd => ?_, hI.groups, let ⟨_, hs⟩ := hI.typeSig; ⟨_, Sigs.find_append_old hs⟩, hI.goal, fun hp => ?_,
-    fun ht => ?_⟩
+    fun d hd => ?_, hI.groups, let ⟨_, hs⟩ := hI.typeSig; ⟨_, Sigs.find_append_old hs⟩,
+    hI.goal_le hle rfl (Nat.le_refl _) id, fun hp => ?_, fun ht => ?_⟩
   · rcases List.mem_append.1 hs with hs | hs
     · exact hI.sigsOk sig hs
     · exact hok sig hs
@@ -650,7 +650,8 @@ theorem TopLive.wtermInv {st : TopState} {ρ : List Value} (hI : TopInv st ρ) (
 end DataTop
 
 /-- A `goal` statement keeps the top level's invariant: the goal it sets mentions only top-level entries (§12), and,
-in an untainted scope, a type goal's type is closed. -/
+in an untainted scope, a type goal's type is closed and, if untainted, has a value of type `Type()` in every later
+world. -/
 theorem goalItem_sound {st st' : TopState} {ρ : List Value} {p : Pos} {g : Goal} (hI : TopInv st ρ)
     (h : topItem st (.goal p g) = .ok st') : (st.world ρ).Le (st'.world ρ) ∧ TopInv st' ρ := by
   obtain ⟨hnone, goal, rfl, hgoal⟩ := goal_spec h
@@ -661,13 +662,22 @@ theorem goalItem_sound {st st' : TopState} {ρ : List Value} {p : Pos} {g : Goal
     cases g with
     | fn hdr =>
       obtain ⟨ps, rs, u, -, h2, rfl⟩ := hgoal
-      exact ⟨topLevel_ok h2, fun _ t ht => by cases ht⟩
+      exact ⟨topLevel_ok h2, fun _ => ⟨fun t ht => (by cases ht), fun _ _ t ht => (by cases ht)⟩⟩
     | type t =>
       obtain ⟨ty, is, tainted, h1, h2, rfl⟩ := hgoal
-      refine ⟨h2, fun hts t' ht' => ?_⟩
-      cases ht'
-      obtain ⟨A, hA⟩ := (annotate_eval (DataTop.TopLive.wtermInv hI (hI.live hts)) h1).1
-      exact DataTop.Term.boundsBelow_of_eval _ hA
+      refine ⟨h2, fun hts => ⟨fun t' ht' => ?_, fun W' hW t' ht' hu => ?_⟩⟩
+      · cases ht'
+        obtain ⟨A, hA⟩ := (annotate_eval (DataTop.TopLive.wtermInv hI (hI.live hts)) h1).1
+        exact DataTop.Term.boundsBelow_of_eval _ hA
+      · cases ht'
+        have L := hI.live hts
+        obtain ⟨V, hV, hVT⟩ := annotate_type_typed (n0 := st.sc.Γ.length) ⟨L.sat, by rw [hI.len]; exact Nat.le_refl _,
+          SigsClose.close hI.noRemoved, hI.sigsOk, by simp [TopState.world, Sigs.find_map_close, hI.noJunk],
+          fun n r h => let ⟨v, hv, ok⟩ := L.names n r h; ⟨v, hv, ok.2.1, ok.2.2⟩⟩ h1 (by simp at hu; exact hu.1)
+        have hρ : ρ.take st.sc.Γ.length = W'.ρ.take st.sc.Γ.length := by
+          rw [hW.take_of_le (by simp [TopState.world, hI.len])]
+          simp [TopState.world, ← hI.len]
+        exact ⟨V, by rw [← Term.eval_entriesBelow hρ [] _ h2, hV], hVT.mono_sigs hW.sigs⟩
   · obtain ⟨g', hg', -⟩ := hI.proved hpr
     rw [hnone] at hg'
     cases hg'

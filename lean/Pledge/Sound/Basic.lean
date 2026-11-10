@@ -106,6 +106,21 @@ theorem Sig.entriesBelow_mono {n m : Nat} (hnm : n ≤ m) {sig : Sig} (h : sig.e
   simp only [Sig.entriesBelow, Bool.and_eq_true, List.all_eq_true] at h ⊢
   exact ⟨fun b hb => TBinder.entriesBelow_mono hnm (h.1 b hb), Term.entriesBelow_mono hnm _ h.2⟩
 
+theorem GoalBelow.mono {n m : Nat} {g : CheckedGoal} (hnm : n ≤ m) (h : GoalBelow n g) : GoalBelow m g := by
+  unfold GoalBelow at h ⊢
+  split at h
+  · exact Term.entriesBelow_mono hnm _ h
+  · exact fun b hb => TBinder.entriesBelow_mono hnm (h b hb)
+
+/-- The goal facts of the top level's invariant carry over to a later state in a later world that keeps the goal. -/
+theorem TopInv.goal_le {st st' : TopState} {ρ ρ' : List Value} (hI : TopInv st ρ)
+    (hle : (st.world ρ).Le (st'.world ρ')) (hg : st'.goal = st.goal) (hn : st.sc.Γ.length ≤ st'.sc.Γ.length)
+    (ht : st'.sc.taintedBy = none → st.sc.taintedBy = none) : ∀ g, st'.goal = some g →
+      GoalBelow st'.sc.Γ.length g ∧ (st'.sc.taintedBy = none → (∀ t, g.kind = .type t → t.closed = true) ∧
+        ∀ W', (st'.world ρ').Le W' → GoalTyped W' g) := fun g hg' =>
+  let ⟨h1, h2⟩ := hI.goal g (hg ▸ hg')
+  ⟨h1.mono hn, fun ht' => let ⟨c, w⟩ := h2 (ht ht'); ⟨c, fun W' hW => w W' (hle.trans hW)⟩⟩
+
 theorem Term.evalList_map_append {ρ ρ' : List Value} {ts : List Term} {vs : List Value}
     (h : Term.evalList ρ [] ts = some vs) : Term.evalList (ρ ++ ρ') [] ts = some vs :=
   Term.evalList_frame_ρ ρ' h

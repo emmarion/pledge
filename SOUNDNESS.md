@@ -684,8 +684,8 @@ meets its specification, and its telescopes are canonically identical
 to the goal's, so by Corollary 3.2 it meets the goal's (`fnGoal_holds`,
 `Sound/Stmt.lean`). Lean checks both cases as `runProgram_sound`, with
 `ProvedAt` for the scope at the `qed` and `GoalHolds` for what the goal
-states, from `typeQed_sound` and `qed_sound`; its statement does not
-include `|- T rho : Type()`.
+states, from `typeQed_sound` and `qed_sound`; `GoalHolds` includes
+`|- T rho : Type()`, which `goalItem_sound` records when the goal is set.
 
 Since `junk` has no type, Corollary 2.3 still holds, so no `qed` proves
 a type whose data type constructor declares no value constructors, in

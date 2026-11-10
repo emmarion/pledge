@@ -119,7 +119,7 @@ ideal arguments by the parameters' multiplicities, the call
 the returns' multiplicities. A tainted function has no specification.
 `GoalHolds W phase g qedFn` says what a goal `g` means in a world `W`
 (`Sound/Defs.lean`): for a type goal, its type evaluates under `W.ρ` to
-a type that some value has; for a function goal, the function `qedFn`
+a value of type `Type()` that some value has as its type; for a function goal, the function `qedFn`
 names is in `W`'s functions and meets the goal's telescopes with both
 halves of a specification.
 
@@ -152,8 +152,8 @@ tokens) and any syntax error `err`, writing `out` for
   there is a valuation `ρ` with one value per entry of `out.entries`,
   satisfying the final scope if it is untainted and, by its first
   values, the scope at the `qed` (`ProvedAt`), under which `t`
-  evaluates to a type `V`, and some value has type `V` by `out.sigs`
-  closed by `ρ`.
+  evaluates to a value `V` that has type `Type()`, and some value has
+  type `V`, both by `out.sigs` closed by `ρ`.
 - `fn_goal_holds`: if the goal is proved and is the function goal with
   telescopes `ps` and `rs`, there is a valuation `ρ` as in
   `type_goal_inhabited` such that `out.qedFn` names a function `d` of
@@ -298,10 +298,6 @@ The statements are also weaker than they may first read:
 - `Program.holeFree` also asks that no type constructor or value
   constructor is named `sorry`. Since `sorry` is a keyword, the parser
   is believed never to produce one, but no theorem says so.
-- For a type goal, `GoalHolds` says that the goal's term evaluates to
-  some `V` and that a value has type `V`. It does not say that `V` is
-  itself a type, that is, has type `Type()`; the checker's `isType`
-  check is believed to ensure it, but no headline theorem states it.
 - Whether the final top-level scope is untainted, which the `Sat`
   clause for the final scope depends on, is read from `topItems`'s
   state; `Outcome` has no field for it.

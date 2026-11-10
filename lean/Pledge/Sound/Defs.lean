@@ -194,15 +194,19 @@ def StmtSound (s : Stmt) : Prop :=
   ∀ (C : Ctx) (sc : Scope) (n0 : Nat) (W : World) (ρ : List Value) (act : Act) (o : StmtOut),
     Inv C sc n0 W ρ act → checkStmt C sc s = .ok o → StmtPost C sc n0 W ρ act o
 
-/-- What a goal states, in a world (§12): a type goal's type has a value; for a function goal, the function the
-`qed` names computes, from run-time arguments related to ideal ones satisfying the parameters, run-time results
-related to ideal ones satisfying the returns. -/
+/-- What a goal states, in a world (§12): a type goal's type has a value that has type `Type()` and a value of its
+own; for a function goal, the function the `qed` names computes, from run-time arguments related to ideal ones
+satisfying the parameters, run-time results related to ideal ones satisfying the returns. -/
 def GoalHolds (W : World) (phase : Nat) (g : CheckedGoal) (qedFn : Option String) : Prop :=
   match g.kind with
-  | .type t => ∃ v V, t.eval W.ρ [] = some V ∧ HasType W.Sc v V
+  | .type t => ∃ v V, t.eval W.ρ [] = some V ∧ HasType W.Sc v V ∧ HasType W.Sc V Value.TYPE
   | .fn ps rs => ∃ n d, qedFn = some n ∧ W.P.fns.find n = some d ∧ ∀ vs, TeleSat W.Sc W.ρ ps [] vs →
       ∃ ws, TeleSat W.Sc W.ρ rs vs ws ∧ ∀ as, MultsRel W.Sc phase (ps.map (·.mult)) as vs →
         ∃ ws', CallRel W.P d as ws' ∧ MultsRel W.Sc phase (rs.map (·.mult)) ws' ws
+
+/-- An untainted type goal's type is a type in the world `W`. -/
+def GoalTyped (W : World) (g : CheckedGoal) : Prop :=
+  ∀ t, g.kind = .type t → g.tainted = false → ∃ V, t.eval W.ρ [] = some V ∧ HasType W.Sc V Value.TYPE
 
 def GoalBelow (n : Nat) (g : CheckedGoal) : Prop :=
   match g.kind with
@@ -236,7 +240,8 @@ structure TopInv (st : TopState) (ρ : List Value) : Prop where
   groups : ∀ d ∈ st.fns, d.group < st.groups
   typeSig : ∃ s, st.sc.sigs.find Head.Type = some s
   goal : ∀ g, st.goal = some g → GoalBelow st.sc.Γ.length g ∧
-    (st.sc.taintedBy = none → ∀ t, g.kind = .type t → t.closed = true)
+    (st.sc.taintedBy = none → (∀ t, g.kind = .type t → t.closed = true) ∧
+      ∀ W', (st.world ρ).Le W' → GoalTyped W' g)
   proved : st.proved = true → ∃ g, st.goal = some g ∧ ∀ W', (st.world ρ).Le W' → GoalHolds W' st.phase g st.qedFn
   live : st.sc.taintedBy = none → TopLive st ρ
 

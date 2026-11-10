@@ -551,6 +551,107 @@ theorem annotate_eval {C : Ctx} {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List V
   let ⟨A, hA, his⟩ := TermFill.annotate_weval hT h
   ⟨⟨A, hA⟩, fun e he => let ⟨v, hv, _⟩ := his e he; ⟨v, hv⟩⟩
 
+mutual
+/-- A checked skeleton term's value meets `ResOk`: an untainted one has a type. -/
+theorem checkTerm_resOk {C : Ctx} {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List Value} (hT : TermInv sc n0 Sc ρ) :
+    ∀ (t : WTerm) {r : Res}, checkTerm C sc t = .ok r → ∃ v, r.term.eval ρ [] = some v ∧ ResOk Sc r v
+  | .var x, r, h => by
+    simp only [checkTerm] at h
+    split at h
+    · rename_i r' hl
+      simp only [pure, Except.pure, Except.ok.injEq] at h
+      subst h
+      obtain ⟨v, hv, hw, hty⟩ := hT.names _ r' hl
+      exact ⟨v, hv, TermFill.eval_noRemoved hT.sat.noRemoved (by simp) _ hv, hw,
+        fun ht => hty (by simp_all)⟩
+    · simp [notValue, failAt_eq] at h
+  | .app hd args, r, h => by
+    obtain ⟨v, hv, hw⟩ := TermFill.checkTerm_wtype hT.weak _ h
+    refine ⟨v, hv, TermFill.eval_noRemoved hT.sat.noRemoved (by simp) _ hv, hw, fun ht => ?_⟩
+    obtain ⟨k, role, sig, rs, hsig, har, hrs, rfl⟩ : ∃ k role sig rs, sc.sig hd.pos ⟨k, hd.name⟩ = .ok sig ∧
+        arity hd.pos hd.name sig.params.length args.length = .ok () ∧
+        checkTerms C sc hd.name role sig.params [] args = .ok rs ∧
+        r = ⟨.app sig.head (rs.map (·.term)), rs.any (·.tainted) || sc.taintedBy.isSome, false⟩ := by
+      unfold checkTerm at h
+      split at h
+      · simp [failAt_eq, error_bind] at h
+      all_goals first
+        | (simp [notApplied, failAt_eq, error_bind] at h; done)
+        | (obtain ⟨k, -, h⟩ := bind_eq_ok.1 h
+           obtain ⟨sig, hsig, h⟩ := bind_eq_ok.1 h
+           obtain ⟨u, har, h⟩ := bind_eq_ok.1 h
+           obtain ⟨rs, hrs, h⟩ := bind_eq_ok.1 h
+           simp only [pure, Except.pure, Except.ok.injEq] at h
+           exact ⟨k, _, sig, rs, hsig, har, hrs, h.symm⟩)
+    have hfind := Scope.sig_ok hsig
+    obtain ⟨vs, hvs, -, hws⟩ := checkTerms_resOk hT args (prevv := []) hrs rfl (arity_ok har)
+    obtain ⟨vs', hvs', rfl⟩ := Term.eval_app.1 hv
+    rw [hvs] at hvs'
+    cases hvs'
+    obtain ⟨A, hA⟩ := hw
+    have hne : sig.head ≠ junkHead := fun e => by
+      rw [← Sigs.find_head hfind, e] at hfind
+      obtain ⟨_, hc, -⟩ := hT.sigs.find hfind
+      rw [hT.noJunk] at hc; cases hc
+    simp only [WType, hne, ↓reduceIte] at hA
+    obtain ⟨sig', hc, hret⟩ := hA
+    rw [← Sigs.find_head hfind] at hfind
+    refine ⟨A, .app hc ((hT.sigs.teleSat_iff hfind hc).2 (WantsSat.teleSat hws fun b hb => ?_)) hret⟩
+    simp only [Bool.or_eq_false_iff, List.any_eq_false] at ht
+    obtain ⟨r, hr, rfl⟩ := List.mem_map.1 hb
+    simpa using ht.1 r hr
+theorem checkTerms_resOk {C : Ctx} {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List Value} (hT : TermInv sc n0 Sc ρ) :
+    ∀ (args : List WTerm) {owner role : String} {params : Telescope} {prev rs : List Res} {prevv : List Value},
+      checkTerms C sc owner role params prev args = .ok rs → Term.evalList ρ [] (prev.map (·.term)) = some prevv →
+      params.length = args.length → ∃ vs, Term.evalList ρ [] (rs.map (·.term)) = some vs ∧ ResOks Sc rs vs ∧
+        WantsSat Sc ρ (params.map Want.of) prevv (rs.map (!·.tainted)) vs
+  | [], owner, role, params, prev, rs, prevv, h, _, hl => by
+    simp only [checkTerms, pure, Except.pure, Except.ok.injEq] at h
+    subst h
+    rw [List.length_eq_zero_iff.1 hl]
+    exact ⟨[], rfl, trivial, trivial⟩
+  | a :: as, owner, role, params, prev, rs, prevv, h, hprev, hl => by
+    cases params with
+    | nil => simp at hl
+    | cons p ps =>
+      simp only [checkTerms] at h
+      obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
+      obtain ⟨sc', hag, h⟩ := bind_eq_ok.1 h
+      obtain ⟨rest, hrest, h⟩ := bind_eq_ok.1 h
+      simp only [pure, Except.pure, Except.ok.injEq] at h
+      subst h
+      obtain ⟨v, hv, hok⟩ := checkTerm_resOk hT a hr
+      obtain ⟨-, -, hw⟩ := against_sound (sc := { sc with holes := [] }) (rs := [r]) (vs := [v]) hT.sat.1 hT.sigs
+        hT.noJunk rfl        (Term.evalList_singleton.2 ⟨v, hv, rfl⟩) ⟨hok, trivial⟩ hprev hag
+      obtain ⟨vs, hvs, hoks, hws⟩ := checkTerms_resOk hT as hrest
+        (by simpa using Term.evalList_append hprev (Term.evalList_singleton.2 ⟨v, hv, rfl⟩)) (by simpa using hl)
+      exact ⟨v :: vs, Term.evalList_cons_eq_some.2 ⟨v, vs, hv, hvs, rfl⟩, ⟨hok, hoks⟩, hw.1, hws⟩
+end
+
+/-- A checked type annotation, if untainted, has a value of type `Type()` (§3). -/
+theorem annotate_type_typed {C : Ctx} {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List Value} {t : WTerm} {ty : Term}
+    {is : Option Term} {tainted : Bool} (hT : TermInv sc n0 Sc ρ) (h : annotate C sc (.type t) = .ok (ty, is, tainted))
+    (ht : tainted = false) : ∃ V, ty.eval ρ [] = some V ∧ HasType Sc V Value.TYPE := by
+  simp only [annotate] at h
+  obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
+  obtain ⟨u, hu, h⟩ := bind_eq_ok.1 h
+  simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨rfl, -, rfl⟩ := h
+  obtain ⟨V, hV, -, -, hty⟩ := checkTerm_resOk hT t hr
+  obtain ⟨A, hA⟩ := hty ht
+  simp only [isType, bind, Except.bind] at hu
+  cases hT' : sc.typeOf t.pos r.term with
+  | error => simp [hT'] at hu
+  | ok T =>
+    simp only [hT'] at hu
+    split at hu
+    · rename_i hid
+      have hTA := typeOf_sound hT.sat.1 hT.sigs hT.noJunk hV hA (Scope.typeOf_ok hT')
+      rw [hT.sat.eval_eq_of_identical (by simpa using hid)] at hTA
+      cases hTA
+      exact ⟨V, hV, hA⟩
+    · simp [failAt_eq] at hu
+
 namespace TermFill
 
 /-- What opening a binder to the value `v` needs under `ρ`: `v` has the type by its head, and has it if `typed`,

@@ -895,7 +895,7 @@ theorem group_post {st : TopState} {ρ : List Value} {heads : List FnHead} {bodi
       simp only [TopState.world, TopState.prog, hfns]; exact fns_find_group hI hlen hnd hfr hp)
   refine ⟨hsc ▸ hI.len, hI.noRemoved, hsc ▸ hI.holes, hsc ▸ hI.sigsOk, hsc ▸ hI.noJunk, hsc ▸ hI.rets,
     fun h sig hs => by rw [hkind]; exact hI.sigNames h sig (hsc ▸ hs), ?_, ?_, hsc ▸ hI.typeSig,
-    by rw [hgoal, hsc]; exact hI.goal, fun hp => ?_, fun ht => ?_⟩
+    hI.goal_le hle hgoal (by rw [hsc]; exact Nat.le_refl _) (by rw [hsc]; exact id), fun hp => ?_, fun ht => ?_⟩
   · intro d hd
     rw [hglob, groupGlobals, List.find?_append]
     rw [hfns] at hd
