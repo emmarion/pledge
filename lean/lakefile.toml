@@ -1,8 +1,12 @@
 name = "pledge"
-defaultTargets = ["Pledge", "pledge"]
+defaultTargets = ["Pledge", "PledgeTest", "pledge"]
 
 [[lean_lib]]
 name = "Pledge"
+
+[[lean_lib]]
+name = "PledgeTest"
+roots = ["Pledge.ParserTest"]
 
 [[lean_exe]]
 name = "pledge"

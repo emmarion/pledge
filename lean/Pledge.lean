@@ -5,3 +5,5 @@ import Pledge.Unify
 import Pledge.UnifyTest
 import Pledge.Eval
 import Pledge.EvalTest
+import Pledge.Lexer
+import Pledge.Parser
