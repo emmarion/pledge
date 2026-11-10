@@ -150,25 +150,67 @@ theorem topItems_sound {ρ : List Value} : ∀ {st : TopState} {prog : Program},
     · exact ⟨[], by simpa [TopState.world_snaps] using World.Le.refl _, by simpa using hI.snaps _⟩
 
 /-- Stage 1 soundness of the checker and evaluator, for phase 1 programs without `sorry` or written
-multiplicities: there is a world (closed signatures, the evaluator's program and values of the top-level entries)
-in which the final top-level scope is satisfied, and, if the goal is reported proved, the goal holds in it: a type
-goal's type has a value, and a function goal's parameters, whenever satisfied, have returns satisfying its return
-telescope. This is meant to say that the checker accepts no proof of an uninhabited type. -/
+multiplicities: there is a valuation `W.ρ` of the final top-level entries that satisfies the final scope, typing
+values by exactly the program's signatures closed by `W.ρ`, with `W.P` the evaluator's view of the program's
+functions; and if the goal is reported proved, it holds there: a type goal's type has a value, and a function
+goal's parameters, whenever satisfied, have returns satisfying its return telescope. -/
 theorem runProgram_sound (prog : Program) (has : String → Bool) (err : Option (Pos × String))
     (hp : Program.plain prog = true) :
-    ∃ W : World, Sat W.Sc (runProgram 1 prog has err).entries W.ρ ∧
-      SigsClose (runProgram 1 prog has err).sigs W.ρ W.Sc ∧ W.P.fns = (runProgram 1 prog has err).fns ∧
+    ∃ W : World, W.Sc = (runProgram 1 prog has err).sigs.map (Sig.close W.ρ) ∧
+      W.P.fns = (runProgram 1 prog has err).fns ∧ Sat W.Sc (runProgram 1 prog has err).entries W.ρ ∧
       ((runProgram 1 prog has err).goalProved = some true →
         ∃ g, (runProgram 1 prog has err).goal = some g ∧ GoalHolds W g) := by
   obtain ⟨ρ, -, hI⟩ := topItems_sound (ρ := []) (prog := prog) TopInv.init hp
   simp only [List.nil_append] at hI
-  refine ⟨(topItems (.init 1) prog).1.world ρ, hI.sat, hI.sigsClose, rfl, fun hg => ?_⟩
+  refine ⟨(topItems (.init 1) prog).1.world ρ, rfl, rfl, hI.sat, fun hg => ?_⟩
   simp only [runProgram] at hg ⊢
   split at hg
   · simp only [Option.some.injEq, Bool.and_eq_true] at hg
     obtain ⟨g, hg', hW⟩ := hI.proved hg.2
     exact ⟨g, hg', hW _ (World.Le.refl _)⟩
   · cases hg
+
+/-- A proved type goal has a value: under a valuation `ρ` of the final top-level entries satisfying the final
+scope, the goal's type `t` evaluates to a type `V`, and some value has type `V` by the program's signatures closed
+by `ρ`. -/
+theorem type_goal_inhabited (prog : Program) (has : String → Bool) (err : Option (Pos × String))
+    (hp : Program.plain prog = true) {g : CheckedGoal} {t : Term}
+    (hproved : (runProgram 1 prog has err).goalProved = some true) (hg : (runProgram 1 prog has err).goal = some g)
+    (ht : g.kind = .type t) :
+    ∃ ρ, Sat ((runProgram 1 prog has err).sigs.map (Sig.close ρ)) (runProgram 1 prog has err).entries ρ ∧
+      ∃ v V, t.eval ρ [] = some V ∧ HasType ((runProgram 1 prog has err).sigs.map (Sig.close ρ)) v V := by
+  obtain ⟨W, hSc, -, hsat, hgoal⟩ := runProgram_sound prog has err hp
+  obtain ⟨g', hg', hh⟩ := hgoal hproved
+  rw [hg] at hg'
+  cases hg'
+  simp only [GoalHolds, ht] at hh
+  rw [hSc] at hsat hh
+  exact ⟨W.ρ, hsat, hh⟩
+
+/-- A proved function goal holds: under a valuation `ρ` of the final top-level entries satisfying the final scope,
+all values satisfying the goal's parameter telescope `ps` can be followed by values satisfying its return telescope
+`rs`. -/
+theorem fn_goal_holds (prog : Program) (has : String → Bool) (err : Option (Pos × String))
+    (hp : Program.plain prog = true) {g : CheckedGoal} {ps rs : Telescope}
+    (hproved : (runProgram 1 prog has err).goalProved = some true) (hg : (runProgram 1 prog has err).goal = some g)
+    (hk : g.kind = .fn ps rs) :
+    ∃ ρ, Sat ((runProgram 1 prog has err).sigs.map (Sig.close ρ)) (runProgram 1 prog has err).entries ρ ∧
+      ∀ vs, TeleSat ((runProgram 1 prog has err).sigs.map (Sig.close ρ)) ρ ps [] vs →
+        ∃ ws, TeleSat ((runProgram 1 prog has err).sigs.map (Sig.close ρ)) ρ rs vs ws := by
+  obtain ⟨W, hSc, -, hsat, hgoal⟩ := runProgram_sound prog has err hp
+  obtain ⟨g', hg', hh⟩ := hgoal hproved
+  rw [hg] at hg'
+  cases hg'
+  simp only [GoalHolds, hk] at hh
+  rw [hSc] at hsat hh
+  exact ⟨W.ρ, hsat, hh⟩
+
+/-- `runProgram_sound` for source text whose parsed program is plain. -/
+theorem run_sound (source : String) (hp : Program.plain (parse source 1).1 = true) :
+    ∃ W : World, W.Sc = (run source 1).sigs.map (Sig.close W.ρ) ∧ W.P.fns = (run source 1).fns ∧
+      Sat W.Sc (run source 1).entries W.ρ ∧
+      ((run source 1).goalProved = some true → ∃ g, (run source 1).goal = some g ∧ GoalHolds W g) :=
+  runProgram_sound _ _ _ hp
 
 /-- The "no `False`" corollary: a program that declares a data type with no value constructors and sets as its goal
 an application of it is never reported to prove that goal. -/
@@ -223,6 +265,14 @@ theorem no_empty_goal (prog : Program) (has : String → Bool) (err : Option (Po
   obtain ⟨h', ws, sig, -, hf, hret⟩ := hv.inv_type
   exact List.not_mem_nil (hcomp.2.2.1 h' sig ws _ us hf hret hname).2
 
+/-- `no_empty_goal` for source text whose parsed program is plain. -/
+theorem run_no_empty_goal (source : String) (hp : Program.plain (parse source 1).1 = true) (d : Data)
+    (hd : Top.data d ∈ (parse source 1).1 ∨ ∃ p ds, Top.mutualData p ds ∈ (parse source 1).1 ∧ d ∈ ds)
+    (hc : d.ctors = []) (p : Pos) (hn : Name) (args : List WTerm)
+    (hg : Top.goal p (.type (.app hn args)) ∈ (parse source 1).1) (hname : hn.name = d.name.name) :
+    (run source 1).goalProved ≠ some true :=
+  no_empty_goal _ _ _ hp d hd hc p hn args hg hname
+
 /-- No top-level evaluation the checker performs fails: the evaluator runs every checked tree to a value. -/
 theorem TopState.eval_ok {st : TopState} {ρ : List Value} {C : Ctx} {g : Option Given} {e : Expr} {o : Out}
     {pos : Pos} (hI : TopInv st ρ) (hph : C.phase = 1) (her : C.erased = false) (hgl : C.globals = st.globals)
@@ -245,6 +295,28 @@ theorem TopState.run_ok {st : TopState} {ρ : List Value} {C : Ctx} {s : Stmt} {
   have : evalStmt ⟨st.fns, kindOf st.globals⟩ (Act.top st.fns) st.env o.tree = .ok env' := hev
   simp only [TopState.run, this]; rfl
 
+/-- No evaluation fails at a state the checker reaches on a plain program: an expression checked there at the top
+level, as `print`, `qed` against a type goal and a `comptime` pattern `let` check theirs, evaluates by
+`TopState.eval` to a value, so the top level never reports "evaluation stopped" for it. -/
+theorem reached_eval_ok {pre : Program} (hp : Program.plain pre = true) {C : Ctx} {g : Option Given} {e : Expr}
+    {o : Out} {r : Res} {pos : Pos} (hph : C.phase = 1) (her : C.erased = false)
+    (hgl : C.globals = (topItems (.init 1) pre).1.globals) (hfn : C.fn = none)
+    (hg : ∀ g', g = some g' → g'.env = [] ∧ ∀ w ∈ g'.wants, w.mult = .many) (he : e.plain = true)
+    (h : checkExpr C (topItems (.init 1) pre).1.sc g e = .ok o) (hr : single e.pos o.res = .ok r) :
+    ∃ v, (topItems (.init 1) pre).1.eval pos o.tree r.tainted = .ok (some v) := by
+  obtain ⟨ρ, -, hI⟩ := topItems_sound (ρ := []) (prog := pre) TopInv.init hp
+  refine TopState.eval_ok hI hph her hgl hfn (fun g' h' => ⟨⟨[], ?_⟩, (hg g' h').2⟩) he h hr
+  rw [(hg g' h').1]; rfl
+
+/-- No statement's evaluation fails at a state the checker reaches on a plain program: a statement checked there at
+the top level runs by `TopState.run`, so the top level never reports "evaluation stopped" for it. -/
+theorem reached_run_ok {pre : Program} (hp : Program.plain pre = true) {C : Ctx} {s : Stmt} {o : StmtOut}
+    (hph : C.phase = 1) (her : C.erased = false) (hgl : C.globals = (topItems (.init 1) pre).1.globals)
+    (hfn : C.fn = none) (hs : s.plain = true) (h : checkStmt C (topItems (.init 1) pre).1.sc s = .ok o) :
+    ∃ env, (topItems (.init 1) pre).1.run o.tree = .ok env := by
+  obtain ⟨ρ, -, hI⟩ := topItems_sound (ρ := []) (prog := pre) TopInv.init hp
+  exact TopState.run_ok hI hph her hgl hfn hs h
+
 /-- `data Unit() : Type() { tt() : Unit(); } goal Unit(); qed tt();`, which the checker accepts with its goal
 proved, so the goal clause of `runProgram_sound` is not vacuous. Kernel reduction does not seem to get through the
 evaluator's well-founded recursion (`decide +kernel` gets stuck), so this is checked by `#guard`, not a theorem. -/
@@ -256,5 +328,35 @@ def unitProgram : Program :=
 #guard (runProgram 1 unitProgram (fun _ => true)).goalProved == some true
 
 #guard Program.plain unitProgram
+
+def natSource : String :=
+  "data Nat() : Type() { Zero() : Nat(); Succ(pred : Nat()) : Nat(); }
+  data Plus(m : Nat(), n : Nat(), r : Nat()) : Type() {
+    PlusZero(n : Nat()) : Plus(Zero(), n, n);
+    PlusSucc(m : Nat(), n : Nat(), r : Nat(), p : Plus(m, n, r)) : Plus(Succ(m), n, Succ(r));
+  }
+  fn plusZero(subterm n : Nat()) -> (p : Plus(n, Zero(), n)) {
+    match n : (p : Plus(n, Zero(), n)) {
+      Zero() => PlusZero(Zero());
+      Succ(m) => PlusSucc(m, Zero(), m, plusZero(subterm m));
+    }
+  }
+  print plusZero(Succ(Zero()));
+  "
+
+def fnGoalSource : String := natSource ++ "goal fn (n : Nat()) -> (p : Plus(n, Zero(), n)); qed plusZero;"
+
+def typeGoalSource : String := natSource ++
+  "goal Plus(Succ(Succ(Zero())), Zero(), Succ(Succ(Zero()))); qed plusZero(Succ(Succ(Zero())));"
+
+def emptyGoalSource : String := "data False() : Type() {} goal False(); qed sorry(_);"
+
+#guard Program.plain (parse fnGoalSource 1).1 && (run fnGoalSource 1).goalProved == some true
+
+#guard Program.plain (parse typeGoalSource 1).1 && (run typeGoalSource 1).goalProved == some true &&
+  (run typeGoalSource 1).prints.map (·.2) == ["PlusSucc(Zero(), Zero(), Zero(), PlusZero(Zero()))"]
+
+#guard !Program.plain (parse emptyGoalSource 1).1 && (run emptyGoalSource 1).error.isNone &&
+  (run emptyGoalSource 1).goalProved == some false
 
 end Pledge
