@@ -164,51 +164,44 @@ theorem identical.eval_eq {Γ : Entries} {ρ env : List Value} {a b : Term} (hΓ
     (h : identical Γ a b = true) : a.eval ρ env = b.eval ρ env := by
   rw [← Term.eval_canon hΓ env a, ← Term.eval_canon hΓ env b, eq_of_beq h]
 
-theorem HasType.app_iff {S : Sigs} {ρ : List Value} {h : Head} {vs : List Value} {V : Value} :
-    HasType S ρ (.app h vs) V ↔
-      ∃ sig, S.find h = some sig ∧ TeleSat S ρ sig.params [] vs ∧ sig.ret.eval ρ vs = some V :=
+theorem HasType.app_iff {S : Sigs} {h : Head} {vs : List Value} {V : Value} :
+    HasType S (.app h vs) V ↔
+      ∃ sig, S.find h = some sig ∧ TeleSat S [] sig.params [] vs ∧ sig.ret.eval [] vs = some V :=
   ⟨fun | .app hs ht hr => ⟨_, hs, ht, hr⟩, fun ⟨_, hs, ht, hr⟩ => .app hs ht hr⟩
 
-theorem HasType.not_removed {S : Sigs} {ρ : List Value} {V : Value} : ¬ HasType S ρ .removed V := nofun
+theorem HasType.not_removed {S : Sigs} {V : Value} : ¬ HasType S .removed V := nofun
 
 /-- Unique types (SOUNDNESS.md Lemma 2.2). -/
-theorem HasType.unique {S : Sigs} {ρ : List Value} {v V V' : Value} :
-    HasType S ρ v V → HasType S ρ v V' → V = V'
+theorem HasType.unique {S : Sigs} {v V V' : Value} : HasType S v V → HasType S v V' → V = V'
   | .app hs _ hr, .app hs' _ hr' => by
     rw [hs] at hs'; cases hs'; rw [hr] at hr'; cases hr'; rfl
 
 /-- `S'` has every signature `S` has. -/
 def Sigs.Sub (S S' : Sigs) : Prop := ∀ h sig, S.find h = some sig → S'.find h = some sig
 
-mutual
-theorem HasType.mono {S S' : Sigs} {ρ : List Value} (hS : S.Sub S') (ρ' : List Value) {v V : Value} :
-    HasType S ρ v V → HasType S' (ρ ++ ρ') v V
-  | .app hs ht hr => .app (hS _ _ hs) (TeleSat.mono hS ρ' ht) (Term.eval_frame_ρ ρ' hr)
-theorem TeleSat.mono {S S' : Sigs} {ρ : List Value} (hS : S.Sub S') (ρ' : List Value)
-    {Δ : Telescope} {env vs : List Value} : TeleSat S ρ Δ env vs → TeleSat S' (ρ ++ ρ') Δ env vs
-  | .nil => .nil
-  | .cons hA hv his ht =>
-    .cons (Term.eval_frame_ρ ρ' hA) (HasType.mono hS ρ' hv) (fun e he => Term.eval_frame_ρ ρ' (his e he))
-      (TeleSat.mono hS ρ' ht)
-end
-
 theorem Sigs.Sub.refl (S : Sigs) : S.Sub S := fun _ _ h => h
 
-theorem HasType.frame {S : Sigs} {ρ : List Value} (ρ' : List Value) {v V : Value} (h : HasType S ρ v V) :
-    HasType S (ρ ++ ρ') v V := h.mono (Sigs.Sub.refl S) ρ'
+mutual
+theorem HasType.mono_sigs {S S' : Sigs} (hS : S.Sub S') {v V : Value} : HasType S v V → HasType S' v V
+  | .app hs ht hr => .app (hS _ _ hs) (TeleSat.mono_sigs hS ht) hr
+theorem TeleSat.mono_sigs {S S' : Sigs} (hS : S.Sub S') {ρ : List Value} {Δ : Telescope} {env vs : List Value} :
+    TeleSat S ρ Δ env vs → TeleSat S' ρ Δ env vs
+  | .nil => .nil
+  | .cons hA hv his ht => .cons hA (HasType.mono_sigs hS hv) his (TeleSat.mono_sigs hS ht)
+end
 
-theorem TeleSat.frame {S : Sigs} {ρ : List Value} (ρ' : List Value) {Δ : Telescope} {env vs : List Value}
-    (h : TeleSat S ρ Δ env vs) : TeleSat S (ρ ++ ρ') Δ env vs := h.mono (Sigs.Sub.refl S) ρ'
-
-theorem HasType.mono_sigs {S S' : Sigs} {ρ : List Value} (hS : S.Sub S') {v V : Value} (h : HasType S ρ v V) :
-    HasType S' ρ v V := by simpa using h.mono hS []
-
-theorem TeleSat.mono_sigs {S S' : Sigs} {ρ : List Value} (hS : S.Sub S') {Δ : Telescope} {env vs : List Value}
-    (h : TeleSat S ρ Δ env vs) : TeleSat S' ρ Δ env vs := by simpa using h.mono hS []
+mutual
+theorem HasType.noRemoved {S : Sigs} {v V : Value} : HasType S v V → v.noRemoved = true
+  | .app _ ht _ => by simp only [Value.noRemoved]; exact TeleSat.noRemoved ht
+theorem TeleSat.noRemoved {S : Sigs} {ρ : List Value} {Δ : Telescope} {env vs : List Value} :
+    TeleSat S ρ Δ env vs → Value.noRemovedList vs = true
+  | .nil => rfl
+  | .cons _ hv _ ht => by simp only [Value.noRemovedList, HasType.noRemoved hv, TeleSat.noRemoved ht, Bool.and_self]
+end
 
 /-- The value `v` satisfies the binder `b` when `env` holds the values of the earlier bound variables. -/
 def BinderSat (S : Sigs) (ρ : List Value) (b : TBinder) (env : List Value) (v : Value) : Prop :=
-  ∃ A, b.type.eval ρ env = some A ∧ HasType S ρ v A ∧ ∀ e, b.is = some e → e.eval ρ env = some v
+  ∃ A, b.type.eval ρ env = some A ∧ HasType S v A ∧ ∀ e, b.is = some e → e.eval ρ env = some v
 
 theorem TeleSat.nil_iff {S : Sigs} {ρ env vs : List Value} : TeleSat S ρ [] env vs ↔ vs = [] :=
   ⟨fun | .nil => rfl, fun h => h ▸ .nil⟩
@@ -225,6 +218,28 @@ theorem TeleSat.length_eq {S : Sigs} {ρ : List Value} :
   | _ :: _, _, _, h => by
     obtain ⟨_, _, rfl, _, ht⟩ := TeleSat.cons_iff.1 h
     simp [TeleSat.length_eq ht]
+
+/-- Satisfaction of a telescope carries over between binder lists that agree binder by binder. -/
+theorem TeleSat.congr {S : Sigs} {ρ ρ' : List Value} :
+    ∀ {Δ Δ' : Telescope} {env vs : List Value}, Telescope.Agree ρ ρ' Δ Δ' →
+      (TeleSat S ρ Δ env vs ↔ TeleSat S ρ' Δ' env vs)
+  | [], [], _, _, _ => by simp [TeleSat.nil_iff]
+  | b :: Δ, b' :: Δ', env, vs, ⟨hb, hΔ⟩ => by
+    simp only [TeleSat.cons_iff, BinderSat]
+    refine exists_congr fun v => exists_congr fun vs' => and_congr_right fun _ =>
+      and_congr (exists_congr fun A => ?_) (TeleSat.congr hΔ)
+    rw [hb.type env]
+    refine and_congr_right fun _ => and_congr_right fun _ => ?_
+    have hi := hb.is env
+    cases h₁ : b.is <;> cases h₂ : b'.is <;> simp_all
+  | [], _ :: _, _, _, h | _ :: _, [], _, _, h => h.elim
+
+theorem TeleSat.frame {S : Sigs} {ρ : List Value} (ρ' : List Value) :
+    ∀ {Δ : Telescope} {env vs : List Value}, TeleSat S ρ Δ env vs → TeleSat S (ρ ++ ρ') Δ env vs
+  | [], _, _, h => by rw [TeleSat.nil_iff.1 h]; exact .nil
+  | _ :: _, _, _, h => by
+    obtain ⟨_, _, rfl, ⟨_, hA, hv, his⟩, ht⟩ := TeleSat.cons_iff.1 h
+    exact .cons (Term.eval_frame_ρ ρ' hA) hv (fun e he => Term.eval_frame_ρ ρ' (his e he)) (TeleSat.frame ρ' ht)
 
 /-- A telescope is satisfied binder by binder, the `i`-th under the values before it. -/
 theorem TeleSat.iff_getElem? {S : Sigs} {ρ : List Value} :
@@ -263,28 +278,224 @@ theorem TeleSat.append_iff {S : Sigs} {ρ : List Value} :
     · rintro ⟨⟨_, _, ⟨rfl, rfl⟩, hb, ht⟩, ht'⟩
       exact ⟨_, _, ⟨rfl, rfl⟩, hb, ih.2 ⟨ht, ht'⟩⟩
 
-theorem HasType.inv {S : Sigs} {ρ : List Value} {v V : Value} (h : HasType S ρ v V) :
-    ∃ hd ws sig, v = .app hd ws ∧ S.find hd = some sig ∧ TeleSat S ρ sig.params [] ws ∧
-      sig.ret.eval ρ ws = some V :=
+theorem HasType.inv {S : Sigs} {v V : Value} (h : HasType S v V) :
+    ∃ hd ws sig, v = .app hd ws ∧ S.find hd = some sig ∧ TeleSat S [] sig.params [] ws ∧
+      sig.ret.eval [] ws = some V :=
   match h with
   | .app hs ht hr => ⟨_, _, _, rfl, hs, ht, hr⟩
 
 /-- A value whose type applies a type constructor is built by a signature whose return evaluates
 to that type (cf. SOUNDNESS.md Lemma 2.1). -/
-theorem HasType.inv_type {S : Sigs} {ρ : List Value} {v : Value} {T : String} {us : List Value}
-    (h : HasType S ρ v (.app ⟨.type, T⟩ us)) :
-    ∃ hd ws sig, v = .app hd ws ∧ S.find hd = some sig ∧ sig.ret.eval ρ ws = some (.app ⟨.type, T⟩ us) :=
+theorem HasType.inv_type {S : Sigs} {v : Value} {T : String} {us : List Value}
+    (h : HasType S v (.app ⟨.type, T⟩ us)) :
+    ∃ hd ws sig, v = .app hd ws ∧ S.find hd = some sig ∧ sig.ret.eval [] ws = some (.app ⟨.type, T⟩ us) :=
   let ⟨hd, ws, sig, hv, hs, _, hr⟩ := h.inv
   ⟨hd, ws, sig, hv, hs, hr⟩
 
-/-- No value has a type whose head no signature returns (SOUNDNESS.md Corollary 2.3). -/
-theorem HasType.empty {S : Sigs} {ρ : List Value} {H : Head} {us : List Value}
-    (hS : ∀ sig ∈ S, ∃ h' args, sig.ret = .app h' args ∧ h' ≠ H) {v : Value} :
-    ¬ HasType S ρ v (.app H us) :=
+theorem TBinder.Agree.refl (ρ : List Value) (b : TBinder) : TBinder.Agree ρ ρ b b := ⟨fun _ => rfl, fun _ => rfl⟩
+
+theorem TBinder.Agree.trans {ρ₁ ρ₂ ρ₃ : List Value} {b₁ b₂ b₃ : TBinder} (h : TBinder.Agree ρ₁ ρ₂ b₁ b₂)
+    (h' : TBinder.Agree ρ₂ ρ₃ b₂ b₃) : TBinder.Agree ρ₁ ρ₃ b₁ b₃ :=
+  ⟨fun env => (h.type env).trans (h'.type env), fun env => (h.is env).trans (h'.is env)⟩
+
+theorem Telescope.Agree.trans {ρ₁ ρ₂ ρ₃ : List Value} :
+    ∀ {Δ₁ Δ₂ Δ₃ : Telescope}, Telescope.Agree ρ₁ ρ₂ Δ₁ Δ₂ → Telescope.Agree ρ₂ ρ₃ Δ₂ Δ₃ →
+      Telescope.Agree ρ₁ ρ₃ Δ₁ Δ₃
+  | [], [], [], _, _ => trivial
+  | _ :: _, _ :: _, _ :: _, ⟨hb, hΔ⟩, ⟨hb', hΔ'⟩ => ⟨hb.trans hb', Telescope.Agree.trans hΔ hΔ'⟩
+  | [], _ :: _, _, h, _ | _ :: _, [], _, h, _ | _, [], _ :: _, _, h | _, _ :: _, [], _, h => h.elim
+
+theorem Sig.Agree.trans {ρ₁ ρ₂ ρ₃ : List Value} {s₁ s₂ s₃ : Sig} (h : Sig.Agree ρ₁ ρ₂ s₁ s₂)
+    (h' : Sig.Agree ρ₂ ρ₃ s₂ s₃) : Sig.Agree ρ₁ ρ₃ s₁ s₃ :=
+  ⟨h.params.trans h'.params, fun env => (h.ret env).trans (h'.ret env)⟩
+
+mutual
+theorem Term.eval_entriesBelow {n : Nat} {ρ ρ' : List Value} (hρ : ρ.take n = ρ'.take n) (env : List Value) :
+    ∀ t : Term, t.entriesBelow n = true → t.eval ρ env = t.eval ρ' env
+  | .entry i, h => by
+    simp only [Term.entriesBelow, decide_eq_true_eq] at h
+    have := congrArg (·[i]?) hρ
+    simpa [List.getElem?_take, h, Term.eval] using this
+  | .bound _, _ => rfl
+  | .app _ as, h => by simp only [Term.eval, Term.evalList_entriesBelow hρ env as h]
+theorem Term.evalList_entriesBelow {n : Nat} {ρ ρ' : List Value} (hρ : ρ.take n = ρ'.take n) (env : List Value) :
+    ∀ as : List Term, Term.entriesBelowList n as = true → Term.evalList ρ env as = Term.evalList ρ' env as
+  | [], _ => rfl
+  | a :: as, h => by
+    simp only [Term.entriesBelowList, Bool.and_eq_true] at h
+    simp only [Term.evalList, Term.eval_entriesBelow hρ env a h.1, Term.evalList_entriesBelow hρ env as h.2]
+end
+
+theorem TBinder.agree_of_entriesBelow {n : Nat} {ρ ρ' : List Value} (hρ : ρ.take n = ρ'.take n) {b : TBinder}
+    (h : b.entriesBelow n = true) : TBinder.Agree ρ ρ' b b := by
+  simp only [TBinder.entriesBelow, Bool.and_eq_true] at h
+  refine ⟨fun env => Term.eval_entriesBelow hρ env _ h.1, fun env => ?_⟩
+  cases hb : b.is with
+  | none => rfl
+  | some e => simp_all [Term.eval_entriesBelow hρ env e]
+
+theorem Telescope.agree_of_entriesBelow {n : Nat} {ρ ρ' : List Value} (hρ : ρ.take n = ρ'.take n) :
+    ∀ {Δ : Telescope}, Δ.all (·.entriesBelow n) = true → Telescope.Agree ρ ρ' Δ Δ
+  | [], _ => trivial
+  | _ :: _, h => by
+    simp only [List.all_cons, Bool.and_eq_true] at h
+    exact ⟨TBinder.agree_of_entriesBelow hρ h.1, Telescope.agree_of_entriesBelow hρ h.2⟩
+
+theorem Sig.agree_of_entriesBelow {n : Nat} {ρ ρ' : List Value} (hρ : ρ.take n = ρ'.take n) {sig : Sig}
+    (h : sig.entriesBelow n = true) : Sig.Agree ρ ρ' sig sig := by
+  simp only [Sig.entriesBelow, Bool.and_eq_true] at h
+  exact ⟨Telescope.agree_of_entriesBelow hρ h.1, fun env => Term.eval_entriesBelow hρ env _ h.2⟩
+
+/-- A telescope whose entries are below `n` is satisfied alike under valuations that agree below `n`. -/
+theorem TeleSat.iff_of_entriesBelow {S : Sigs} {n : Nat} {ρ ρ' : List Value} (hρ : ρ.take n = ρ'.take n)
+    {Δ : Telescope} {env vs : List Value} (h : Δ.all (·.entriesBelow n) = true) :
+    TeleSat S ρ Δ env vs ↔ TeleSat S ρ' Δ env vs :=
+  TeleSat.congr (Telescope.agree_of_entriesBelow hρ h)
+
+mutual
+theorem Value.eval_toTerm {ρ env : List Value} : ∀ v : Value, v.noRemoved = true → v.toTerm.eval ρ env = some v
+  | .app _ vs, h => by simp only [Value.toTerm, Term.eval, Value.evalList_toTermList vs h]; rfl
+  | .removed, h => by simp [Value.noRemoved] at h
+theorem Value.evalList_toTermList {ρ env : List Value} :
+    ∀ vs : List Value, Value.noRemovedList vs = true → Term.evalList ρ env (Value.toTermList vs) = some vs
+  | [], _ => rfl
+  | v :: vs, h => by
+    simp only [Value.noRemovedList, Bool.and_eq_true] at h
+    simp only [Value.toTermList, Term.evalList, Value.eval_toTerm v h.1, Value.evalList_toTermList vs h.2]; rfl
+end
+
+mutual
+/-- Closing a term under `ρ` keeps its value, when no value in `ρ` has a `removed` subtree. -/
+theorem Term.eval_close {ρ : List Value} (hρ : ∀ v ∈ ρ, v.noRemoved = true) (env : List Value) :
+    ∀ t : Term, (t.close ρ).eval [] env = t.eval ρ env
+  | .entry i => by
+    cases h : ρ[i]? with
+    | none => simp [Term.close, Term.eval, h]
+    | some v => simp [Term.close, h, Value.eval_toTerm v (hρ v (List.mem_of_getElem? h)), Term.eval]
+  | .bound _ => rfl
+  | .app _ as => by simp only [Term.close, Term.eval, Term.evalList_close hρ env as]
+theorem Term.evalList_close {ρ : List Value} (hρ : ∀ v ∈ ρ, v.noRemoved = true) (env : List Value) :
+    ∀ as : List Term, Term.evalList [] env (Term.closeList ρ as) = Term.evalList ρ env as
+  | [] => rfl
+  | a :: as => by simp only [Term.closeList, Term.evalList, Term.eval_close hρ env a, Term.evalList_close hρ env as]
+end
+
+theorem Sig.agree_close {ρ : List Value} (hρ : ∀ v ∈ ρ, v.noRemoved = true) (sig : Sig) :
+    Sig.Agree ρ [] sig (sig.close ρ) := by
+  refine ⟨?_, fun env => (Term.eval_close hρ env sig.ret).symm⟩
+  simp only [Sig.close]
+  induction sig.params with
+  | nil => trivial
+  | cons b Δ ih =>
+    refine ⟨⟨fun env => (Term.eval_close hρ env b.type).symm, fun env => ?_⟩, ih⟩
+    cases h : b.is <;> simp [TBinder.close, h, Term.eval_close hρ env]
+
+/-- Closing every signature under `ρ` gives closed signatures that `SigsClose` relates to them. -/
+theorem SigsClose.close {S : Sigs} {ρ : List Value} (hρ : ∀ v ∈ ρ, v.noRemoved = true) :
+    SigsClose S ρ (S.map (Sig.close ρ)) := fun h => by
+  simp only [Sigs.find, List.find?_map]
+  change Option.Rel _ _ (Option.map _ (List.find? (fun s => s.head == h) S))
+  cases List.find? (fun s => s.head == h) S with
+  | none => exact .none
+  | some sig => exact .some (Sig.agree_close hρ sig)
+
+theorem SigsClose.find {S Sc : Sigs} {ρ : List Value} (hS : SigsClose S ρ Sc) {h : Head} {sig : Sig}
+    (hs : S.find h = some sig) : ∃ sig', Sc.find h = some sig' ∧ Sig.Agree ρ [] sig sig' := by
+  have := hS h
+  rw [hs] at this
+  cases hc : Sc.find h with
+  | none => rw [hc] at this; cases this
+  | some sig' => rw [hc] at this; exact ⟨sig', rfl, Option.rel_some_some.1 this⟩
+
+theorem SigsClose.find_closed {S Sc : Sigs} {ρ : List Value} (hS : SigsClose S ρ Sc) {h : Head} {sig' : Sig}
+    (hs : Sc.find h = some sig') : ∃ sig, S.find h = some sig ∧ Sig.Agree ρ [] sig sig' := by
+  have := hS h
+  rw [hs] at this
+  cases hc : S.find h with
+  | none => rw [hc] at this; cases this
+  | some sig => rw [hc] at this; exact ⟨sig, rfl, Option.rel_some_some.1 this⟩
+
+theorem SigsClose.agree {S Sc : Sigs} {ρ : List Value} (hS : SigsClose S ρ Sc) {h : Head} {sig sig' : Sig}
+    (hs : S.find h = some sig) (hc : Sc.find h = some sig') : Sig.Agree ρ [] sig sig' := by
+  obtain ⟨_, hc', ha⟩ := hS.find hs
+  exact Option.some.inj (hc'.symm.trans hc) ▸ ha
+
+/-- Along the bridge, a closed signature's telescope is satisfied exactly when the original one is under `ρ`. -/
+theorem SigsClose.teleSat_iff {S Sc : Sigs} {ρ : List Value} (hS : SigsClose S ρ Sc) {h : Head} {sig sig' : Sig}
+    (hs : S.find h = some sig) (hc : Sc.find h = some sig') {env vs : List Value} :
+    TeleSat Sc [] sig'.params env vs ↔ TeleSat Sc ρ sig.params env vs :=
+  (TeleSat.congr (hS.agree hs hc).params).symm
+
+theorem SigsClose.ret_eval {S Sc : Sigs} {ρ : List Value} (hS : SigsClose S ρ Sc) {h : Head} {sig sig' : Sig}
+    (hs : S.find h = some sig) (hc : Sc.find h = some sig') (env : List Value) :
+    sig'.ret.eval [] env = sig.ret.eval ρ env :=
+  ((hS.agree hs hc).ret env).symm
+
+/-- Typing an application by closed signatures, read through the bridge as the checker's signatures under `ρ`. -/
+theorem SigsClose.hasType_app_iff {S Sc : Sigs} {ρ : List Value} (hS : SigsClose S ρ Sc) {h : Head}
+    {vs : List Value} {V : Value} : HasType Sc (.app h vs) V ↔
+      ∃ sig, S.find h = some sig ∧ TeleSat Sc ρ sig.params [] vs ∧ sig.ret.eval ρ vs = some V := by
+  rw [HasType.app_iff]
+  constructor
+  · rintro ⟨sig', hc, ht, hr⟩
+    obtain ⟨sig, hs, -⟩ := hS.find_closed hc
+    exact ⟨sig, hs, (hS.teleSat_iff hs hc).1 ht, by rw [← hS.ret_eval hs hc]; exact hr⟩
+  · rintro ⟨sig, hs, ht, hr⟩
+    obtain ⟨sig', hc, -⟩ := hS.find hs
+    exact ⟨sig', hc, (hS.teleSat_iff hs hc).2 ht, by rw [hS.ret_eval hs hc]; exact hr⟩
+
+/-- The bridge carries over between valuations that agree on the entries the signatures mention. -/
+theorem SigsClose.of_entriesBelow {S Sc : Sigs} {n : Nat} {ρ ρ' : List Value} (hρ : ρ.take n = ρ'.take n)
+    (hn : ∀ sig ∈ S, sig.entriesBelow n = true) (hS : SigsClose S ρ Sc) : SigsClose S ρ' Sc := fun h => by
+  have := hS h
+  revert this
+  cases hs : S.find h with
+  | none =>
+    intro hr
+    cases hc : Sc.find h with
+    | none => exact .none
+    | some _ => rw [hc] at hr; cases hr
+  | some sig =>
+    intro hr
+    cases hc : Sc.find h with
+    | none => rw [hc] at hr; cases hr
+    | some sig' =>
+      rw [hc, Option.rel_some_some] at hr
+      exact .some ((Sig.agree_of_entriesBelow hρ.symm (hn sig (List.mem_of_find?_eq_some hs))).trans hr)
+
+theorem SigsClose.frame {S Sc : Sigs} {ρ : List Value} (ρ' : List Value)
+    (hn : ∀ sig ∈ S, sig.entriesBelow ρ.length = true) (hS : SigsClose S ρ Sc) : SigsClose S (ρ ++ ρ') Sc :=
+  hS.of_entriesBelow (by simp) hn
+
+/-- The bridge extends by a signature and a closed signature for the same head that agrees with it. -/
+theorem SigsClose.push {S Sc : Sigs} {ρ : List Value} {sig sig' : Sig} (hS : SigsClose S ρ Sc)
+    (hh : sig'.head = sig.head) (ha : Sig.Agree ρ [] sig sig') : SigsClose (S ++ [sig]) ρ (Sc ++ [sig']) := fun h => by
+  have := hS h
+  simp only [Sigs.find, List.find?_append] at *
+  cases hs : List.find? (fun s => s.head == h) S with
+  | some _ =>
+    cases hc : List.find? (fun s => s.head == h) Sc with
+    | none => rw [hs, hc] at this; cases this
+    | some _ => rw [hs, hc] at this; simpa using this
+  | none =>
+    cases hc : List.find? (fun s => s.head == h) Sc with
+    | some _ => rw [hs, hc] at this; cases this
+    | none =>
+      by_cases hsh : sig.head = h
+      · subst hsh; simpa [List.find?, hh] using ha
+      · have h₁ : (sig.head == h) = false := by simpa using hsh
+        have h₂ : (sig'.head == h) = false := by simpa [hh] using hsh
+        simp only [List.find?, h₁, h₂]
+        exact .none
+
+/-- No value has a type whose head none of the checker's signatures returns (SOUNDNESS.md Corollary 2.3). -/
+theorem HasType.empty {S Sc : Sigs} {ρ : List Value} {H : Head} {us : List Value} (hS : SigsClose S ρ Sc)
+    (hH : ∀ sig ∈ S, ∃ h' args, sig.ret = .app h' args ∧ h' ≠ H) {v : Value} : ¬ HasType Sc v (.app H us) :=
   fun h => by
-    obtain ⟨_, ws, sig, -, hs, -, hr⟩ := h.inv
-    obtain ⟨h', args, hret, hne⟩ := hS sig (List.mem_of_find?_eq_some hs)
-    rw [hret] at hr
+    obtain ⟨hd, ws, sig', -, hc, -, hr⟩ := h.inv
+    obtain ⟨sig, hs, ha⟩ := hS.find_closed hc
+    obtain ⟨h', args, hret, hne⟩ := hH sig (List.mem_of_find?_eq_some hs)
+    rw [← ha.ret, hret] at hr
     obtain ⟨_, -, he⟩ := Term.eval_app.1 hr
     exact hne (Value.app.inj he).1.symm
 
@@ -299,6 +510,15 @@ theorem Sat.eval_canon {S : Sigs} {Γ : Entries} {ρ : List Value} (h : Sat S Γ
 theorem Sat.eval_eq_of_identical {S : Sigs} {Γ : Entries} {ρ env : List Value} {a b : Term} (h : Sat S Γ ρ)
     (hab : identical Γ a b = true) : a.eval ρ env = b.eval ρ env := identical.eval_eq h.rulesHold hab
 
+/-- A satisfying valuation has no `removed` subtree, so closing under it keeps values. -/
+theorem Sat.noRemoved {S : Sigs} {Γ : Entries} {ρ : List Value} (h : Sat S Γ ρ) : ∀ v ∈ ρ, v.noRemoved = true :=
+  fun v hv => by
+    obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hv
+    obtain ⟨en, hen⟩ : ∃ en, Γ[i]? = some en := ⟨Γ[i]'(h.1 ▸ hi), by simp⟩
+    obtain ⟨w, _, hw, _, hwA, _⟩ := h.2 i en hen
+    rw [List.getElem?_eq_getElem hi] at hw
+    exact Option.some.inj hw ▸ hwA.noRemoved
+
 theorem Sat.mono_sigs {S S' : Sigs} {Γ : Entries} {ρ : List Value} (hS : S.Sub S') (h : Sat S Γ ρ) :
     Sat S' Γ ρ :=
   ⟨h.1, fun i en hen =>
@@ -308,15 +528,14 @@ theorem Sat.mono_sigs {S S' : Sigs} {Γ : Entries} {ρ : List Value} (hS : S.Sub
 /-- Extending a scope by entries whose values satisfy them, under the extended valuation. -/
 theorem Sat.append {S : Sigs} {Γ Δ : Entries} {ρ vs : List Value} (hΓ : Sat S Γ ρ) (hl : vs.length = Δ.length)
     (hΔ : ∀ (i : Nat) (en : Entry), Δ[i]? = some en → ∃ v A, vs[i]? = some v ∧
-      en.type.eval (ρ ++ vs) [] = some A ∧ HasType S (ρ ++ vs) v A ∧
+      en.type.eval (ρ ++ vs) [] = some A ∧ HasType S v A ∧
       ∀ r : Term, en.rule = some r → r.eval (ρ ++ vs) [] = some v) :
     Sat S (Γ ++ Δ) (ρ ++ vs) := by
   refine ⟨by simp [hΓ.1, hl], fun i en hen => ?_⟩
   by_cases hi : i < Γ.length
   · rw [List.getElem?_append_left hi] at hen
     obtain ⟨v, A, hv, hA, hvA, hr⟩ := hΓ.2 i en hen
-    exact ⟨v, A, getElem?_append_of_some hv, Term.eval_frame_ρ vs hA, hvA.frame vs,
-      fun r h => Term.eval_frame_ρ vs (hr r h)⟩
+    exact ⟨v, A, getElem?_append_of_some hv, Term.eval_frame_ρ vs hA, hvA, fun r h => Term.eval_frame_ρ vs (hr r h)⟩
   · rw [List.getElem?_append_right (Nat.le_of_not_lt hi)] at hen
     obtain ⟨v, A, hv, rest⟩ := hΔ _ en hen
     refine ⟨v, A, ?_, rest⟩
@@ -324,7 +543,7 @@ theorem Sat.append {S : Sigs} {Γ Δ : Entries} {ρ vs : List Value} (hΓ : Sat 
     exact hv
 
 theorem Sat.push {S : Sigs} {Γ : Entries} {ρ : List Value} {en : Entry} {v A : Value} (hΓ : Sat S Γ ρ)
-    (hA : en.type.eval (ρ ++ [v]) [] = some A) (hv : HasType S (ρ ++ [v]) v A)
+    (hA : en.type.eval (ρ ++ [v]) [] = some A) (hv : HasType S v A)
     (hr : ∀ r : Term, en.rule = some r → r.eval (ρ ++ [v]) [] = some v) : Sat S (Γ ++ [en]) (ρ ++ [v]) :=
   hΓ.append rfl fun i en' hen => by
     cases i with
@@ -357,8 +576,9 @@ theorem Sat.addRule {S : Sigs} {Γ : Entries} {ρ : List Value} {x : Nat} {e : T
     exact hr r₀ hr₀
 
 /-- `typeOf` gives a term whose value is the type of the term's value. -/
-theorem typeOf_sound {S : Sigs} {Γ : Entries} {ρ : List Value} {t T : Term} {v V : Value} (hΓ : Sat S Γ ρ)
-    (ht : t.eval ρ [] = some v) (hv : HasType S ρ v V) (hT : typeOf S Γ t = some T) : T.eval ρ [] = some V := by
+theorem typeOf_sound {S Sc : Sigs} {Γ : Entries} {ρ : List Value} {t T : Term} {v V : Value} (hΓ : Sat Sc Γ ρ)
+    (hS : SigsClose S ρ Sc) (ht : t.eval ρ [] = some v) (hv : HasType Sc v V) (hT : typeOf S Γ t = some T) :
+    T.eval ρ [] = some V := by
   cases t with
   | entry i =>
     simp only [typeOf, Option.map_eq_some_iff] at hT
@@ -370,14 +590,14 @@ theorem typeOf_sound {S : Sigs} {Γ : Entries} {ρ : List Value} {t T : Term} {v
   | bound => simp [Term.eval] at ht
   | app h as =>
     obtain ⟨vs, hvs, rfl⟩ := Term.eval_app.1 ht
-    obtain ⟨sig, hs, -, hr⟩ := HasType.app_iff.1 hv
+    obtain ⟨sig, hs, -, hr⟩ := hS.hasType_app_iff.1 hv
     simp only [typeOf, hs, Option.map_some, Option.some.injEq] at hT
     subst hT
     rw [Term.eval_subst hvs]
     exact hr
 
-theorem typeOf_isSome {S : Sigs} {Γ : Entries} {ρ : List Value} {t : Term} {v V : Value} (hΓ : Sat S Γ ρ)
-    (ht : t.eval ρ [] = some v) (hv : HasType S ρ v V) : ∃ T, typeOf S Γ t = some T := by
+theorem typeOf_isSome {S Sc : Sigs} {Γ : Entries} {ρ : List Value} {t : Term} {v V : Value} (hΓ : Sat Sc Γ ρ)
+    (hS : SigsClose S ρ Sc) (ht : t.eval ρ [] = some v) (hv : HasType Sc v V) : ∃ T, typeOf S Γ t = some T := by
   cases t with
   | entry i =>
     have hi : i < Γ.length := hΓ.1 ▸ (List.getElem?_eq_some_iff.1 ht).1
@@ -385,12 +605,13 @@ theorem typeOf_isSome {S : Sigs} {Γ : Entries} {ρ : List Value} {t : Term} {v 
   | bound => simp [Term.eval] at ht
   | app h as =>
     obtain ⟨vs, -, rfl⟩ := Term.eval_app.1 ht
-    obtain ⟨sig, hs, -⟩ := HasType.app_iff.1 hv
+    obtain ⟨sig, hs, -⟩ := hS.hasType_app_iff.1 hv
     exact ⟨sig.ret.subst as, by simp [typeOf, hs]⟩
 
-theorem typeOf_sound' {S : Sigs} {Γ : Entries} {ρ : List Value} {t : Term} {v V : Value} (hΓ : Sat S Γ ρ)
-    (ht : t.eval ρ [] = some v) (hv : HasType S ρ v V) : ∃ T, typeOf S Γ t = some T ∧ T.eval ρ [] = some V :=
-  let ⟨T, hT⟩ := typeOf_isSome hΓ ht hv
-  ⟨T, hT, typeOf_sound hΓ ht hv hT⟩
+theorem typeOf_sound' {S Sc : Sigs} {Γ : Entries} {ρ : List Value} {t : Term} {v V : Value} (hΓ : Sat Sc Γ ρ)
+    (hS : SigsClose S ρ Sc) (ht : t.eval ρ [] = some v) (hv : HasType Sc v V) :
+    ∃ T, typeOf S Γ t = some T ∧ T.eval ρ [] = some V :=
+  let ⟨T, hT⟩ := typeOf_isSome hΓ hS ht hv
+  ⟨T, hT, typeOf_sound hΓ hS ht hv hT⟩
 
 end Pledge

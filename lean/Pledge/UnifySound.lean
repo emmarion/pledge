@@ -145,8 +145,8 @@ theorem Entries.eraseRules_type {Γ Γ' : Entries} (h : Γ.eraseRules <+: Γ'.er
     exact ⟨en', rfl, (congrArg Entry.type this).symm⟩
 
 /-- What `solve` returns when every pending equation holds under a valuation satisfying the scope. -/
-def SolveGood (S : Sigs) (may : Nat → Bool) (Γ : Entries) (ρ : List Value) : Solved → Prop
-  | .ok Γ' _ => Sat S Γ' ρ ∧ Γ'.eraseRules = Γ.eraseRules
+def SolveGood (Sc : Sigs) (may : Nat → Bool) (Γ : Entries) (ρ : List Value) : Solved → Prop
+  | .ok Γ' _ => Sat Sc Γ' ρ ∧ Γ'.eraseRules = Γ.eraseRules
   | .failed f => (∃ a b, f.clash = .rigid a b) ∧ ∃ i, may i = false
   | .stuck _ => True
 
@@ -166,8 +166,9 @@ theorem Term.eval_entry_or_app {ρ : List Value} {t : Term} {v : Value} (h : t.e
 /-- `solve` is sound (SOUNDNESS.md Lemma 3.3): when `ρ` satisfies the scope and every pending equation holds under
 it, it fails only on an entry `may` forbids a rule, and a scope it returns is satisfied by `ρ` and differs from the
 old one only in rules. -/
-theorem solve_sound {S : Sigs} {may : Nat → Bool} {ρ : List Value} {Γ : Entries} {log : List Step}
-    {eqs : List Eqn} (hΓ : Sat S Γ ρ) (hq : ∀ q ∈ eqs, q.Holds ρ) : SolveGood S may Γ ρ (solve S may Γ log eqs) := by
+theorem solve_sound {S Sc : Sigs} {may : Nat → Bool} {ρ : List Value} {Γ : Entries} {log : List Step}
+    {eqs : List Eqn} (hΓ : Sat Sc Γ ρ) (hS : SigsClose S ρ Sc) (hq : ∀ q ∈ eqs, q.Holds ρ) :
+    SolveGood Sc may Γ ρ (solve S may Γ log eqs) := by
   induction Γ, log, eqs using solve.induct_unfolding S may with
   | case1 Γ log => exact ⟨hΓ, rfl⟩
   | case2 Γ log q qs _ _ _ ih => exact ih hΓ fun q' h => hq q' (List.mem_cons_of_mem _ h)
@@ -220,22 +221,23 @@ theorem solve_sound {S : Sigs} {may : Nat → Bool} {ρ : List Value} {Γ : Entr
         by rw [Term.eval_replace (he.trans hxv.symm)]; exact hu'⟩
     · simp only [List.mem_singleton] at h'
       subst h'
-      exact ⟨A, by rw [Sat.eval_canon hΓ']; exact hA, by rw [Sat.eval_canon hΓ']; exact typeOf_sound hΓ he hwA hte⟩
+      exact ⟨A, by rw [Sat.eval_canon hΓ']; exact hA, by rw [Sat.eval_canon hΓ']; exact typeOf_sound hΓ hS he hwA hte⟩
   | _ => trivial
 
-theorem solve_ok {S : Sigs} {may : Nat → Bool} {ρ : List Value} {Γ Γ' : Entries} {log log' : List Step}
-    {eqs : List Eqn} (hΓ : Sat S Γ ρ) (hq : ∀ q ∈ eqs, q.Holds ρ) (h : solve S may Γ log eqs = .ok Γ' log') :
-    Sat S Γ' ρ ∧ Γ'.eraseRules = Γ.eraseRules := by
-  have := solve_sound (may := may) (log := log) hΓ hq; rwa [h] at this
+theorem solve_ok {S Sc : Sigs} {may : Nat → Bool} {ρ : List Value} {Γ Γ' : Entries} {log log' : List Step}
+    {eqs : List Eqn} (hΓ : Sat Sc Γ ρ) (hS : SigsClose S ρ Sc) (hq : ∀ q ∈ eqs, q.Holds ρ)
+    (h : solve S may Γ log eqs = .ok Γ' log') : Sat Sc Γ' ρ ∧ Γ'.eraseRules = Γ.eraseRules := by
+  have := solve_sound (may := may) (log := log) hΓ hS hq; rwa [h] at this
 
-theorem solve_failed {S : Sigs} {may : Nat → Bool} {ρ : List Value} {Γ : Entries} {log : List Step}
-    {eqs : List Eqn} {f : Failure} (hΓ : Sat S Γ ρ) (hq : ∀ q ∈ eqs, q.Holds ρ)
+theorem solve_failed {S Sc : Sigs} {may : Nat → Bool} {ρ : List Value} {Γ : Entries} {log : List Step}
+    {eqs : List Eqn} {f : Failure} (hΓ : Sat Sc Γ ρ) (hS : SigsClose S ρ Sc) (hq : ∀ q ∈ eqs, q.Holds ρ)
     (h : solve S may Γ log eqs = .failed f) : (∃ a b, f.clash = .rigid a b) ∧ ∃ i, may i = false := by
-  have := solve_sound (may := may) (log := log) hΓ hq; rwa [h] at this
+  have := solve_sound (may := may) (log := log) hΓ hS hq; rwa [h] at this
 
-theorem solve_total_not_failed {S : Sigs} {ρ : List Value} {Γ : Entries} {log : List Step} {eqs : List Eqn}
-    {f : Failure} (hΓ : Sat S Γ ρ) (hq : ∀ q ∈ eqs, q.Holds ρ) : solve S (fun _ => true) Γ log eqs ≠ .failed f :=
-  fun h => by simpa using (solve_failed hΓ hq h).2
+theorem solve_total_not_failed {S Sc : Sigs} {ρ : List Value} {Γ : Entries} {log : List Step} {eqs : List Eqn}
+    {f : Failure} (hΓ : Sat Sc Γ ρ) (hS : SigsClose S ρ Sc) (hq : ∀ q ∈ eqs, q.Holds ρ) :
+    solve S (fun _ => true) Γ log eqs ≠ .failed f :=
+  fun h => by simpa using (solve_failed hΓ hS hq h).2
 
 theorem Term.evalList_frame_ρ {ρ env : List Value} (ρ' : List Value) {as : List Term} {vs : List Value}
     (h : Term.evalList ρ env as = some vs) : Term.evalList (ρ ++ ρ') env as = some vs := by
@@ -273,8 +275,8 @@ theorem openTele.go_sound {S : Sigs} (mk : TBinder → Nat → Entry → Entry) 
     have hx : Term.evalList (ρ ++ [v]) [] [.entry Γ.length] = some [v] := by simp [Term.evalList, Term.eval, ← hΓ.1]
     have key := fun (en : Entry) (hA' : en.type.eval (ρ ++ [v]) [] = some A)
       (hr' : ∀ r : Term, en.rule = some r → r.eval (ρ ++ [v]) [] = some v) =>
-      openTele.go_sound mk bs (i := i + 1) (ids := ids ++ [Γ.length]) (hΓ.push hA' (hv.frame [v]) hr')
-        (Term.evalList_append henv' hx) (ht.frame [v])
+      openTele.go_sound mk bs (i := i + 1) (ids := ids ++ [Γ.length]) (hΓ.push hA' hv hr')
+        (Term.evalList_append henv' hx) (TeleSat.frame [v] ht)
     simp only [List.append_assoc, List.singleton_append] at key
     simp only [openTele.go]
     exact key _ (by rw [Term.eval_subst henv']; exact Term.eval_frame_ρ [v] hA) fun r hr => by
@@ -307,19 +309,20 @@ theorem openTele_length (Γ : Entries) (tele : Telescope) (env : List Term) (mk 
   obtain ⟨_, h, hl, _⟩ := openTele_shape Γ tele env mk; simp [h, hl]
 
 /-- What `force` returns when the scrutinee's value is headed by the value constructor forced. -/
-def ForceGood (S : Sigs) (Γ : Entries) (ρ ws : List Value) : Forced → Prop
-  | .ok Γ' fields => Sat S Γ' (ρ ++ ws) ∧ Γ.eraseRules <+: Γ'.eraseRules ∧ Γ'.length = Γ.length + ws.length ∧
+def ForceGood (Sc : Sigs) (Γ : Entries) (ρ ws : List Value) : Forced → Prop
+  | .ok Γ' fields => Sat Sc Γ' (ρ ++ ws) ∧ Γ.eraseRules <+: Γ'.eraseRules ∧ Γ'.length = Γ.length + ws.length ∧
       fields = List.range' Γ.length ws.length ∧ Term.evalList (ρ ++ ws) [] (fields.map .entry) = some ws
   | .refuted _ => False
   | .stuck _ => True
 
 /-- Forcing is sound (SOUNDNESS.md Lemma 3.3): forcing the value constructor that heads the scrutinee's value does
-not refute it, and the fields take the value's arguments. -/
-theorem force_good {S : Sigs} {Γ : Entries} {ρ ws : List Value} {scrut : Term} {ctor : Sig} {V : Value}
-    (mk : TBinder → Nat → Entry → Entry) (hΓ : Sat S Γ ρ) (hs : scrut.eval ρ [] = some (.app ctor.head ws))
-    (hc : S.find ctor.head = some ctor) (hV : HasType S ρ (.app ctor.head ws) V) :
-    ForceGood S Γ ρ ws (force S Γ scrut ctor mk) := by
-  obtain ⟨sig, hsig, ht, hret⟩ := HasType.app_iff.1 hV
+not refute it, and the fields take the value's arguments. The bridge to the closed signatures is needed under the
+valuation before and after the fields' values are appended. -/
+theorem force_good {S Sc : Sigs} {Γ : Entries} {ρ ws : List Value} {scrut : Term} {ctor : Sig} {V : Value}
+    (mk : TBinder → Nat → Entry → Entry) (hΓ : Sat Sc Γ ρ) (hS : SigsClose S ρ Sc) (hS' : SigsClose S (ρ ++ ws) Sc)
+    (hs : scrut.eval ρ [] = some (.app ctor.head ws)) (hc : S.find ctor.head = some ctor)
+    (hV : HasType Sc (.app ctor.head ws) V) : ForceGood Sc Γ ρ ws (force S Γ scrut ctor mk) := by
+  obtain ⟨sig, hsig, ht, hret⟩ := hS.hasType_app_iff.1 hV
   obtain rfl := Option.some.inj (hsig.symm.trans hc)
   obtain ⟨Δ, hΔ, hΔl, hids, henv⟩ := openTele_shape Γ sig.params [] mk
   obtain ⟨hΓo, henvo⟩ := openTele_sound mk hΓ (rfl : Term.evalList ρ [] [] = some []) ht
@@ -338,11 +341,11 @@ theorem force_good {S : Sigs} {Γ : Entries} {ρ ws : List Value} {scrut : Term}
       rintro q (rfl | rfl)
       · exact ⟨_, by rw [hΓo.eval_canon]; exact Term.eval_frame_ρ ws hs,
           by rw [hΓo.eval_canon]; exact Term.eval_app.2 ⟨ws, henvo, rfl⟩⟩
-      · exact ⟨V, by rw [hΓo.eval_canon]; exact typeOf_sound hΓo (Term.eval_frame_ρ ws hs) (hV.frame ws) hty,
+      · exact ⟨V, by rw [hΓo.eval_canon]; exact typeOf_sound hΓo hS' (Term.eval_frame_ρ ws hs) hV hty,
           by rw [hΓo.eval_canon, Term.eval_subst henvo]; exact Term.eval_frame_ρ ws hret⟩
     split
     · rename_i Γ' _ h
-      obtain ⟨hΓ', he⟩ := solve_ok hΓo hq h
+      obtain ⟨hΓ', he⟩ := solve_ok hΓo hS' hq h
       refine ⟨hΓ', ⟨Δ.eraseRules, by rw [he, hΔ]; simp [Entries.eraseRules]⟩, ?_, by rw [hids, hlen], ?_⟩
       · rw [← List.length_map (f := fun en : Entry => { en with rule := none })]
         change Γ'.eraseRules.length = _
@@ -350,23 +353,26 @@ theorem force_good {S : Sigs} {Γ : Entries} {ρ ws : List Value} {scrut : Term}
       · rw [← henv]; exact henvo
     all_goals first
       | trivial
-      | (rename_i h; exact absurd (solve_failed hΓo hq h).2 (by simp))
-      | (rename_i _ h; exact absurd (solve_failed hΓo hq h).2 (by simp))
+      | (rename_i h; exact absurd (solve_failed hΓo hS' hq h).2 (by simp))
+      | (rename_i _ h; exact absurd (solve_failed hΓo hS' hq h).2 (by simp))
 
-theorem force_ok {S : Sigs} {Γ Γ' : Entries} {ρ ws : List Value} {scrut : Term} {ctor : Sig} {V : Value}
-    {mk : TBinder → Nat → Entry → Entry} {fields : List Nat} (hΓ : Sat S Γ ρ)
-    (hs : scrut.eval ρ [] = some (.app ctor.head ws)) (hc : S.find ctor.head = some ctor)
-    (hV : HasType S ρ (.app ctor.head ws) V) (h : force S Γ scrut ctor mk = .ok Γ' fields) :
-    Sat S Γ' (ρ ++ ws) ∧ Γ.eraseRules <+: Γ'.eraseRules ∧ Γ'.length = Γ.length + ws.length ∧
+theorem force_ok {S Sc : Sigs} {Γ Γ' : Entries} {ρ ws : List Value} {scrut : Term} {ctor : Sig} {V : Value}
+    {mk : TBinder → Nat → Entry → Entry} {fields : List Nat} (hΓ : Sat Sc Γ ρ) (hS : SigsClose S ρ Sc)
+    (hS' : SigsClose S (ρ ++ ws) Sc) (hs : scrut.eval ρ [] = some (.app ctor.head ws))
+    (hc : S.find ctor.head = some ctor) (hV : HasType Sc (.app ctor.head ws) V)
+    (h : force S Γ scrut ctor mk = .ok Γ' fields) :
+    Sat Sc Γ' (ρ ++ ws) ∧ Γ.eraseRules <+: Γ'.eraseRules ∧ Γ'.length = Γ.length + ws.length ∧
       fields = List.range' Γ.length ws.length ∧ Term.evalList (ρ ++ ws) [] (fields.map .entry) = some ws := by
-  have := force_good mk hΓ hs hc hV; rwa [h] at this
+  have := force_good mk hΓ hS hS' hs hc hV; rwa [h] at this
 
-/-- If forcing refutes a value constructor, no valuation satisfying the scope gives the scrutinee a typed value
-headed by it. -/
-theorem force_refuted {S : Sigs} {Γ : Entries} {scrut : Term} {ctor : Sig} {mk : TBinder → Nat → Entry → Entry}
-    {f : Failure} (hc : S.find ctor.head = some ctor) (h : force S Γ scrut ctor mk = .refuted f) :
-    ¬ ∃ ρ ws V, Sat S Γ ρ ∧ scrut.eval ρ [] = some (.app ctor.head ws) ∧ HasType S ρ (.app ctor.head ws) V :=
-  fun ⟨_, _, _, hΓ, hs, hV⟩ => by have := force_good mk hΓ hs hc hV; rwa [h] at this
+/-- If forcing refutes a value constructor, no valuation satisfying the scope, and bridging the signatures to the
+closed ones before and after the fields' values are appended, gives the scrutinee a typed value headed by it. -/
+theorem force_refuted {S Sc : Sigs} {Γ : Entries} {scrut : Term} {ctor : Sig}
+    {mk : TBinder → Nat → Entry → Entry} {f : Failure} (hc : S.find ctor.head = some ctor)
+    (h : force S Γ scrut ctor mk = .refuted f) :
+    ¬ ∃ ρ ws V, Sat Sc Γ ρ ∧ SigsClose S ρ Sc ∧ SigsClose S (ρ ++ ws) Sc ∧
+      scrut.eval ρ [] = some (.app ctor.head ws) ∧ HasType Sc (.app ctor.head ws) V :=
+  fun ⟨_, _, _, hΓ, hS, hS', hs, hV⟩ => by have := force_good mk hΓ hS hS' hs hc hV; rwa [h] at this
 
 mutual
 theorem Term.eval_boundsBelow {ρ env : List Value} (env' : List Value) :
