@@ -4,33 +4,33 @@ Limitations of the current checker that are not bugs against DESIGN.md
 but that would be nice to lift. Each item is cited by number; numbers
 are never reused (CLAUDE.md rule 15).
 
-## 1. `_` whose given type depends on an earlier `_`
-
-In an application, a `_` argument is not solved when its given type
-mentions an earlier `_` of the same application, even when that earlier
-`_` is itself determined by what the application is given. For example:
+## 4. A `_` in a tuple `let` annotation typed by an earlier binder
 
 ```
-data Head(n : Nat()) : Type() {
-  HeadSucc(erased m : Nat()) : Head(Succ(m));
-}
+let (A : Type(), x : A, p : Eq(A, x, _)) = (Nat(), Zero(), Refl(Nat(), Zero()));
+```
 
-data Wrap(n : Nat()) : Type() {
-  W(erased n : Nat(), h : Head(n)) : Wrap(n);
-}
+is rejected with "this `_` would be `Zero()`, of type `Nat()`, and it
+must have type" an entry the reader cannot see, and checks with `x` in
+place of the `_`. The `_` seems to be typed by the entry the binder
+`A` is first opened to, which is never identified with the result
+bound to `A`.
 
-fn f(n : Nat()) -> (erased w : Wrap(Succ(n))) {
-  W(_, HeadSucc(_))
+## 5. A `_` solved to an earlier value that a later argument refines
+
+```
+data IsS(n : Nat()) : Type() {
+  MkIsS(erased m : Nat()) : IsS(Succ(m));
+}
+fn f(erased n : Nat(), q : IsS(n), k : Nat()) -> (r : Nat()) {
+  k
+}
+fn g(k : Nat(), z : IsS(k)) -> (r : Nat()) {
+  f(_, z, { let MkIsS(a) = z; k })
 }
 ```
 
-This is rejected with "this `_` cannot be inferred". As far as we can
-tell, the given `Wrap(Succ(n))` determines the first `_` as `Succ(n)`,
-so `HeadSucc(_)` would be given `Head(Succ(n))` and its `_` could be
-`n`. Writing either `_` out (`W(Succ(n), HeadSucc(_))` or
-`W(_, HeadSucc(n))`) checks. DESIGN.md §16 says only that `_` is
-"solved by unification", which seems not to settle whether this case
-should work.
-
-The example programs `examples/sort.pledge` and
-`examples/typesafety.pledge` write such arguments out.
+is rejected with "which mentions what is produced only after it", and
+checks with `k` in place of the `_`. The `_` is solved to `k`, which
+exists before it, but the test for that is made on the canonical form,
+after the later pattern `let` has made `k` canonicalize to `Succ(a)`.

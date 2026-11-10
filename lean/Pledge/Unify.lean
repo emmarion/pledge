@@ -259,7 +259,7 @@ def force (S : Sigs) (Γ : Entries) (scrut : Term) (ctor : Sig) (mk : TBinder �
     | .failed f => .refuted f
     | .stuck msg => .stuck msg
 
-/-- Solves `lhs = rhs` for phase 2 `_` arguments (§16), only `hole` entries taking rules. Returns the scope with
+/-- Solves `lhs = rhs` for `_` (§16), only `hole` entries taking rules. Returns the scope with
 the rules found and, on a rigid failure, its two terms; other failures are dropped. -/
 def unify (S : Sigs) (Γ : Entries) (lhs rhs : Term) (hole : Nat → Bool) :
     Except String (Entries × Option (Term × Term)) :=

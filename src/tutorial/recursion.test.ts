@@ -36,8 +36,8 @@ test("vzip: each branch knows n, so w is taken apart with VNil refuted; the star
   assert.deepEqual(cons.refutations?.map(x => x.ctor), ["VNil"]);
   assert.deepEqual(errorAt("vzip", initial), { at: "ws", message: "field `rest` of `VCons` must have type `Vec(Pair(A, B), k)`, and this has type `Vec(B, k)`" });
   assert.match(errorAt("vzip", solution.replace("subterm vs", "vs")).message, /`vzip`'s group/);
-  assert.deepEqual(printsOf("vzip"), ["VCons(Pair(Nat(), Nat()), Succ(Zero()), MkPair(Nat(), Nat(), Zero(), Zero()), " +
-    "VCons(Pair(Nat(), Nat()), Zero(), MkPair(Nat(), Nat(), Succ(Zero()), Succ(Zero())), VNil(Pair(Nat(), Nat()))))"]);
+  assert.deepEqual(printsOf("vzip"), ["VCons(_, Succ(Zero()), MkPair(_, _, Zero(), Zero()), " +
+    "VCons(_, Zero(), MkPair(_, _, Succ(Zero()), Succ(Zero())), VNil(_)))"]);
   const unequal = errorAt("vzip", `${solution}print vzip(Nat(), Nat(), Succ(one), xs, VNil(Nat()));\n`);
   assert.equal(unequal.at, "VNil(Nat())");
   assert.match(unequal.message, /parameter `w` of `vzip` must have type `Vec\(Nat\(\), Succ\(Succ\(Zero\(\)\)\)\)`/);

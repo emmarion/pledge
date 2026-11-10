@@ -5,7 +5,8 @@ namespace Pledge
 /-- `checkExpr` ends with `finish` (§12, §16). -/
 theorem checkExpr_finish {C : Ctx} {sc : Scope} {g : Option Given} {e : Expr} {o : Out}
     (h : checkExpr C sc g e = .ok o) :
-    ∃ o₀, finish { C with erased := C.erased || g.any (·.allErased) } (C.erased || g.any (·.allErased))
+    ∃ o₀, finish (C.enter (C.erased || g.any (·.allErased)))
+      (C.erased || g.any (·.allErased))
       (if C.erased then g.map (·.erase) else g) e o₀ = .ok o := by
   unfold checkExpr at h
   obtain ⟨o₀, -, h⟩ := bind_eq_ok.1 h
@@ -94,7 +95,7 @@ theorem args_grows {args : List Arg} (ih : ∀ a ∈ args, ExprShape a.expr)
     | nil => simp [checkArgs, internal, failAt_eq] at h
     | cons p ps =>
       have he : isHole e = false := isHole_false (hp _ List.mem_cons_self)
-      simp only [checkArgs, he, Bool.and_false, Bool.false_eq_true, ↓reduceIte] at h
+      simp only [checkArgs, he, Bool.false_eq_true, ↓reduceIte] at h
       obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
       obtain ⟨r, -, h⟩ := bind_eq_ok.1 h
       obtain ⟨rest, hrest, h⟩ := bind_eq_ok.1 h
@@ -148,7 +149,7 @@ theorem stmts_grows {ss : List Stmt} (ih : ∀ s ∈ ss, StmtShape s) :
     exact ⟨b₁.trans a₁, b₂, a₃.trans b₃, b₄ ∘ a₄⟩
 
 theorem applied_opened {sc : Scope} (hh : sc.holes = []) {tele : Telescope} {env : List Term} {name : String}
-    {pos pos' : Pos} {taint : Nat → Bool} {g : Option Given} {tree : Expr} {since : Nat} {snaps : List Snapshot}
+    {pos pos' : Pos} {taint : Nat → Bool} {g : Option Given} {tree : Expr} {since : Option Nat} {snaps : List Snapshot}
     {o : Out} (h : applied (opened sc tele env name pos taint).1 g pos' (opened sc tele env name pos taint).2 tree
       since snaps = .ok o) : Grows sc o.sc := by
   obtain ⟨rfl, -⟩ := applied_eq (by exact hh) h
@@ -237,6 +238,7 @@ theorem match_shape {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : Li
   simp only at h₀
   obtain ⟨so, hso, h₀⟩ := bind_eq_ok.1 h₀
   rw [keep_ok] at h₀
+  rw [closed_eq hsh fun o h => (ihs _ sc none o hsh h).2.2.1] at hso
   have h₁ : ShapeFill.Grows sc so.sc := ihs _ sc none so hsh hso
   obtain ⟨r, -, h₀⟩ := bind_eq_ok.1 h₀
   obtain ⟨⟨tele, tenv⟩, -, h₀⟩ := bind_eq_ok.1 h₀
@@ -278,15 +280,18 @@ theorem removed_shape : ExprShape .removed := by
   intro C sc g o _ h
   simp [checkExpr, internal, failAt_eq, bind, Except.bind] at h
 
-theorem let_shape {p : Pos} {bs : List LetBinder} {rhs : Expr} (ih : ExprShape rhs) : StmtShape (.let p bs rhs) := by
+theorem let_shape {p : Pos} {bs : List LetBinder} {rhs : Expr} (hf : bs.any (·.ann.any (·.term.holed)) = false)
+    (ih : ExprShape rhs) : StmtShape (.let p bs rhs) := by
   intro C sc o hsh h
   simp only [checkStmt] at h
   obtain ⟨u, -, h⟩ := bind_eq_ok.1 h
-  obtain ⟨ws, -, h⟩ := bind_eq_ok.1 h
+  obtain ⟨⟨ws, sc'⟩, hws, h⟩ := bind_eq_ok.1 h
+  obtain ⟨hsc, -⟩ := letWants_spec hws hf
+  simp only [hsc] at h
   obtain ⟨o', ho', h⟩ := bind_eq_ok.1 h
-  simp only [pure, Except.pure, Except.ok.injEq] at h
-  subst h
   obtain ⟨a₁, -, a₃, a₄, a₅⟩ := ih C sc _ o' hsh ho'
+  simp only [close_nil a₃, keep, ok_bind, pure, Except.pure, Except.ok.injEq] at h
+  subst h
   rw [Scope.bind_eq]
   exact ⟨a₁, a₃, a₄, a₅⟩
 
@@ -300,6 +305,7 @@ theorem patlet_shape {p : Pos} {ct : Bool} {m : Option Mult} {pat : Pattern} {rh
   obtain ⟨u, -, h⟩ := bind_eq_ok.1 h
   obtain ⟨o', ho', h⟩ := bind_eq_ok.1 h
   rw [keep_ok] at h
+  rw [closed_eq hsh fun o h => (ih _ sc none o hsh h).2.2.1] at ho'
   obtain ⟨r, -, h⟩ := bind_eq_ok.1 h
   obtain ⟨fs, hfs, h⟩ := bind_eq_ok.1 h
   obtain ⟨sc', hsc', h⟩ := bind_eq_ok.1 h
@@ -348,7 +354,7 @@ theorem Expr.shape : (e : Expr) → e.holeFree = true → ExprShape e
     exact block_shape (fun s hs => Stmt.shape s (Stmt.holeFreeList_iff.1 hp.1 s hs)) (Expr.shape f hp.2)
   | .match p m s ann bs, hp => by
     simp only [Expr.holeFree, Bool.and_eq_true] at hp
-    exact match_shape (Expr.shape s hp.1)
+    exact match_shape (Expr.shape s hp.1.1)
   | .sorry p t, _ => sorry_shape p t
   | .removed, _ => removed_shape
 termination_by e => sizeOf e
@@ -360,7 +366,9 @@ decreasing_by
     | (simp only [Expr.block.sizeOf_spec]; omega)
     | (simp only [Expr.match.sizeOf_spec]; omega)
 theorem Stmt.shape : (s : Stmt) → s.holeFree = true → StmtShape s
-  | .let p bs rhs, hp => let_shape (Expr.shape rhs hp)
+  | .let p bs rhs, hp => by
+    simp only [Stmt.holeFree, Bool.and_eq_true] at hp
+    exact let_shape (LetBinder.holeFree_any hp.1) (Expr.shape rhs hp.2)
   | .patlet p ct m pat rhs, hp => patlet_shape (Expr.shape rhs hp)
   | .inspect p, _ => inspect_shape p
 termination_by s => sizeOf s

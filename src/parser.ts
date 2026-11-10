@@ -88,6 +88,8 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
 
   const term = (): WrittenTerm => {
     const begin = start();
+    if (peek().kind === "underscore") return { head: { name: "_", span: peek().span }, args: null, span: next().span,
+      hole: true };
     const head = name();
     const args = at("(") ? parens(term, false) : null;
     return { head, args, span: spanFrom(begin) };
@@ -141,10 +143,8 @@ function parseWith<T>(source: string, phase: Phase, root: (g: Grammar) => T): { 
   const arg = (): Arg => {
     const begin = start();
     const mark = at("subterm") || at("same") ? (next().text as "subterm" | "same") : null;
-    const value: Expr = peek().kind !== "underscore" ? expr() : phase >= 2
-      ? { kind: "var", name: { name: null, span: peek().span }, span: next().span }
-      : report(() => "`_` stands for an erased argument only from phase 2 on (§16), " +
-        "and this program is checked under phase 1");
+    const value: Expr = peek().kind !== "underscore" ? expr()
+      : { kind: "var", name: { name: null, span: peek().span }, span: next().span };
     return { mark, expr: value, span: spanFrom(begin) };
   };
 

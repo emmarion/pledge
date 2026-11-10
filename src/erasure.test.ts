@@ -66,7 +66,7 @@ print b;
 print g(Nat());
 print Vec(Nat(), Zero());
 `);
-  assert.deepEqual(prints(r), ["VNil(_)", "Vec(_, _)", "Vec(_, _)"]);
+  assert.deepEqual(prints(r), ["VNil(_)", "_", "_"]);
 });
 
 test("erased returns: a body whose results are all erased, and a block with mixed results", () => {
@@ -169,8 +169,8 @@ test("explainAt on a _ standing for a telescope gives it with the multiplicities
 });
 
 test("_ is an error for a many parameter and where it cannot be inferred", () => {
-  err(`${nat}${vec}print VCons(_, _, _, VNil(_));\n`, "_", /field `head` of `VCons` is not erased/, "_, VNil");
-  err(`${nat}fn f(n : Nat()) -> (r : Nat()) { n }\nprint f(_);\n`, "_", /parameter `n` of `f` is not erased/);
+  err(`${nat}${vec}print VCons(_, _, _, VNil(_));\n`, "_", /field `head` of `VCons` is none of these/, "_, VNil");
+  err(`${nat}fn f(n : Nat()) -> (r : Nat()) { n }\nprint f(_);\n`, "_", /parameter `n` of `f` is none of these/);
   err(`${nat}${vec}print VNil(_);\n`, "_", /cannot be inferred/);
   err(`${nat}${vec}fn mk(erased B : Type()) -> (v : Vec(B, Zero())) { VNil(_) }\nlet x = mk(_);\n`, "_", /cannot be inferred/, "mk(_)");
 });

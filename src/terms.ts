@@ -74,6 +74,8 @@ export function entry(scope: Scope, id: EntryId): Entry {
   return e;
 }
 
+export const known = (scope: Scope, id: EntryId): boolean => pget(scope.table, id) !== undefined;
+
 export function lookup(scope: Scope, name: string): Entry | undefined {
   const id = pget(scope.names, name);
   return id === undefined ? undefined : entry(scope, id);

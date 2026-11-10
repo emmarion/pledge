@@ -58,8 +58,8 @@ test("vappend: the run knows the length is three, the checker knows only r, so v
   const { solution } = page("vappend");
   const { r, info } = infoAt("vappend", solution, "print u");
   assert.deepEqual(verdicts(r), [false, true, true]);
-  assert.deepEqual(r.prints.map(p => p.value), ["Succ(Succ(Succ(Zero())))", "VCons(Nat(), Succ(Succ(Zero())), Zero(), " +
-    "VCons(Nat(), Succ(Zero()), Succ(Zero()), VCons(Nat(), Zero(), Succ(Succ(Zero())), VNil(Nat()))))"]);
+  assert.deepEqual(r.prints.map(p => p.value), ["Succ(Succ(Succ(Zero())))", "VCons(_, Succ(Succ(Zero())), Zero(), " +
+    "VCons(_, Succ(Zero()), Succ(Zero()), VCons(_, Zero(), Succ(Succ(Zero())), VNil(_))))"]);
   for (const e of ["r : Nat()", "p : Plus(Succ(Succ(Zero())), Succ(Zero()), r)", "u : Vec(Nat(), r)"])
     assert.ok(scopeOf(info).includes(e), e);
   assert.match(run("vappend", `${solution}print vhead(Nat(), two, u);\n`).r.error?.message() ?? "",

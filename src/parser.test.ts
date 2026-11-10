@@ -162,7 +162,6 @@ test("errors", () => {
     ["let x = _a;", 8, /`_a` is not a name: a name starts with a letter/],
     ["let x = a - b;", 10, /unexpected character/],
     ["let x = { comptime let C() = y; z };", 10, /an expression/],
-    ["let x = f(_);", 10, /only from phase 2 on/],
     ["let x = { y; }", 11, /takes no `;`/],
     ["x;", 0, /a declaration or a top-level statement/],
   ];

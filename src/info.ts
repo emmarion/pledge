@@ -5,7 +5,7 @@ import { cat, entryInfo, explain, render, renderTelescope } from "./render.ts";
 import { parseExpr } from "./parser.ts";
 import { attempt, globalAt, innermost, written } from "./context.ts";
 import type { Declared, Given, Global, Local, Snapshot, State } from "./context.ts";
-import { expr, single } from "./expr.ts";
+import { closed, single } from "./expr.ts";
 
 const shift = (t: OpenTerm, env: readonly Term[]): OpenTerm =>
   mapLeaves(t, u => u.tag === "bound" ? env[u.index] ?? bound(u.index - env.length) : u);
@@ -107,8 +107,8 @@ export function queries(st: State, fallback: (offset: number) => Snapshot):
       if ("error" in parsed) return parsed;
       const snap = at(offset);
       return attempt(() => {
-        const out = expr({ st: { ...st, record: false }, fn: snap.fn, skeleton: false, limit: snap.limit, erased: true,
-          holes: [], decl: snap.decl }, snap.local, parsed.expr, null);
+        const out = closed({ st: { ...st, record: false }, fn: snap.fn, skeleton: false, limit: snap.limit,
+          erased: true, inType: false, holes: [], decl: snap.decl }, snap.local, parsed.expr, null);
         const scope = out.local.scope, e = entry(scope, single(out, parsed.expr.span).id);
         const both = (t: Term): [Rendered, Rendered] => [render(scope, written(scope, t), { canonical: false }),
           render(scope, t)];

@@ -212,7 +212,7 @@ theorem declCtor_group {st s s' : TopState} {ts : List String} {cs : List (Strin
   dsimp only at h
   obtain ⟨hd, args, hkr⟩ : ∃ hd args, k.ret = .app hd args := by
     cases hkr : k.ret with
-    | var x => simp [hkr, failAt_eq, bind, Except.bind] at h
+    | var x | hole _ => simp [hkr, failAt_eq, bind, Except.bind] at h
     | app hd args => exact ⟨hd, args, rfl⟩
   simp only [hkr] at h
   split at h
@@ -229,22 +229,14 @@ theorem declCtor_group {st s s' : TopState} {ts : List String} {cs : List (Strin
   have hn : hd.name = T := by simpa using hc
   subst hn
   obtain ⟨hfr, hts, hcs⟩ := hg.global_none (by simpa [TopState.ctx_global] using fresh_ok hf)
-  have hglob : (s.ctx true).global hd.name = some (.type hd.name (some (ownedBy cs hd.name)) false) := by
-    rw [TopState.ctx_global, hg.eq]
-    exact (find?_fresh fun g hg' => hg.fresh _ (List.mem_append_left _ hT) g hg').trans (groupGlobals_type hT)
-  unfold checkTerm at hr
-  simp only [hglob] at hr
-  obtain ⟨kind, hk, hr⟩ := bind_eq_ok.1 hr
-  cases hk
-  obtain ⟨sig, hsig, hr⟩ := bind_eq_ok.1 hr
-  obtain ⟨_, -, hr⟩ := bind_eq_ok.1 hr
-  obtain ⟨rs, -, hr⟩ := bind_eq_ok.1 hr
-  simp only [pure, Except.pure, Except.ok.injEq] at hr
-  subst hr
-  rw [Sigs.find_head (Scope.sig_ok hsig)] at hret
-  obtain ⟨args', rfl⟩ := abstractChecked_app hret
   have hbelow := topLevel_ok htl
   have hens := ensure_ok he
+  simp only [Bool.and_eq_true] at hens
+  obtain ⟨hens, hm⟩ := hens
+  obtain ⟨args', rfl⟩ : ∃ args', ret = .app ⟨.type, hd.name⟩ args' := by
+    cases ret with
+    | app h' as => exact ⟨as, by simp only [beq_iff_eq] at hm; rw [hm]⟩
+    | _ => simp at hm
   obtain ⟨heq, hnd, hfresh, hown, hok, hsigs, htypes, hctors, hjunk⟩ := hg
   subst heq
   refine ⟨⟨⟨.ctor, k.name.name⟩, fs.tele, .app ⟨.type, hd.name⟩ args'⟩, ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩⟩
@@ -285,7 +277,6 @@ theorem declCtor_group {st s s' : TopState} {ts : List String} {cs : List (Strin
     · exact hok sig hs
     · simp only [List.mem_singleton] at hs
       subst hs
-      simp only [Bool.and_eq_true] at hens
       refine ⟨?_, hens.2⟩
       simp only [Sig.entriesBelow, Bool.and_eq_true, List.all_eq_true]
       exact ⟨hbelow, hens.1⟩
@@ -670,7 +661,8 @@ end DataTop
 in an untainted scope, a type goal's type is closed and, if untainted, has a value of type `Type()` in every later
 world. -/
 theorem goalItem_sound {st st' : TopState} {ρ : List Value} {p : Pos} {g : Goal} (hI : TopInv st ρ)
-    (h : topItem st (.goal p g) = .ok st') : (st.world ρ).Le (st'.world ρ) ∧ TopInv st' ρ := by
+    (hp : (Top.goal p g).holeFree = true) (h : topItem st (.goal p g) = .ok st') :
+    (st.world ρ).Le (st'.world ρ) ∧ TopInv st' ρ := by
   obtain ⟨hnone, goal, rfl, hgoal⟩ := goal_spec h
   refine ⟨World.Le.refl _, ⟨hI.len, hI.noRemoved, hI.holes, hI.sigsOk, hI.noJunk, hI.rets, hI.sigNames, hI.fnNames,
     hI.groups, hI.typeSig, fun g' hg' => ?_, fun hpr => ?_, fun ht =>
@@ -682,15 +674,16 @@ theorem goalItem_sound {st st' : TopState} {ρ : List Value} {p : Pos} {g : Goal
       exact ⟨topLevel_ok h2, fun _ => ⟨fun t ht => (by cases ht), fun _ _ t ht => (by cases ht)⟩⟩
     | type t =>
       obtain ⟨ty, is, tainted, h1, h2, rfl⟩ := hgoal
+      have hf : t.holed = false := by simpa [Top.holeFree] using hp
       refine ⟨h2, fun hts => ⟨fun t' ht' => ?_, fun W' hW t' ht' hu => ?_⟩⟩
       · cases ht'
-        obtain ⟨A, hA⟩ := (annotate_eval (DataTop.TopLive.wtermInv hI (hI.live hts)) h1).1
+        obtain ⟨A, hA⟩ := (annotate_eval (DataTop.TopLive.wtermInv hI (hI.live hts)) (ann := .type t) hf h1).1
         exact DataTop.Term.boundsBelow_of_eval _ hA
       · cases ht'
         have L := hI.live hts
         obtain ⟨V, hV, hVT⟩ := annotate_type_typed (n0 := st.sc.Γ.length) ⟨L.sat, by rw [hI.len]; exact Nat.le_refl _,
           SigsClose.close hI.noRemoved, hI.sigsOk, by simp [TopState.world, Sigs.find_map_close, hI.noJunk],
-          fun n r h => let ⟨v, hv, ok⟩ := L.names n r h; ⟨v, hv, ok.2.1, ok.2.2⟩⟩ h1 (by simp at hu; exact hu.1)
+          fun n r h => let ⟨v, hv, ok⟩ := L.names n r h; ⟨v, hv, ok.2.1, ok.2.2⟩⟩ hf h1 (by simp at hu; exact hu.1)
         have hρ : ρ.take st.sc.Γ.length = W'.ρ.take st.sc.Γ.length := by
           rw [hW.take_of_le (by simp [TopState.world, hI.len])]
           simp [TopState.world, ← hI.len]
@@ -887,8 +880,9 @@ theorem checkTerm_app_head {C : Ctx} {sc : Scope} {hn : Name} {args : List WTerm
        exact ⟨k, _, by rw [Sigs.find_head (Scope.sig_ok hsig)]⟩)
 
 theorem annotate_type {C : Ctx} {sc : Scope} {t : WTerm} {ty : Term} {is : Option Term} {tn : Bool}
-    (h : annotate C sc (.type t) = .ok (ty, is, tn)) : ∃ r, checkTerm C sc t = .ok r ∧ ty = r.term := by
-  simp only [annotate] at h
+    (hf : t.holed = false) (h : annotate C sc (.type t) = .ok (ty, is, tn)) :
+    ∃ r, checkTerm C sc t = .ok r ∧ ty = r.term := by
+  simp only [annotate, term_eq hf] at h
   obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
   obtain ⟨_, -, h⟩ := bind_eq_ok.1 h
   simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h

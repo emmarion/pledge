@@ -23,7 +23,19 @@ D35. For D16's "may": DESIGN.md says "is allowed to" for permission and
 
 ## Approved rules awaiting wording
 
-None at present.
+D36. `_` is allowed only as an erased argument, as an argument whose
+     type is `Type()`, or anywhere inside a type; it never stands for
+     any other `many` argument. Being allowed is necessary, not
+     sufficient: each `_` must also be solved, by rules along the lines
+     of Sleight's (its DESIGN.md §50). DESIGN.md §10, §13, §15, §16 and
+     §19 still describe `_` as it was before this decision.
+     ASSUMPTIONS.md item 51 lists how the code reads it.
+D37. A type has one run-time representation, equivalent to the unit
+     type: no type is evaluated, `print` shows every type as `_`, and a
+     `_` for a `many` argument of type `Type()` is allowed to be solved
+     from erased values. DESIGN.md §11, §12 and §16 still describe
+     values and `print` as they were before this decision.
+     ASSUMPTIONS.md items 49 and 51 list how the code reads it.
 
 ## Proposals, not approved
 

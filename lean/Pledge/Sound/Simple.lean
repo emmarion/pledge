@@ -49,9 +49,10 @@ theorem given_whole {C : Ctx} {g : Option Given} (hw : whole C g = false) : give
   simp [given, hw.1]
 
 theorem ctx_whole {C : Ctx} {g : Option Given} (hw : whole C g = false) :
-    ({ C with erased := whole C g } : Ctx) = C := by
+    (C.enter (whole C g)).posMult = C.posMult := by
   have : C.erased = false := by simp only [whole, Bool.or_eq_false_iff] at hw; exact hw.1
-  cases C; simp_all
+  funext g' i
+  simp [Ctx.posMult, hw, this]
 
 theorem posMult_whole {C : Ctx} {g : Option Given} {i : Nat} (hw : whole C g = true)
     (hi : ∀ g', g = some g' → i < g'.wants.length) : C.posMult g i = .erased := by
@@ -66,13 +67,13 @@ theorem posMult_whole {C : Ctx} {g : Option Given} {i : Nat} (hw : whole C g = t
   · rfl
 
 theorem inv_ctx {C : Ctx} {b : Bool} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {act : Act} :
-    Inv { C with erased := b } sc n0 W ρ act ↔ Inv C sc n0 W ρ act :=
+    Inv (C.enter b) sc n0 W ρ act ↔ Inv C sc n0 W ρ act :=
   ⟨fun h => h.congr_ctx rfl rfl rfl, fun h => h.congr_ctx rfl rfl rfl⟩
 
 /-- `finish` on an untainted scope: the scope and results are kept; the tree is removed when the position is
 wholly erased or every result is tainted. -/
 theorem finish_untainted {C : Ctx} {g : Option Given} {e : Expr} {o₀ o : Out}
-    (hf : finish { C with erased := whole C g } (whole C g) (given C g) e o₀ = .ok o) (ht : o₀.sc.taintedBy = none) :
+    (hf : finish (C.enter (whole C g)) (whole C g) (given C g) e o₀ = .ok o) (ht : o₀.sc.taintedBy = none) :
     o.sc = o₀.sc ∧ o.res = o₀.res ∧ o.tree = (if whole C g || o₀.res.all (·.tainted) then .removed else o₀.tree) ∧
       (whole C g = false → ∀ (i : Nat) (r : Res), o₀.res[i]? = some r → r.erased = true →
         g.any (·.erasedAt i) = true) := by
@@ -85,7 +86,7 @@ theorem finish_untainted {C : Ctx} {g : Option Given} {e : Expr} {o₀ o : Out}
 /-- The run-time half of `ExprPost` after `finish`, from the run of the tree `finish` was given. -/
 theorem finish_run {C : Ctx} {g : Option Given} {e : Expr} {o₀ o : Out} {S : Sigs} {P : Prog} {env : Env}
     {vs : List Value}
-    (hf : finish { C with erased := whole C g } (whole C g) (given C g) e o₀ = .ok o) (ht : o₀.sc.taintedBy = none)
+    (hf : finish (C.enter (whole C g)) (whole C g) (given C g) e o₀ = .ok o) (ht : o₀.sc.taintedBy = none)
     (hlen : ∀ g', g = some g' → o₀.res.length = g'.wants.length)
     (hrun : whole C g = false → o₀.res.all (·.tainted) = false →
       (∀ (i : Nat) (r : Res), o₀.res[i]? = some r → r.erased = true → g.any (·.erasedAt i) = true) →
@@ -117,7 +118,7 @@ theorem var_post {C : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : World
     {o₀ o : Out} {x : Id} {n : String} {r : Res} (hI : Inv C sc n0 W ρ act)
     (hg : ∀ g', g = some g' → g'.Ok W.Sc ρ) (hx : x.name = some n) (hl : sc.lookup n = some r)
     (h₀ : produced sc (given C g) x.pos [{ r with erased := r.erased || sc.erasedEntry r.term }] (.var x) = .ok o₀)
-    (hf : finish { C with erased := whole C g } (whole C g) (given C g) (.var x) o₀ = .ok o) :
+    (hf : finish (C.enter (whole C g)) (whole C g) (given C g) (.var x) o₀ = .ok o) :
     ExprPost C sc g n0 W ρ act o := by
   intro _
   obtain ⟨v, hv, hok⟩ := hI.names n r hl
@@ -171,13 +172,14 @@ theorem wantsSat_resOk {S : Sigs} {ρ : List Value} :
 
 theorem sorry_post {C C' : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : World} {ρ : List Value} {act : Act}
     {o₀ o : Out} {p : Pos} {t : Tele} {tele : Telescope} {tenv : List Term} (hI : Inv C sc n0 W ρ act)
-    (hg : ∀ g', g = some g' → g'.Ok W.Sc ρ) (ha : annotation C' sc (given C g) t = .ok (tele, tenv))
+    (hg : ∀ g', g = some g' → g'.Ok W.Sc ρ) (hta : ∀ bs, t = .binders bs → ∀ b ∈ bs, b.ann.term.holed = false)
+    (ha : annotation C' sc (given C g) t = .ok (tele, tenv))
     (h₀ : produced (opened sc tele tenv "sorry" p fun _ => true).1 (given C g) p
       (opened sc tele tenv "sorry" p fun _ => true).2 (.sorry p t) = .ok o₀)
-    (hf : finish { C with erased := whole C g } (whole C g) (given C g) (.sorry p t) o₀ = .ok o) :
+    (hf : finish (C.enter (whole C g)) (whole C g) (given C g) (.sorry p t) o₀ = .ok o) :
     ExprPost C sc g n0 W ρ act o := by
   intro _
-  obtain ⟨envv, henv, hcons⟩ := annotation_cons hI.termInv.weak (given_ok hg) ha
+  obtain ⟨envv, henv, hcons⟩ := annotation_cons hI.termInv.weak (given_ok hg) hta ha
   obtain ⟨vs, hvs⟩ := WantsCons.open hcons
   obtain ⟨hsat, hev⟩ := opened_sound (taint := fun _ => true) (kind := "sorry") (pos := p) hI.sat henv
     (WantsSat.teleOk _ hvs fun k hk => by simp at hk)
@@ -223,7 +225,7 @@ theorem zip_map_term {bs : List LetBinder} {rs : List Res} (h : bs.length = rs.l
 
 theorem let_post {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {act : Act} {p : Pos}
     {bs : List LetBinder} {rhs : Expr} {ws : List Want} {o : Out} (ih : ExprSound rhs) (ihs : ExprShape rhs)
-    (hI : Inv C sc n0 W ρ act) (hws : letWants C sc bs = .ok ws)
+    (hI : Inv C sc n0 W ρ act) (hf : bs.any (·.ann.any (·.term.holed)) = false) (hws : letWants C sc bs = .ok (ws, sc))
     (ho : checkExpr C sc (some (letGiven bs ws)) rhs = .ok o) :
     StmtPost C sc n0 W ρ act ⟨o.sc.bind (bs.map (·.name))
       ((bs.zip o.res).map fun (b, r) => { r with erased := b.mult == some .erased }), .let p bs o.tree, o.snaps⟩ := by
@@ -234,9 +236,11 @@ theorem let_post {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value}
     rintro g' ⟨⟩
     refine ⟨⟨[], rfl⟩, fun hall envv henv => ?_⟩
     cases henv
-    exact letWants_cons hI.termInv.weak hws hall
+    refine letWants_cons hI.termInv.weak hws (List.all_eq_true.2 fun b hb => ?_) hf
+    have := List.all_eq_true.1 hall b hb
+    cases h : b.ann <;> simp_all
   obtain ⟨ρ', vs, hI', hvs, hok, hw, hrun⟩ := (ih C sc _ n0 W ρ act o hI hgok ho).1 ht
-  obtain ⟨hwl, hwm⟩ := letWants_spec hws
+  obtain ⟨-, hwl, hwm⟩ := letWants_spec hws hf
   have hvl : vs.length = bs.length := by rw [(WantsSat.lengths (hw _ rfl [] rfl)).1]; exact hwl
   have hrl : bs.length = o.res.length := by rw [← hvl, Term.length_evalList hvs, List.length_map]
   have hget : ∀ (i : Nat) (r : Res), ((bs.zip o.res).map fun (b, r) =>
@@ -402,8 +406,8 @@ theorem tuple_post {C : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : Wor
     {o : Out} {p : Pos} {es : List Expr} {oe : ElemsOut} (ih : ∀ e ∈ es, ExprSound e) (ihs : ∀ e ∈ es, ExprShape e)
     (hI : Inv C sc n0 W ρ act) (hg : ∀ g', g = some g' → g'.Ok W.Sc ρ)
     (hlen : ∀ g', given C g = some g' → g'.wants.length = es.length)
-    (hoe : checkElems { C with erased := whole C g } sc (given C g) [] es = .ok oe)
-    (hf : finish { C with erased := whole C g } (whole C g) (given C g) (.tuple p es)
+    (hoe : checkElems (C.enter (whole C g)) sc (given C g) [] es = .ok oe)
+    (hf : finish (C.enter (whole C g)) (whole C g) (given C g) (.tuple p es)
       ⟨oe.sc, oe.res, .tuple p oe.trees, oe.snaps⟩ = .ok o) :
     ExprPost C sc g n0 W ρ act o := by
   intro ht
@@ -507,9 +511,9 @@ theorem block_post {C : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : Wor
     {o : Out} {ss : List Stmt} {f : Expr} {s : StmtsOut} {of : Out} (ihs : ∀ s ∈ ss, StmtSound s)
     (ihss : ∀ s ∈ ss, StmtShape s) (ihf : ExprSound f) (ihfs : ExprShape f)
     (hI : Inv C sc n0 W ρ act) (hg : ∀ g', g = some g' → g'.Ok W.Sc ρ)
-    (hs : checkStmts { C with erased := whole C g } { sc with holes := [] } ss = .ok s)
-    (hof : checkExpr { C with erased := whole C g } { s.sc with holes := sc.holes } (given C g) f = .ok of)
-    (hf : finish { C with erased := whole C g } (whole C g) (given C g) (.block ss f)
+    (hs : checkStmts (C.enter (whole C g)) { sc with holes := [] } ss = .ok s)
+    (hof : checkExpr (C.enter (whole C g)) { s.sc with holes := sc.holes } (given C g) f = .ok of)
+    (hf : finish (C.enter (whole C g)) (whole C g) (given C g) (.block ss f)
       ⟨{ of.sc with names := sc.names }, of.res, .block s.trees of.tree, s.snaps ++ of.snaps⟩ = .ok o) :
     ExprPost C sc g n0 W ρ act o ∧ (o.sc.taintedBy = none → (Expr.block ss f).absurd = true →
       ∀ r ∈ o.res, r.tainted = true) := by
@@ -578,7 +582,7 @@ theorem checkArgs_shape {args : List Arg} (ihs : ∀ a ∈ args, ExprShape a.exp
     cases params with
     | nil => simp [checkArgs, internal, failAt_eq] at h
     | cons p ps =>
-      simp only [checkArgs, isHole_false (e := e) (hh _ List.mem_cons_self), Bool.and_false, Bool.false_eq_true,
+      simp only [checkArgs, isHole_false (e := e) (hh _ List.mem_cons_self), Bool.false_eq_true,
         ↓reduceIte] at h
       obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
       obtain ⟨r, -, h⟩ := bind_eq_ok.1 h
@@ -626,7 +630,7 @@ theorem checkArgs_sound {args : List Arg} (ih : ∀ a ∈ args, ExprSound a.expr
     cases params with
     | nil => simp at hl
     | cons p ps =>
-      simp only [checkArgs, isHole_false (e := e) (hh _ List.mem_cons_self), Bool.and_false, Bool.false_eq_true,
+      simp only [checkArgs, isHole_false (e := e) (hh _ List.mem_cons_self), Bool.false_eq_true,
         ↓reduceIte] at h
       obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
       obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
@@ -719,22 +723,24 @@ theorem noRemoved_of_resOk {S : Sigs} {ρ : List Value} :
     exact ⟨(hok 0 r v rfl rfl).1, noRemoved_of_resOk hvs fun i r' v' h1 h2 => hok (i + 1) r' v' h1 h2⟩
 
 theorem ctorApp_post {C : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : World} {ρ : List Value} {act : Act}
-    {o₀ o : Out} {h : Name} {args : List Arg} {k : HeadKind} {sig : Sig} {role : String} {er : Bool} {a : ArgsOut}
+    {o₀ o : Out} {h : Name} {args : List Arg} {k : HeadKind} {sig : Sig} {role : String} {er it : Bool} {a : ArgsOut}
     (ih : ∀ a ∈ args, ExprSound a.expr) (ihs : ∀ a ∈ args, ExprShape a.expr) (hh : ∀ a ∈ args, a.expr.holeFree = true)
     (hI : Inv C sc n0 W ρ act) (hg : ∀ g', g = some g' → g'.Ok W.Sc ρ) (hk : HeadOk sc.sigs W k h.name)
     (her : er = (k == .type && decide (2 ≤ C.phase))) (hsig : sc.sigs.find ⟨k, h.name⟩ = some sig)
     (har : sig.params.length = args.length)
-    (ha : checkArgs { C with erased := whole C g } sc h.name role er sig.params [] args = .ok a)
+    (ha : checkArgs { C.enter (whole C g) with inType := it } sc h.name role er sig.params [] args =
+      .ok a)
     (h₀ : applied a.sc (given C g) h.pos [⟨.app sig.head (a.res.map (·.term)), a.res.any (·.tainted), false⟩]
-      (.app h a.trees) sc.holes.length a.snaps = .ok o₀)
-    (hf : finish { C with erased := whole C g } (whole C g) (given C g) (.app h args) o₀ = .ok o) :
+      (if k = .type then .removed else .app h a.trees) none a.snaps = .ok o₀)
+    (hf : finish (C.enter (whole C g)) (whole C g) (given C g) (.app h args) o₀ = .ok o) :
     ExprPost C sc g n0 W ρ act o := by
   intro ht
   obtain ⟨-, -, hah, -, -⟩ := checkArgs_shape ihs hh hI.holes ha
   obtain ⟨rfl, hpr⟩ := applied_eq hah h₀
   obtain ⟨-, hsc₀, -⟩ := finish_spec hf
   have ht₀ : a.sc.taintedBy = none := by rw [hsc₀] at ht; exact ht
-  obtain ⟨ρ', vs, hI', hvs, hok, hw, hrun⟩ := checkArgs_sound ih ihs hh (inv_ctx.2 hI) har rfl ha ht₀
+  obtain ⟨ρ', vs, hI', hvs, hok, hw, hrun⟩ := checkArgs_sound ih ihs hh
+    (hI.congr_ctx (C' := { C.enter (whole C g) with inType := it }) rfl rfl rfl) har rfl ha ht₀
   have hhead : sig.head = ⟨k, h.name⟩ := Sigs.find_head hsig
   obtain ⟨hbelow, hbounds⟩ := hI.sigsOk sig (List.mem_of_find?_eq_some hsig)
   have hvl : vs.length = sig.params.length := by simpa using (WantsSat.lengths hw).1
@@ -759,7 +765,7 @@ theorem ctorApp_post {C : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : W
   obtain ⟨-, hw'⟩ := produced_sound hI'.sat.1 (hI'.sigs _ hI'.agree) hI.noJunk hI'.holes hvs1 ⟨hres, trivial⟩
     (fun g' h => let ⟨_, he⟩ := (given_ok hg g' h).env; ⟨_, Term.evalList_frame_ρ ρ' he⟩) hpr
   obtain ⟨hsc, hres', -, -⟩ := finish_untainted hf ht₀
-  refine ⟨ρ', [.app sig.head vs], by rw [hsc]; exact inv_ctx.1 hI', by rw [hres']; exact hvs1,
+  refine ⟨ρ', [.app sig.head vs], by rw [hsc]; exact hI'.congr_ctx rfl rfl rfl, by rw [hres']; exact hvs1,
     fun i r v hr hv => ?_, fun g' hg' envv henv => ?_, fun env hE => ?_⟩
   · rw [hres'] at hr
     cases i with
@@ -772,6 +778,12 @@ theorem ctorApp_post {C : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : W
     (hw' g'' h'' envv₁ (Term.evalList_frame_ρ ρ' henv₁)).1) fun hwh hall _ => ?_
   have hCe : C.erased = false := by simp only [whole, Bool.or_eq_false_iff] at hwh; exact hwh.1
   have hut : a.res.any (·.tainted) = false := by simpa using hall
+  split
+  · rename_i hkt
+    refine ⟨_, .removed, _, take_of_length rfl, fun i r u v hr hu hv _ => ?_⟩
+    cases i with
+    | succ => simp at hr
+    | zero => cases hr; cases hu; cases hv; rw [hhead]; exact MultRel.of_rel _ (.type hkt)
   obtain ⟨us, hev, hul, hm⟩ := hrun env hE
   refine ⟨_, .ctor hev hk.fns hk.kind, _, take_of_length rfl, fun i r u v hr hu hv _ => ?_⟩
   cases i with

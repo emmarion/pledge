@@ -290,8 +290,9 @@ def Sigs.erasedArg (S : Sigs) (phase : Nat) (h : Head) (k : Nat) : Bool :=
 
 /-- `Rel S phase a i`: the run-time value `a` of a result in a position that is not erased has the
 ideal value `i`'s head, and so on in every argument that is not erased; an erased argument only
-approximates (`Approx`). -/
+approximates (`Approx`). A type is not evaluated, so `removed` stands for one. -/
 inductive Rel (S : Sigs) (phase : Nat) : Value → Value → Prop
+  | type {h : Head} {is : List Value} : h.kind = .type → Rel S phase .removed (.app h is)
   | app {h : Head} {as is : List Value} : as.length = is.length →
       (∀ (k : Nat) (a i : Value), as[k]? = some a → is[k]? = some i → S.erasedArg phase h k = true → Approx a i) →
       (∀ (k : Nat) (a i : Value), as[k]? = some a → is[k]? = some i → S.erasedArg phase h k = false →

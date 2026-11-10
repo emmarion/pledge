@@ -29,30 +29,13 @@ structure StmtsOut where
   trees : List Stmt
   snaps : List Snapshot
 
-/-- What an argument is given (§8); a type constructor's argument is erased from phase 2 on (§16). -/
-def argGiven (p : TBinder) (prev : List Res) (role owner : String) (erased : Bool) : Given :=
-  let i := prev.length
-  { wants := [{ Want.of p with mult := if erased then .erased else p.mult }], env := prev.map (·.term),
-    label := some fun _ => labelled role p.name i owner }
-
 def elemGiven (g : Option Given) (prev : List Res) : Option Given :=
   g.bind fun g => (g.wants[prev.length]?).map fun w =>
     { wants := [w], env := g.env ++ prev.map (·.term), label := g.label.map fun l _ => l prev.length }
 
 def letGiven (bs : List LetBinder) (wants : List Want) : Given :=
-  { wants, whole := bs.all (·.ann.isSome), label := some fun i => labelled "binder" ((bs[i]?).bind (·.name.name)) i }
-
-/-- A `_` argument (§16): a fresh erased entry typed by its parameter, solved later. -/
-def holeArg (sc : Scope) (g : Given) (p : TBinder) (prev : List Res) (pos : Pos) : CheckM Out := do
-  unless g.erasedAt 0 do failAt pos fun _ =>
-    s!"`_` stands for an erased argument (§16), and {(g.label.map (· 0)).getD "this argument"} is not erased"
-  let env := prev.map (·.term)
-  let is := p.is.map (·.subst env)
-  let (sc, id) := sc.addHole (p.type.subst env) is pos
-  let sc ← match is with
-    | some e => solveHoles sc (.entry id) e pos
-    | none => pure sc
-  pure ⟨sc, [⟨.entry id, false, true⟩], .removed, []⟩
+  { wants, whole := bs.all (·.ann.any (!·.term.holed)),
+    label := some fun i => labelled "binder" ((bs[i]?).bind (·.name.name)) i }
 
 def isHole : Expr → Bool
   | .var ⟨none, _⟩ => true
@@ -60,14 +43,15 @@ def isHole : Expr → Bool
 
 mutual
   /-- Checks an expression against what its position is given, if anything (§8); in an erased position, or
-  where every entry given is erased, the expression is wholly erased (§16). -/
+  where every entry given is erased, the expression is wholly erased (§16). An application of a type constructor is
+  not evaluated: its tree is `removed`. -/
   def checkExpr (C : Ctx) (sc : Scope) (g : Option Given) (e : Expr) : CheckM Out :=
     let whole := C.erased || g.any (·.allErased)
     let g := if C.erased then g.map (·.erase) else g
-    let C := { C with erased := whole }
+    let C := C.enter whole
     (match e with
     | .var x => match x.name with
-      | none => failAt x.pos fun _ => "`_` stands only for a whole argument, for an erased parameter or field (§16)"
+      | none => failAt x.pos fun _ => "`_` stands only for a whole argument or inside a type (§16)"
       | some n => match sc.lookup n with
         | some r => produced sc g x.pos [{ r with erased := r.erased || sc.erasedEntry r.term }] (.var x)
         | none => notValue C sc ⟨n, x.pos⟩
@@ -89,16 +73,17 @@ mutual
           if let (some fn, some (subs, k)) := (fn, plan) then decrease a.sc h.pos args a.res fn subs k
           let tainted := sig.tainted || a.res.any (·.tainted)
           let (sc', rs) := opened a.sc sig.returns (a.res.map (·.term)) h.name h.pos fun _ => tainted
-          applied sc' g h.pos rs (.app h a.trees) sc.holes.length a.snaps
+          applied sc' g h.pos rs (.app h a.trees) (some sc.holes.length) a.snaps
       | some (.type ..) | some (.ctor _) => do
         let kind := if (C.global h.name) matches some (.type ..) then HeadKind.type else .ctor
         unmarked args fun _ => s!"{code h.name} is not a function"
         let sig ← sc.sig h.pos ⟨kind, h.name⟩
         arity h.pos h.name sig.params.length args.length
         let role := if kind = .type then "parameter" else "field"
-        let a ← checkArgs C sc h.name role (kind = .type && C.phase ≥ 2) sig.params [] args
-        applied a.sc g h.pos [⟨.app sig.head (a.res.map (·.term)), a.res.any (·.tainted), false⟩] (.app h a.trees)
-          sc.holes.length a.snaps
+        let a ← checkArgs { C with inType := C.inType || kind == .type } sc h.name role (kind = .type && C.phase ≥ 2)
+          sig.params [] args
+        applied a.sc g h.pos [⟨.app sig.head (a.res.map (·.term)), a.res.any (·.tainted), false⟩]
+          (if kind = .type then .removed else .app h a.trees) none a.snaps
       | _ => notApplied sc h
     | .tuple p es => do
       if let some g := g then
@@ -112,7 +97,7 @@ mutual
     | .match p m s ann bs => do
       let erased := m == some .erased
       let place := if erased then C.place else "the scrutinee of a `many` match"
-      let so ← checkExpr { C with erased := C.erased || erased, place } sc none s
+      let so ← closed sc (checkExpr { C with erased := C.erased || erased, place } · none s)
       keep so.snaps do
         let r ← single s.pos so.res
         let inner := so.sc
@@ -148,15 +133,14 @@ mutual
       let (sc', rs) := opened sc tele env "sorry" p fun _ => true
       produced sc' g p rs (.sorry p t)
     | .removed => internal 0 "a removed expression was checked") >>= finish C whole g e
-  /-- The arguments of a call or application, each checked against its parameter or field (§8); a `_` argument
-  is accepted only from phase 2 on (§16). -/
+  /-- The arguments of a call or application, each checked against its parameter or field (§8), or a `_` (§16). -/
   def checkArgs (C : Ctx) (sc : Scope) (owner role : String) (erased : Bool) (params : Telescope) (prev : List Res) :
       List Arg → CheckM ArgsOut
     | [] => pure ⟨sc, [], [], []⟩
     | .mk m e :: as => match params with
       | p :: ps => do
         let g := argGiven p prev role owner erased
-        let o ← if C.phase ≥ 2 && isHole e then holeArg sc g p prev e.pos else checkExpr C sc (some g) e
+        let o ← if isHole e then holeArg C sc g p prev e.pos else checkExpr C sc (some g) e
         let r ← keep o.snaps (single e.pos o.res)
         let rest ← keep o.snaps (checkArgs C o.sc owner role erased ps (prev ++ [r]) as)
         pure ⟨rest.sc, r :: rest.res, .mk m o.tree :: rest.trees, o.snaps ++ rest.snaps⟩
@@ -175,7 +159,7 @@ mutual
     | .mk pat body :: bs => do
       let (Γ, ids) ← survivor inner fs pat.ctor.name pat.ctor.pos ""
       let sc := Scope.bind { inner with Γ, taintedBy := reach inner r scrutPos, holes := [] } pat.fields (fieldRes ids)
-      let o ← checkExpr C sc (some g) body
+      let o ← closed sc (checkExpr C · (some g) body)
       let rest ← keep o.snaps (checkBranches C inner r scrutPos fs g bs)
       pure ⟨o :: rest.outs, .mk pat o.tree :: rest.trees, o.snaps ++ rest.snaps⟩
   def checkStmts (C : Ctx) (sc : Scope) : List Stmt → CheckM StmtsOut
@@ -189,7 +173,9 @@ mutual
     | .inspect p => pure ⟨sc, .inspect p, [⟨p, sc, none, C.fn, C.decl⟩]⟩
     | .let p bs rhs => do
       freshAll C sc (bs.map (·.name))
-      let o ← checkExpr C sc (some (letGiven bs (← letWants C sc bs))) rhs
+      let (ws, sc') ← letWants C sc bs
+      let o ← checkExpr C sc' (some (letGiven bs ws)) rhs
+      let o ← keep o.snaps (close o 0 false)
       let rs := (bs.zip o.res).map fun (b, r) => { r with erased := b.mult == some .erased }
       pure ⟨o.sc.bind (bs.map (·.name)) rs, .let p bs o.tree, o.snaps⟩
     | .patlet p ct m pat rhs => do
@@ -199,7 +185,7 @@ mutual
       ensure (!ct) p "a `comptime` pattern `let` below the top level"
       freshAll C sc pat.fields
       let place := if erased then C.place else "the right-hand side of a `many` pattern `let`"
-      let o ← checkExpr { C with erased := C.erased || erased, place } sc none rhs
+      let o ← closed sc (checkExpr { C with erased := C.erased || erased, place } · none rhs)
       keep o.snaps do
         let r ← single rhs.pos o.res
         let fs ← forcings C o.sc r.term rhs.pos [pat] p erased

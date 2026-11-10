@@ -64,7 +64,7 @@ relies on one.
   `False`. The argument is written out, not machine-checked.
 - [lean/](lean/README.md) is a second implementation of the checker and
   evaluator, in Lean 4, with Lean-checked soundness theorems about it
-  for programs without `_` arguments, `sorry` and erasure included.
+  for programs with no `_` for an argument or inside a type, `sorry` and erasure included.
 
 Pledge is loosely based on
 [Sleight](https://github.com/emmarion/sleight), a larger language, and

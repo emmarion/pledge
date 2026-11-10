@@ -14,10 +14,11 @@ structure Id where
   pos : Pos := 0
   deriving Repr, Inhabited
 
-/-- A skeleton term as written (DESIGN.md §3, §19 `term`). -/
+/-- A skeleton term as written (DESIGN.md §3, §19 `term`); `hole` is `_` (§16). -/
 inductive WTerm where
   | var (name : Name)
   | app (head : Name) (args : List WTerm)
+  | hole (pos : Pos)
   deriving Repr, Inhabited
 
 inductive Mult where

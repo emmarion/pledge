@@ -390,7 +390,7 @@ theorem go_erased {C : Ctx} {kind : String} : ∀ (bs : List Binder) (sc : Scope
     simp only [pure, Except.pure, Except.ok.injEq] at ho
     subst ho
     obtain ⟨-, -, -, -, -, hpre, -, -⟩ := telescope_go_shape bs _ _ _ h
-    simp only [Scope.bind, openTele, openTele.go] at h hpre
+    simp only [Scope.openBinder, Scope.bind, openTele, openTele.go] at h hpre
     cases k with
     | zero =>
       simp only [List.getElem?_cons_zero, Option.some.injEq] at hb
@@ -430,25 +430,28 @@ theorem telescope_erased {C : Ctx} {sc : Scope} {bs : List Binder} {kind : Strin
 
 /-- A tainted function's head still gives what `FnOk` asks of every function (§12): a tainted call opens the
 returns to `junk` or their `is` clauses' values (`telescope_wsound`, `telescope_cons`). -/
-theorem HeadSpec.cons {sc : Scope} {names : List String} {h : FnHead} (hs : HeadSpec sc names h) {Sc : Sigs}
+theorem HeadSpec.cons {sc : Scope} {names : List String} {h : FnHead} (hs : HeadSpec sc names h)
+    (hf : h.f.header.holeFree = true) {Sc : Sigs}
     {ρ : List Value} (hT : WTermInv sc sc.Γ.length Sc ρ) (pvals : List Value)
     (hp : WantsSat Sc ρ (h.sig.params.map Want.of) [] (h.sig.params.map fun _ => false) pvals) :
     WantsCons Sc ρ (h.sig.returns.map Want.of) pvals := by
   obtain ⟨C, ps, rs, hps, hrs, hbelow, hsig, -, -, -⟩ := hs.tele
   rw [hsig] at hp ⊢
   dsimp only at hp ⊢
-  have hw := telescope_wsound (outer := []) hT hps rfl hp
+  have hw := telescope_wsound (outer := []) hT (Header.holeFree_params hf) hps rfl hp
   obtain ⟨htl, hids, -, -, -, -⟩ := telescope_shape hps
   have hρl : ρ.length = sc.Γ.length := hT.sat.1
   have hpl : pvals.length = ps.tele.length := by simpa using (WantsSat.lengths hp).1
   have hev : Term.evalList (ρ ++ pvals) [] (ps.ids.map .entry) = some pvals := by
     rw [hids, ← hρl, ← htl, ← hpl]; exact evalList_range' ρ pvals
   simp only [List.all_append, Bool.and_eq_true] at hbelow
-  refine wantsCons_agree (Telescope.agree_of_entriesBelow (n := sc.Γ.length) ?_ hbelow.2) (telescope_cons hw hrs hev)
+  refine wantsCons_agree (Telescope.agree_of_entriesBelow (n := sc.Γ.length) ?_ hbelow.2)
+    (telescope_cons hw (Header.holeFree_returns hf) hrs hev)
   rw [← hρl]; simp
 
 /-- What a group's head gives `FnOk`, its specification as a function of its taint. -/
-theorem HeadSpec.fnOk {sc : Scope} {names : List String} {h : FnHead} (hs : HeadSpec sc names h) {phase : Nat}
+theorem HeadSpec.fnOk {sc : Scope} {names : List String} {h : FnHead} (hs : HeadSpec sc names h)
+    (hf : h.f.header.holeFree = true) {phase : Nat}
     {W : World} {ρ : List Value} (hT : WTermInv sc sc.Γ.length W.Sc ρ) (hρ : W.ρ.take sc.Γ.length = ρ)
     {fn : Option FnCtx} {act : Act} {t : Bool}
     (hdefn : t = false → ∃ d, W.P.fns.find h.fn.name = some d ∧ d.params.length = h.sig.params.length ∧
@@ -462,7 +465,7 @@ theorem HeadSpec.fnOk {sc : Scope} {names : List String} {h : FnHead} (hs : Head
   refine ⟨hpar, hret, fun ρ' hρ' pvals hp => ?_, hsubl, fun ht => ?_⟩
   · have hag : ρ'.take sc.Γ.length = ρ.take sc.Γ.length := by rw [hρ', hρ, ← hρl, List.take_length]
     exact wantsCons_agree (Telescope.agree_of_entriesBelow hag.symm (List.all_eq_true.2 hret))
-      (hs.cons hT pvals (wantsSat_agree (Telescope.agree_of_entriesBelow hag (List.all_eq_true.2 hpar)) hp))
+      (hs.cons hf hT pvals (wantsSat_agree (Telescope.agree_of_entriesBelow hag (List.all_eq_true.2 hpar)) hp))
   · change t = false at ht
     subst ht
     rw [FnSig.with_untainted htnt]
@@ -581,7 +584,7 @@ structure GroupOk (st : TopState) (ρ : List Value) (heads : List FnHead) (bodie
   untainted : st.sc.taintedBy = none
   len : bodies.length = heads.length
   tlen : taint.length = heads.length
-  spec : ∀ h ∈ heads, HeadSpec st.sc (heads.map (·.fn.name)) h ∧ h.f.body.holeFree = true
+  spec : ∀ h ∈ heads, HeadSpec st.sc (heads.map (·.fn.name)) h ∧ h.f.holeFree = true
   nodup : (heads.map (·.fn.name)).Nodup
   fresh : ∀ h ∈ heads, st.globals.find? (·.name == h.fn.name) = none
   pad : ∀ h ∈ heads, h.fn.subterms.length ≤ pad
@@ -659,7 +662,8 @@ theorem GroupOk.step {st : TopState} {ρ : List Value} {heads : List FnHead} {bo
     exact this
   have hSC : SigsClose st.sc.sigs ρ W.Sc := (SigsClose.close G.inv.noRemoved).mono hW.sigs
   have hT := topTermInv G.inv hL hW hJ
-  have hT' := telescope_sound (outer := []) (outerv := []) hT hps rfl hvs₀
+  have hT' := telescope_sound (outer := []) (outerv := []) hT (Header.holeFree_params (Fn.holeFree_header hhf)) hps rfl
+    hvs₀
   obtain ⟨hpl', hids, -, hΓp, hpsc, -⟩ := telescope_shape hps
   have hvl : vs.length = h.f.header.params.length := by simpa [hpl'] using hvs₀.length_eq
   have hids' : ps.ids = List.range' ρ.length vs.length := by rw [hids, hρl, hvl, List.length_map]
@@ -689,9 +693,9 @@ theorem GroupOk.step {st : TopState} {ρ : List Value} {heads : List FnHead} {bo
         cases hg
       · obtain ⟨⟨h', t'⟩, hq', rfl⟩ := List.mem_map.1 hq
         have hh' := (List.of_mem_zip hq').1
-        obtain ⟨hs', -⟩ := G.spec h' hh'
+        obtain ⟨hs', hf'⟩ := G.spec h' hh'
         obtain ⟨o', ho'⟩ := exists_zip G.len hh'
-        refine hs'.fnOk hT.weak hpre fun ht => ?_
+        refine hs'.fnOk (Fn.holeFree_header hf') hT.weak hpre fun ht => ?_
         subst ht
         obtain ⟨-, -, -, -, hparl', hsubc', -⟩ := hs'.facts
         refine ⟨mkDef st pad (h', o'), hfind _ ho', by simp [mkDef, hparl'], rfl, rfl,
@@ -724,8 +728,8 @@ theorem GroupOk.step {st : TopState} {ρ : List Value} {heads : List FnHead} {bo
     rw [henv, hevids] at henvv
     cases henvv
     rw [hsig]
-    exact telescope_cons hT'.weak hrs hevids
-  obtain ⟨hpost, -⟩ := Expr.sound h.f.body hhf C h.sc _ _ W (ρ ++ vs) _ o hI hg hc
+    exact telescope_cons hT'.weak (Header.holeFree_returns (Fn.holeFree_header hhf)) hrs hevids
+  obtain ⟨hpost, -⟩ := Expr.sound h.f.body (Fn.holeFree_body hhf) C h.sc _ _ W (ρ ++ vs) _ o hI hg hc
   have hclean := G.clean _ hp hpt
   have hnt : o.sc.taintedBy = none := by
     obtain ⟨hne, htr, -⟩ := checkExpr_removed hc
@@ -860,7 +864,8 @@ theorem later_noJunk {st : TopState} {ρ : List Value} (hI : TopInv st ρ) {W : 
 untainted scope, every untainted function meets its specification. -/
 theorem group_post {st : TopState} {ρ : List Value} {heads : List FnHead} {bodies : List Out} {taint : List Bool}
     {pad : Nat} (hI : TopInv st ρ) (hlen : bodies.length = heads.length) (htl : taint.length = heads.length)
-    (hspec : ∀ h ∈ heads, HeadSpec st.sc (heads.map (·.fn.name)) h) (hnd : (heads.map (·.fn.name)).Nodup)
+    (hspec : ∀ h ∈ heads, HeadSpec st.sc (heads.map (·.fn.name)) h) (hfree : ∀ h ∈ heads, h.f.header.holeFree = true)
+    (hnd : (heads.map (·.fn.name)).Nodup)
     (hfr : ∀ h ∈ heads, st.globals.find? (·.name == h.fn.name) = none) (hpad : ∀ h ∈ heads, h.fn.subterms.length ≤ pad)
     (hG : st.sc.taintedBy = none → GroupOk st ρ heads bodies taint pad) {st' : TopState}
     (hph : st'.phase = st.phase) (hsc : st'.sc = st.sc) (henv : st'.env = st.env) (hgoal : st'.goal = st.goal)
@@ -936,7 +941,7 @@ theorem group_post {st : TopState} {ρ : List Value} {heads : List FnHead} {bodi
     have hh' := (List.of_mem_zip hq').1
     obtain ⟨o', ho'⟩ := exists_zip hlen hh'
     have hpre : W'.ρ.take st.sc.Γ.length = ρ := by rw [← hI.len]; exact hW.take
-    refine (hspec h' hh').fnOk (topTermInv hI hL hW hJ).weak hpre fun ht => ?_
+    refine (hspec h' hh').fnOk (hfree h' hh') (topTermInv hI hL hW hJ).weak hpre fun ht => ?_
     subst ht
     obtain ⟨-, -, -, -, hparl', hsubc', -⟩ := (hspec h' hh').facts
     refine ⟨mkDef st pad (h', o'), hfind W' hW' _ ho', by simp [mkDef, hparl'], rfl, rfl,
@@ -949,7 +954,7 @@ theorem group_post {st : TopState} {ρ : List Value} {heads : List FnHead} {bodi
 world extends, and, in an untainted scope, every untainted function meets its specification; in a tainted scope
 every function is tainted (§12). -/
 theorem fnGroup_ok {st st' : TopState} {ρ : List Value} {fs : List Fn} (hI : TopInv st ρ)
-    (hp : fs.all (·.body.holeFree) = true) (h : fnGroup st fs = .ok st') :
+    (hp : fs.all Fn.holeFree = true) (h : fnGroup st fs = .ok st') :
     (st.world ρ).Le (st'.world ρ) ∧ TopInv st' ρ := by
   simp only [fnGroup] at h
   obtain ⟨st0, h0, h⟩ := bind_eq_ok.1 h
@@ -968,7 +973,7 @@ theorem fnGroup_ok {st st' : TopState} {ρ : List Value} {fs : List Fn} (hI : To
   have hfr' : ∀ h ∈ heads, st.globals.find? (·.name == h.fn.name) = none := fun h hh => by
     rw [hname h hh]; exact hfr _ (hmemf h hh)
   have hnd' : (heads.map (·.fn.name)).Nodup := hnames ▸ hnd
-  have hspec' : ∀ h ∈ heads, HeadSpec st.sc (heads.map (·.fn.name)) h ∧ h.f.body.holeFree = true := fun h hh => by
+  have hspec' : ∀ h ∈ heads, HeadSpec st.sc (heads.map (·.fn.name)) h ∧ h.f.holeFree = true := fun h hh => by
     have := hspec h hh
     rw [hnames] at this
     exact ⟨this, List.all_eq_true.1 hp _ (hmemf h hh)⟩
@@ -988,9 +993,16 @@ theorem fnGroup_ok {st st' : TopState} {ρ : List Value} {fs : List Fn} (hI : To
     refine Bool.eq_false_iff.2 fun hxt => grows_eq_false hgrow i h3 ?_
     rw [List.getElem?_map, h2]
     simpa using ⟨x, hx, hxt⟩
-  exact group_post hI hlen htl (fun h hh => (hspec' h hh).1) hnd' hfr' hpad
-    (fun ht => ⟨hI, hI.live ht, ht, hlen, htl, hspec', hnd', hfr', hpad,
-      fun p hp => ⟨_, rfl, rfl, rfl, hgg, hall p hp⟩, hclean⟩) rfl rfl rfl rfl rfl rfl rfl rfl hgg
+  have hbody : ∀ p ∈ heads.zip bodies, checkExpr { st.ctx true with
+      globals := setSigs (updSigs heads (st.globals ++ fs.map fun f => Global.fn f.name.name none)) heads taint,
+      fn := some p.1.fn } p.1.sc (some (returnsGiven p.1)) p.1.f.body = .ok p.2 := fun p hp => by
+    obtain ⟨hs, hf⟩ := hspec' p.1 (List.of_mem_zip hp).1
+    have hh : p.1.sc.holes = [] := by rw [(hs.facts).2.2.2.2.2.2.2.1]; exact hI.holes
+    have := hall p hp
+    rwa [closed_eq hh fun o h => (Expr.shape _ (Fn.holeFree_body hf) _ _ _ o hh h).2.2.1] at this
+  exact group_post hI hlen htl (fun h hh => (hspec' h hh).1) (fun h hh => Fn.holeFree_header (hspec' h hh).2) hnd'
+    hfr' hpad (fun ht => ⟨hI, hI.live ht, ht, hlen, htl, hspec', hnd', hfr', hpad,
+      fun p hp => ⟨_, rfl, rfl, rfl, hgg, hbody p hp⟩, hclean⟩) rfl rfl rfl rfl rfl rfl rfl rfl hgg
 
 end FnGroup
 

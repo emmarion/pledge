@@ -29,8 +29,8 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
   types and `is` rules, canonicalization, identity, the strict-subterm
   relation (§9) and shortest rewrite sequences (§13).
 - `src/telescope.ts`: opening telescopes, forcing with refutation
-  derivations (§7), the unifier that solves `_` arguments (§16) by
-  giving rules only to their own entries, and the comparison of a
+  derivations (§7), the unifier that solves each `_` written for an argument or inside a
+  type (§16) by giving rules only to its own entry, and the comparison of a
   function's telescopes with a function goal's (§12).
 - `src/render.ts`: display of terms, entries and telescopes as
   `Rendered`.
@@ -41,7 +41,8 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
   refers to, and the spans of erased code the editor sets in italics.
 - `src/expr.ts`: expressions, statements, telescopes, what a position
   is given (§8), `match` and pattern `let` (§10), the §9 marks,
-  per-result taint and erasure (§12, §16), `_` arguments, and the tree
+  per-result taint and erasure (§12, §16), `_` for an argument or inside a
+  type, and the tree
   the interpreter evaluates (§14).
 - `src/check.ts`: the top level of the checker: `data` groups, function
   groups with the taint fixed point (§12), top-level statements,
@@ -88,7 +89,7 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
 
 `lean/` holds a second implementation of the checker and evaluator, in
 Lean 4, and Lean-checked soundness theorems about it for programs
-without `_` arguments, under phase 1 or 2, `sorry` included;
+with no `_` for an argument or inside a type, under phase 1 or 2, `sorry` included;
 `lean/README.md` describes its layout, what
 is proved and how it differs from the code above. It shares no code
 with `src/`. Its evaluation is a big-step relation, run by a `partial`

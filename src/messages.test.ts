@@ -89,8 +89,6 @@ test("a qed against a type goal names the goal's proof", () => {
 });
 
 test("phase 2 syntax in a phase 1 program says so", () => {
-  says(`${nat}print Succ(⟦_⟧);\n`,
-    "`_` stands for an erased argument only from phase 2 on (§16), and this program is checked under phase 1");
   says(`${nat}fn f(⟦erased⟧ n : Nat()) -> (r : Nat()) { n }\n`,
     "`erased` is a multiplicity, which phase 2 adds (§16), and this program is checked under phase 1");
   says(`${nat}let ⟦many⟧ x = Zero();\n`,

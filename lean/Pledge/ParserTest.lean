@@ -116,7 +116,6 @@ def phase2Files : List String := [
   ("let x = _a;", 8, "`_a` is not a name: a name starts with a letter"),
   ("let x = a - b;", 10, "unexpected character"),
   ("let x = { comptime let C() = y; z };", 10, "an expression"),
-  ("let x = f(_);", 10, "only from phase 2 on"),
   ("let x = { y; }", 11, "takes no `;`"),
   ("x;", 0, "a declaration or a top-level statement"),
   ("let x = ;\né", 8, "expected an expression"),
@@ -129,6 +128,10 @@ def phase2Files : List String := [
   ("fn f(n : Nat()) -> r : Nat() { n }", 19, "returns are a telescope"),
   ("let x = { };", 10, "a block ends with a final expression"),
   ("let x = f(n", 11, "expected `)`, found end of input")].all fun (s, p, m) => err s p m
+
+#guard match tops "let (x : V(_, Zero()), y) = f(_);" with
+  | [.stmt (.let _ [⟨_, some (.type (.app _ [.hole _, _])), none⟩, _] (.app _ [.mk none (.var ⟨none, _⟩)]))] => true
+  | _ => false
 
 #guard match tops "let erased = many;" with
   | [.stmt (.let _ [⟨⟨some "erased", _⟩, none, none⟩] (.var ⟨some "many", _⟩))] => true

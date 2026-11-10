@@ -13,7 +13,7 @@ theorem checkArgs_cons {C : Ctx} {sc : Scope} {owner role : String} {p : TBinder
     ∃ o r rest, checkExpr C sc (some (argGiven p prev role owner false)) e = .ok o ∧ o.res = [r] ∧
       checkArgs C o.sc owner role false ps (prev ++ [r]) as = .ok rest ∧
       out = ⟨rest.sc, r :: rest.res, .mk m o.tree :: rest.trees, o.snaps ++ rest.snaps⟩ := by
-  simp only [checkArgs, isHole_false hh, Bool.and_false, Bool.false_eq_true, ↓reduceIte] at h
+  simp only [checkArgs, isHole_false hh, Bool.false_eq_true, ↓reduceIte] at h
   obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
   obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
   obtain ⟨rest, hrest, h⟩ := bind_eq_ok.1 h
@@ -198,8 +198,8 @@ theorem post {C : Ctx} {sc : Scope} {g g₁ : Option Given} {whole : Bool} {n0 :
       ∃ us, Eval W.P env (.app h a.trees) us ∧ MultsRel W.Sc C.phase (sig.returns.map (·.mult)) us rs)
     (happ : applied (opened a.sc sig.returns (a.res.map (·.term)) h.name h.pos fun _ => tainted).1 g₁ h.pos
       (opened a.sc sig.returns (a.res.map (·.term)) h.name h.pos fun _ => tainted).2 (.app h a.trees)
-      sc.holes.length a.snaps = .ok o₀)
-    (hf : finish { C with erased := whole } whole g₁ (.app h args) o₀ = .ok o) :
+      (some sc.holes.length) a.snaps = .ok o₀)
+    (hf : finish (C.enter whole) whole g₁ (.app h args) o₀ = .ok o) :
     ExprPost C sc g n0 W ρ act o := by
   generalize hop : opened a.sc sig.returns (a.res.map (·.term)) h.name h.pos (fun _ => tainted) = op at happ
   obtain ⟨-, -, hlen, -⟩ := opened_shape a.sc sig.returns (a.res.map (·.term)) h.name h.pos fun _ => tainted
@@ -279,7 +279,7 @@ theorem core {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSound a.expr
     {g : Option Given} {n0 : Nat} {W : World} {ρ : List Value} {act : Act} {o o₀ : Out} {sig : FnSig}
     {a : ArgsOut} (hI : Inv C sc n0 W ρ act) (hg : ∀ g', g = some g' → g'.Ok W.Sc ρ)
     (hfo : FnOk n0 C.phase W C.fn act h.name sig) (har : sig.params.length = args.length)
-    (ha : checkArgs { C with erased := C.erased || g.any (·.allErased) } sc h.name "parameter" false sig.params []
+    (ha : checkArgs (C.enter (C.erased || g.any (·.allErased))) sc h.name "parameter" false sig.params []
       args = .ok a)
     (hlt : ∀ ρ' vs d, Inv C a.sc n0 W (ρ ++ ρ') act → Term.evalList (ρ ++ ρ') [] (a.res.map (·.term)) = some vs →
       vs.length = sig.params.length → W.P.fns.find h.name = some d → d.subterm = sig.subterm →
@@ -289,12 +289,12 @@ theorem core {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSound a.expr
     (happ : applied (opened a.sc sig.returns (a.res.map (·.term)) h.name h.pos
         fun _ => sig.tainted || a.res.any (·.tainted)).1 (if C.erased then g.map (·.erase) else g) h.pos
       (opened a.sc sig.returns (a.res.map (·.term)) h.name h.pos fun _ => sig.tainted || a.res.any (·.tainted)).2
-      (.app h a.trees) sc.holes.length a.snaps = .ok o₀)
-    (hf : finish { C with erased := C.erased || g.any (·.allErased) } (C.erased || g.any (·.allErased))
+      (.app h a.trees) (some sc.holes.length) a.snaps = .ok o₀)
+    (hf : finish (C.enter (C.erased || g.any (·.allErased))) (C.erased || g.any (·.allErased))
       (if C.erased then g.map (·.erase) else g) (.app h args) o₀ = .ok o) :
     ExprPost C sc g n0 W ρ act o := by
   intro hnt
-  have hI₁ : Inv { C with erased := C.erased || g.any (·.allErased) } sc n0 W ρ act := hI.congr_ctx rfl rfl rfl
+  have hI₁ : Inv (C.enter (C.erased || g.any (·.allErased))) sc n0 W ρ act := hI.congr_ctx rfl rfl rfl
   obtain ⟨-, -, hah, -, -⟩ := args_shape ihs hh hI.holes ha
   have hopf := opened_fst a.sc sig.returns (a.res.map (·.term)) h.name h.pos
     fun _ => sig.tainted || a.res.any (·.tainted)
@@ -319,7 +319,7 @@ theorem core {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSound a.expr
     refine post rfl rfl hg hIa' hvs (TeleSat.teleOk hIa.noJunk _ hrs')
       (fun _ hwf env hE => ?_) happ hf hnt
     obtain ⟨us, hev, hrel⟩ := hrun env hE
-    rw [show ({ C with erased := C.erased || g.any (·.allErased) } : Ctx).erased = false from hwf] at hrel
+    rw [show ((C.enter (C.erased || g.any (·.allErased))) : Ctx).erased = false from hwf] at hrel
     obtain ⟨rs', hcall, hmr⟩ := hrun' us (hrel.multsRel fun r hr => hall r hr)
     exact ⟨rs', .call hev hd hcall, hmr⟩
   | true =>

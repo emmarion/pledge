@@ -75,13 +75,14 @@ export interface State {
   record: boolean;
 }
 
-export interface Hole { id: EntryId; span: Span; is: Term | null; from: number }
+export interface Hole { id: EntryId; span: Span; is: Term | null; from: number; late: boolean }
 export interface Ctx {
   st: State;
   fn: FnCtx | null;
   skeleton: boolean;
   limit: number | null;
   erased: boolean;
+  inType: boolean;
   holes: Hole[];
   decl: EntryId | null;
 }

@@ -284,9 +284,8 @@ theorem ensure_ok {ok : Bool} {pos : Pos} {what : String} {u : Unit} (h : ensure
   · simp [ensure, internal, failAt_eq] at h
   · rfl
 
-theorem settle_nil {sc : Scope} (hh : sc.holes = []) (g : Option Given) (rs : List Res) (since : Nat) :
-    settle sc g rs since = .ok (sc, false) := by
-  unfold settle; rw [hh, List.drop_nil]; rfl
+theorem close_nil {o : Out} (hh : o.sc.holes = []) (since : Nat) (all : Bool) : close o since all = .ok o := by
+  unfold close; rw [hh, List.drop_nil]; rfl
 
 theorem produced_eq {sc : Scope} {g : Option Given} {pos : Pos} {rs : List Res} {tree : Expr} {o : Out}
     (hh : sc.holes = []) (h : produced sc g pos rs tree = .ok o) : o = ⟨sc, rs, tree, []⟩ := by
@@ -327,15 +326,40 @@ theorem produced_eq {sc : Scope} {g : Option Given} {pos : Pos} {rs : List Res} 
                    · cases h)
       rw [this _ _ _ _ hsc]
 
-theorem applied_eq {sc : Scope} {g : Option Given} {pos : Pos} {rs : List Res} {tree : Expr} {since : Nat}
-    {snaps : List Snapshot} {o : Out} (hh : sc.holes = []) (h : applied sc g pos rs tree since snaps = .ok o) :
+theorem applied_eq {sc : Scope} {g : Option Given} {pos : Pos} {rs : List Res} {tree : Expr}
+    {since : Option Nat} {snaps : List Snapshot} {o : Out} (hh : sc.holes = [])
+    (h : applied sc g pos rs tree since snaps = .ok o) :
     o = ⟨sc, rs, tree, snaps⟩ ∧ produced sc g pos rs tree = .ok ⟨sc, rs, tree, []⟩ := by
   simp only [applied, keep_ok] at h
   obtain ⟨o', ho', h⟩ := bind_eq_ok.1 h
   obtain rfl := produced_eq hh ho'
-  simp only [settle_nil hh, ok_bind] at h
-  simp only [Bool.false_eq_true, ↓reduceIte, pure, Except.pure, Except.ok.injEq] at h
-  exact ⟨h.symm, ho'⟩
+  have hc : close ⟨sc, rs, tree, []⟩ = fun n a => .ok ⟨sc, rs, tree, []⟩ := funext fun n => funext (close_nil hh n)
+  cases since <;> simp only [hc, ok_bind, pure, Except.pure, Except.ok.injEq] at h <;> exact ⟨h.symm, ho'⟩
+
+theorem close_res {o o' : Out} {since : Nat} {all : Bool} (h : close o since all = .ok o') :
+    o'.res.length = o.res.length := by
+  unfold close at h
+  split at h
+  · cases h; rfl
+  · obtain ⟨vs, -, h⟩ := bind_eq_ok.1 h
+    simp only at h
+    split at h
+    · cases h; rfl
+    · cases h; simp
+
+/-- `closed` with no `_` being solved, around a check that leaves none, is the check. -/
+theorem closed_eq {sc : Scope} {check : Scope → CheckM Out} (hh : sc.holes = [])
+    (hc : ∀ o, check sc = .ok o → o.sc.holes = []) : closed sc check = check sc := by
+  have hs : ({ sc with holes := [] } : Scope) = sc := by cases sc; cases hh; rfl
+  unfold closed
+  rw [hs]
+  cases h : check sc with
+  | error e => rfl
+  | ok o =>
+    have ho := hc o h
+    simp only [ok_bind, close_nil ho]
+    show Except.ok { o with sc := { o.sc with holes := sc.holes } } = .ok o
+    rw [hh, ← ho]
 
 /-- What `finish` does (§12, §16): an expression produces a value; in a tainted scope every result is tainted; outside
 a wholly erased position, an erased result is in an erased position; and the tree is removed when the position is

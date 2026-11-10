@@ -97,14 +97,15 @@ def declCtor (owner : String) (st : TopState) (k : Ctor) : CheckM TopState := do
   let _ ← fresh C st.sc [] k.name.name k.name.pos
   ensure (k.name.name != junkHead.name) k.name.pos "a value constructor is named `sorry`"
   let fs ← telescope C st.sc k.fields "binder"
-  unless (match k.ret with | .app h _ => h.name == owner | .var _ => false) do
+  unless (match k.ret with | .app h _ => h.name == owner | _ => false) do
     failAt k.ret.pos fun _ =>
       s!"{code k.name.name} returns {code owner} applied to one argument per parameter of {code owner} (§5)"
-  let r ← checkTerm C fs.sc k.ret
+  let r ← term C fs.sc k.ret false
   let ret ← abstractChecked fs.sc.Γ r.term fs.ids k.ret.pos
   topLevel st k.name.pos fs.tele
-  ensure (ret.entriesBelow st.sc.Γ.length && ret.boundsBelow fs.tele.length) k.ret.pos
-    "a value constructor's return mentions an entry below the top level or a missing field"
+  ensure (ret.entriesBelow st.sc.Γ.length && ret.boundsBelow fs.tele.length &&
+      match ret with | .app h _ => h == ⟨.type, owner⟩ | _ => false) k.ret.pos
+    "a value constructor's return mentions an entry below the top level or a missing field, or does not apply its type"
   let st := addSig st ⟨⟨.ctor, k.name.name⟩, fs.tele, ret⟩ (.ctor k.name.name)
   pure { st with globals := st.globals.map fun
     | .type n (some cs) d => .type n (some (if n == owner then cs ++ [k.name.name] else cs)) d
@@ -200,8 +201,8 @@ def fnGroup (st : TopState) (fs : List Fn) : CheckM TopState := do
     let (st, h) ← fnHead names st f
     pure (st, hs ++ [h])) (st0, [])
   let body (taint : List Bool) (h : FnHead) : CheckM Out :=
-    checkExpr { C with globals := setSigs st1.globals heads taint, fn := some h.fn } h.sc
-      (some (returnsGiven h)) h.f.body
+    let C := { C with globals := setSigs st1.globals heads taint, fn := some h.fn }
+    closed h.sc (checkExpr C · (some (returnsGiven h)) h.f.body)
   let step (taint : List Bool) : CheckM (List Out) := checkAll (body taint) heads
   let (taint, bodies) ← fixTaint step (heads.map fun _ => false)
   let pad := (heads.map fun h => h.fn.subterms.length).foldr max 0
@@ -221,7 +222,7 @@ def comptimeLet (st : TopState) (p : Pos) (m : Option Mult) (pat : Pattern) (rhs
   if m == some .erased then failAt p fun _ =>
     "a `comptime` pattern `let` evaluates its right-hand side (§11), so it cannot be erased (§16)"
   freshAll C st.sc pat.fields
-  let o ← checkExpr C st.sc none rhs
+  let o ← closed st.sc (checkExpr C · none rhs)
   keep o.snaps do
   let r ← single rhs.pos o.res
   let fs ← forcings C o.sc r.term rhs.pos [pat] p false
@@ -272,7 +273,8 @@ def topItem (st : TopState) : Top → CheckM TopState
     let env ← keep o.snaps (if o.sc.taintedBy.isSome then pure st.env else st.run o.tree)
     pure { st with sc := o.sc, env := env, snaps := st.snaps ++ o.snaps }
   | .print p e => do
-    let o ← checkExpr { st.ctx with place := "the expression of a `print`" } st.sc none e
+    let C := { st.ctx with place := "the expression of a `print`" }
+    let o ← closed st.sc (checkExpr C · none e)
     let v ← keep o.snaps do st.eval p o.tree (← single e.pos o.res).tainted
     let prints := st.prints ++ [(p, (v.map showValue).getD "sorry")]
     pure { st with sc := o.sc, prints := prints, snaps := st.snaps ++ o.snaps }
@@ -299,7 +301,7 @@ def topItem (st : TopState) : Top → CheckM TopState
           if let some (.fn ..) := st.ctx.global n then failAt e.pos fun _ =>
             s!"{code n} is a function, and naming a function proves only a function goal, " ++
             "`goal fn (...) -> (...);`; this goal is a type"
-        let o ← checkExpr st.ctx st.sc (some goal.given) e
+        let o ← closed st.sc (checkExpr st.ctx · (some goal.given) e)
         let tainted := o.res.any (·.tainted)
         let _ ← keep o.snaps (st.eval p o.tree tainted)
         pure { st with sc := o.sc, proved := !tainted, snaps := st.snaps ++ o.snaps }

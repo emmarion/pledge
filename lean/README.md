@@ -2,7 +2,7 @@
 
 A second implementation of Pledge's checker and evaluator, in Lean 4
 with no library beyond Lean's core, together with soundness theorems
-that Lean checks for programs without `_` arguments, under any phase,
+that Lean checks for programs without `_` (§16), under any phase,
 `sorry` and erasure included. Claude sessions
 wrote it, and this file is a Claude session's description of it. As
 for the TypeScript implementation, DESIGN.md is the specification, and
@@ -57,7 +57,7 @@ requests that touch `lean/` or `src/`.
   `Value.junk`, `Approx`, `Rel`, `MultRel`, `Sig.close`.
 - `Pledge/Unify.lean`: opening telescopes, `abstract?`, the strict
   subterm relation, `difference` (§12), and the equation solver behind
-  forcing (§7) and `_` arguments (§16).
+  forcing (§7) and `_` (§16).
 - `Pledge/Eval.lean`: evaluation (§11, §12, §16) as a big-step
   relation, `Eval` with `EvalList`, `CallRel`, `EvalBlock` and
   `EvalStmt`; its determinism (`Eval.det`) and monotonicity in the
@@ -90,10 +90,15 @@ does, and values are typed (`HasType`) by the program's signatures
 closed by the ideal values of the top-level entries they mention
 (`Sig.close`). **Run-time values** are what the evaluation relation
 computes, with `removed` where taint or erasure removed code (§12,
-§16). At a position that is not erased, a run-time value is related to
-an ideal one by `Rel`: the same head, and each argument related in the
-same way, except an erased argument, which only approximates
-(`Approx`: `removed`, or the same head over approximating arguments).
+§16) and for every application of a type constructor, which the
+checker leaves out of the evaluated tree with everything inside it, so
+that a value of type `Type()` is `removed` at run time and `print`
+shows it as `_`. At a position that is not erased, a run-time value is
+related to an ideal one by `Rel`: `removed` for an ideal value headed
+by a type constructor, or else the same head, and each argument
+related in the same way, except an erased argument, which only
+approximates (`Approx`: `removed`, or the same head over approximating
+arguments).
 At an erased position the relation is `Approx` (`MultRel`).
 
 A tainted entry (§12) need not have a value of its type. `Sat`, the
@@ -126,8 +131,11 @@ halves of a specification.
 ## What Lean checks
 
 A program is **hole-free** (`Program.holeFree`, `Sound/HoleFree.lean`)
-when no expression in it is `_` (§16's `_` arguments). `sorry`, `_` in
-place of a telescope, as in `sorry(_)`, and multiplicities are allowed.
+when no expression in it is `_` and no written term in it contains `_`
+(§16): neither an argument `_` nor a `_` in a binder's annotation, a
+`let` binder's annotation, a value constructor's return or a goal.
+`sorry`, `_` in place of a telescope, as in `sorry(_)`, and
+multiplicities are allowed.
 For a hole-free program `prog`, any phase, any `has` (whether the
 source is taken to contain a keyword, an argument of `runProgram` with
 no default, which `run` reads off the tokens) and any syntax error
@@ -196,8 +204,8 @@ against a type goal and against a function goal; a program with
 program with `sorry` and erased fields. Its `#guard`s also show that,
 in phases 1 and 2, a goal tainted through its type, a goal after a
 top-level pattern `let` on `sorry`, and an empty type's goal met by
-`qed sorry(_);` are not proved. Of the 351 programs of the
-differential corpus, 305 are hole-free, and 30 of these report their
+`qed sorry(_);` are not proved. Of the 401 programs of the
+differential corpus, 312 are hole-free, and 30 of these report their
 goal proved: 25 phase 1 programs without `sorry`, 3 phase 1 programs
 with `sorry` and 2 phase 2 programs.
 
@@ -258,7 +266,8 @@ items 69 to 75.
   mentioning an entry created after the scrutinee, a `comptime` pattern
   `let` below the top level, a `removed` expression being checked, and
   a telescope, value-constructor return or goal mentioning an entry
-  below the top level, and a type constructor or value constructor
+  below the top level, a value-constructor return that does not apply
+  its type constructor, and a type constructor or value constructor
   named `sorry`, which, `sorry` being a keyword, the parser is believed
   never to produce. No program of the corpus reaches one of these;
   nothing proves them unreachable.
@@ -267,9 +276,11 @@ items 69 to 75.
 
 ## What is not proved
 
-- Programs with `_` arguments (§16): every theorem assumes a hole-free
-  program, so the solving of `_` arguments by unification, and taint
-  through a `_` (§12), are not covered.
+- Programs with `_` (§16): every theorem assumes a hole-free program,
+  so the solving of `_` by unification, the checking of written terms
+  that contain `_` (which the Lean checker does apart from the checking
+  of those that do not), and taint through a `_` (§12) are not
+  covered.
 - That the internal checks are unreachable on programs DESIGN.md
   accepts.
 - Anything about the executable evaluator beyond its results'

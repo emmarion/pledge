@@ -5,14 +5,14 @@ namespace Pledge.Erased
 /-- The scrutinee of an erased `match` or pattern `let` (§16), checked in an erased position: its tree is removed,
 and in an untainted scope after it, its result has an ideal value. -/
 theorem scrut {s : Expr} (ihs : ExprSound s) (ihss : ExprShape s) {C : Ctx} {sc : Scope} {n0 : Nat} {W : World}
-    {ρ : List Value} {act : Act} {so : Out} {r : Res} {pl : String} {pos : Pos} (hI : Inv C sc n0 W ρ act)
-    (h : checkExpr { C with erased := true, place := pl } sc none s = .ok so)
+    {ρ : List Value} {act : Act} {so : Out} {r : Res} {pl : String} {it : Bool} {pos : Pos} (hI : Inv C sc n0 W ρ act)
+    (h : checkExpr { C with erased := true, place := pl, inType := it } sc none s = .ok so)
     (hr : single pos so.res = .ok r) (ht : so.sc.taintedBy = none) :
     so.tree = .removed ∧ so.sc.names = sc.names ∧ sc.Γ.eraseRules <+: so.sc.Γ.eraseRules ∧
       ∃ ρ₁ v, Inv C so.sc n0 W (ρ ++ ρ₁) act ∧ r.term.eval (ρ ++ ρ₁) [] = some v ∧ ResOk W.Sc r v := by
   have htree := (checkExpr_removed h).2.2.1 rfl
   obtain ⟨-, hn, -, hpre, -⟩ := ihss _ _ _ _ hI.holes h
-  obtain ⟨ρ₁, vs, hI₁, hvs, hres, -, -⟩ := (ihs { C with erased := true, place := pl } _ _ _ _ _ _ _
+  obtain ⟨ρ₁, vs, hI₁, hvs, hres, -, -⟩ := (ihs { C with erased := true, place := pl, inType := it } _ _ _ _ _ _ _
     (hI.congr_ctx rfl rfl rfl) (by simp) h).1 ht
   rw [single_ok hr] at hvs hres
   obtain ⟨v, vs', hv, hvs', rfl⟩ := Term.evalList_cons_eq_some.1 hvs
@@ -52,6 +52,7 @@ theorem patlet {p : Pos} {ct : Bool} {pat : Pattern} {rhs : Expr} (ih : ExprSoun
   obtain ⟨u', -, h⟩ := bind_eq_ok.1 h
   obtain ⟨so, hso, h⟩ := bind_eq_ok.1 h
   rw [keep_ok] at h
+  rw [closed_eq hI.holes fun o h => (ihs _ sc none o hI.holes h).2.2.1] at hso
   obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
   obtain ⟨fs, hfs, h⟩ := bind_eq_ok.1 h
   obtain ⟨sc', hsc', h⟩ := bind_eq_ok.1 h
@@ -148,7 +149,8 @@ theorem mapIdx_wants (tele : Telescope) (f : Nat → TBinder → Mult) :
   exact ⟨rfl, rfl⟩
 
 theorem «match» {p : Pos} {s : Expr} {ann : Tele} {bs : List Branch}
-    (ihs : ExprSound s) (ihss : ExprShape s) (ihb : ∀ b ∈ bs, ExprSound b.body) :
+    (hta : ∀ bs', ann = .binders bs' → ∀ b ∈ bs', b.ann.term.holed = false)
+    (ihs : ExprSound s) (ihss : ExprShape s) (ihb : ∀ b ∈ bs, ExprSound b.body) (ihbs : ∀ b ∈ bs, ExprShape b.body) :
     ExprSound (.match p (some .erased) s ann bs) := by
   intro C sc g n0 W ρ act o hI hg hc
   unfold checkExpr at hc
@@ -158,6 +160,7 @@ theorem «match» {p : Pos} {s : Expr} {ann : Tele} {bs : List Branch}
   simp only [he, Bool.or_true, ↓reduceIte, Bool.true_and] at h₀
   obtain ⟨so, hso, h₀⟩ := bind_eq_ok.1 h₀
   rw [keep_ok] at h₀
+  rw [closed_eq hI.holes fun o h => (ihss _ sc none o hI.holes h).2.2.1] at hso
   obtain ⟨r, hr, h₀⟩ := bind_eq_ok.1 h₀
   obtain ⟨⟨tele, tenv⟩, hann, h₀⟩ := bind_eq_ok.1 h₀
   obtain ⟨fs, hfs, h₀⟩ := bind_eq_ok.1 h₀
@@ -201,7 +204,7 @@ theorem «match» {p : Pos} {s : Expr} {ann : Tele} {bs : List Branch}
       rw [hres, opened_fst]; simp [hut]
     obtain ⟨htree_s, -, -, ρ₁, v, hI₁, hv, hrv⟩ := scrut ihs ihss hI hso hr hut
     obtain ⟨envv, henv, hcons⟩ := annotation_cons hI₁.termInv.weak
-      (fun g' h => MatchMany.givenOk_frame (MatchMany.given_erased (C := C) hg g' h).1 ρ₁) hann
+      (fun g' h => MatchMany.givenOk_frame (MatchMany.given_erased (C := C) hg g' h).1 ρ₁) hta hann
     obtain ⟨-, -, hrsl, hrs⟩ := opened_shape so.sc tele tenv "match" p t
     have hlen : ∀ G, g = some G → o.res.length = G.wants.length := fun G hG => by
       obtain ⟨G', hG', -, hl, -⟩ := erase_some (C := C) hG
@@ -283,6 +286,7 @@ theorem «match» {p : Pos} {s : Expr} {ann : Tele} {bs : List Branch}
     have hzj : (bs.zip bo.outs)[j]? = some (b, ob) := List.getElem?_zip_eq_some.2 ⟨hbj, hobj⟩
     have htrj : bo.trees[j]? = some (.mk b.pat ob.tree) := by simp [htr, hzj]
     obtain ⟨Γb, idsb, hsurv, hcheck⟩ := hbr b ob (List.mem_of_getElem? hzj)
+    rw [closed_eq (by rw [Scope.bind_eq]) fun o h => (ihbs b hb _ _ _ o (by rw [Scope.bind_eq]) h).2.2.1] at hcheck
     obtain ⟨f, hf1, hf2⟩ := survivor_spec hsurv
     rw [hbn, hfc] at hf1
     cases hf1
@@ -292,7 +296,7 @@ theorem «match» {p : Pos} {s : Expr} {ann : Tele} {bs : List Branch}
     have hfl := forcings_fields hfs (List.mem_map_of_mem hb) hsig' hws
     have hreach : reach so.sc r s.pos = none := by simp [reach, hut, hrt]
     have hIb := (hI₁.pattern hsat hids hws hreach (hs := []) (fields := b.pat.fields) rfl).congr_ctx
-      (C' := { C with erased := C.erased || g.any (·.allErased) }) rfl rfl rfl
+      (C' := C.enter (C.erased || g.any (·.allErased))) rfl rfl rfl
     obtain ⟨hpostb, habsb⟩ := ihb b hb _ _ _ n0 W _ act ob hIb (by
       rintro g'' ⟨⟩
       refine ⟨⟨envv, Term.evalList_frame_ρ ws henv⟩, fun _ envv' he' => ?_⟩

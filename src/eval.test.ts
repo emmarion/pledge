@@ -39,7 +39,7 @@ const ack = fn("ack", ["m", "n"], 1, block([], match(v("m"), 1,
 const vuncons = fn("vuncons", ["A", "n", "v"], 2, block([patlet(pat("VCons", "_", "_", "h", "t"), v("v"))], tuple(v("h"), v("t"))));
 
 const fns: Fns = new Map([plus, ack, vuncons].map(f => [f.name.name!, { fn: f, globals: empty }]));
-const run = (e: Expr, env: Env = empty): string[] => evalExpr(fns, env, e).map(showValue);
+const run = (e: Expr, env: Env = empty): string[] => evalExpr(fns, env, e).map(v => showValue(v));
 
 const internal = /internal error in the evaluator/;
 
@@ -86,7 +86,7 @@ test("a removed value flows through lets unobserved but throws when matched on",
   assert.deepEqual(run(block([letT(["a", "b"], rem), letT(["c"], app("Succ", v("a")))], tuple(v("c"), nat(0)))), ["Succ(_)", natText(0)]);
   const two = fn("two", [], 2, block([], rem));
   const withTwo: Fns = new Map([...fns, ["two", { fn: two, globals: empty }]]);
-  assert.deepEqual(evalExpr(withTwo, empty, block([letT(["a", "b"], app("two"))], tuple(v("b"), v("a")))).map(showValue), ["_", "_"]);
+  assert.deepEqual(evalExpr(withTwo, empty, block([letT(["a", "b"], app("two"))], tuple(v("b"), v("a")))).map(v => showValue(v)), ["_", "_"]);
   assert.throws(() => run(match(rem, 1, [pat("Zero"), nat(0)])), internal);
   assert.throws(() => evalStmt(fns, empty, patlet(pat("Succ", "p"), rem)), internal);
   assert.throws(() => run({ kind: "sorry", tele: { kind: "_", span }, span }), internal);

@@ -64,13 +64,10 @@ and never renumbered (rule 15); a removed item leaves a gap.
    followed by more. A `;` with nothing before it, at the start of
    the program or of a block, is rejected. This may be stricter or
    looser than intended.
-11. **`_` as an erased argument** (§16) is accepted only as a whole
-    argument of a call or application in an expression, in phase 2;
-    not inside a skeleton term such as `Vec(_, n)`, and not as a tuple
-    element. Under phase 1, a `_` argument, and a syntax error on the
-    token after a name spelled `erased` or `many`, are reported as
-    phase 2 syntax; the second can mislead where the name is an
-    ordinary one.
+11. **Phase 2 words in phase 1.** Under phase 1, a syntax error on the
+    token after a name spelled `erased` or `many` is reported as
+    phase 2 syntax, which can mislead where the name is an ordinary
+    one.
 12. **Lexing.** A maximal run of letters, digits and `_` is one token;
     one not starting with a letter, other than `_` alone, is an error
     rather than being split. Any non-ASCII character is an error, in a
@@ -326,29 +323,66 @@ and never renumbered (rule 15); a removed item leaves a gap.
     `many` annotation entry, even when the whole match is in an erased
     position and never runs. `comptime let erased C(...) = e;` is
     rejected, since the run needs the value.
-49. **Type-constructor arguments** are removed before evaluation like
-    any erased position, so `print Vec(Nat(), Zero());` shows
-    `Vec(_, _)` in phase 2.
+49. **No type is evaluated** (DECISIONS.md D37). An application of a
+    type constructor written in an expression is left out of what is
+    evaluated, with everything inside it, in every phase, as an erased
+    position is; so every value of type `Type()` is the same
+    placeholder at run time, and `print` shows it as `_`. A call
+    written inside a type therefore never runs.
 50. **`sorry`'s telescope** takes no multiplicities; `sorry(_)` takes
     those of the telescope it stands for.
-51. **`_`** is allowed only for an argument whose parameter or field is
-    erased, or a type constructor's argument. It gets a fresh erased
-    entry typed by its parameter. Wherever a result is checked against
-    what its position is given, the two sides are first unified by
-    forcing's equation engine, which here gives a rule only to the
-    entry of a `_` still being solved. When the application ends,
-    every `_` created for it must be solved, unless what the position
-    is given mentions a `_` of an enclosing application, which then
-    solves it; a solution must have the parameter's type and satisfy
-    its `is` clause, as a written argument would, and must mention
-    only entries created before the `_`. This last rule is what keeps
-    a `_` from being solved to a result of the very call it is an
-    argument of; it also rejects a `_` determined only by a later
-    argument's call result, and it still accepts a solution naming an
-    earlier argument's call result, which no written argument could.
-    A block's final expression takes part in solving a `_` of the
-    application the block is an argument of, as a direct argument
-    does; the block's statements and a match branch's body do not.
+51. **`_` for an argument or inside a type** (DECISIONS.md D36). The
+    code reads the allowed positions, and "solved by rules along the
+    lines of Sleight's", as follows. Each point is this log's choice
+    and may be narrower or wider than intended.
+    - *Positions.* An argument counts as erased when its parameter or
+      field is erased, when it is a type constructor's argument in
+      phase 2, or when the application is in an erased position. Its
+      type is `Type()` when its parameter's type, instantiated by the
+      earlier arguments, canonicalizes to `Type()` where the `_` is
+      written. Inside a type means at any depth among the arguments of
+      an application of a type constructor, whether written as a type
+      or as an expression, and a whole binder type or annotation entry
+      (`x : _`). A `_` is not a tuple element and not a whole `is`
+      term.
+    - *Entry.* A `_` gets a fresh entry typed by its parameter.
+      Wherever a result is checked against what its position is given,
+      the two sides are first unified by forcing's equation engine,
+      which here gives a rule only to the entry of a `_` still being
+      solved.
+    - *Where a `_` must be solved.* By the end of the innermost of:
+      the call it is in, after the call's results are checked against
+      what the call is given; a function body, a branch body, a
+      scrutinee, a pattern `let`'s right-hand side, a `print`'s or
+      `qed`'s expression; a tuple `let`; and, for a `_` in a type or
+      `is` term written in a telescope, that term. An application of a
+      value constructor or a type constructor is not such an end: its
+      `_` waits for what surrounds it. A `_` is not solved from inside
+      a branch body or a block's statements that it is not written in.
+    - *Solution.* It must have the parameter's type and satisfy its
+      `is` clause, as a written argument would, and must mention only
+      entries created before the `_`, and no `_` still unsolved. The
+      first of these last two keeps a `_` from being solved to a
+      result of the very call it is an argument of; it also rejects a
+      `_` determined only by a later argument's call result.
+    - *Evaluation.* No `_` is evaluated: `print` shows each as `_`,
+      as it shows an erased field (§16), whatever the `_` is solved
+      to. So a `_` that is not in an erased position is allowed to be
+      solved to a term that mentions erased values. This relies on a
+      value of type `Type()` never being a scrutinee (§4), and on no
+      type being evaluated (item 49).
+    - *Taint* (§12). A `_` solved to a term that mentions a tainted
+      entry taints every result of the call it closes with, and
+      otherwise each result, where it closes, built from it by
+      applications.
+    - *Tuple `let`.* The binders are checked first, the `_` in their
+      annotations left unsolved, and what they give the right-hand
+      side mentions those `_`, which checking its results against them
+      solves, as in Sleight. `_` in place of an annotation (§10) is not
+      allowed on the right-hand side of a `let` with a `_` in a
+      binder's annotation. The solution of a `_` in a binder's
+      annotation is allowed to mention what the right-hand side
+      produces.
 53. **Scope and Expected panels** mark an entry erased when it was
     opened erased or every one of its names was bound erased.
     Interactive mode checks typed text as in an erased position, since
@@ -378,7 +412,7 @@ and never renumbered (rule 15); a removed item leaves a gap.
 
 69. **A second implementation** in `lean/`, in Lean 4 with no library
     beyond Lean's core, checks and evaluates programs under phases 1
-    and 2, with soundness theorems for programs without `_` arguments,
+    and 2, with soundness theorems for programs with no `_` for an argument or inside a type,
     under either phase (`lean/README.md`). Its interface is a command line, `pledge check
     --phase N FILE`, printing one JSON object with the program's error,
     printed values, `qed` state, whether the goal is proved, whether
@@ -399,7 +433,7 @@ and never renumbered (rule 15); a removed item leaves a gap.
     evaluator follows it and is `partial`; each result it returns
     carries a derivation of the relation. A run that does not end
     leaves checking without an end; Theorem 6.2's Lean counterpart is
-    meant to rule this out for programs without `_` arguments, but it
+    meant to rule this out for programs with no `_` for an argument or inside a type, but it
     is about the relation, and no theorem says the evaluator returns.
     There is no fuel and no depth bound.
 73. **Internal checks.** Where the code relies on an invariant of its

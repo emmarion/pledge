@@ -9,6 +9,7 @@ structure Prog where
   kind : String → Option HeadKind
 
 mutual
+  /-- A value as text, a removed one as `_`. -/
   def showValue : Value → String
     | .app h args => h.name ++ "(" ++ showValues args ++ ")"
     | .removed => "_"

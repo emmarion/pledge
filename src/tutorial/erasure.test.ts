@@ -55,7 +55,7 @@ test("holes: Expected and the term at a `_` show its parameter and solution", ()
 
 test("holes: each limit is reported at the `_`", () => {
   errorAt("holes", "print VNil(_);\n", "_);");
-  errorAt("holes", "let (e : Vec(_, Zero())) = VNil(Nat());\n", "_, Zero()))");
+  errorAt("holes", "fn two(erased n : Nat(), v : Vec(_, n)) -> (r : Nat()) {\n  Zero()\n}\n", "_, n)");
   errorAt("holes", "let w = VCons(Nat(), Zero(), Zero(), VNil(Nat()));\nprint VCons(_, _, _, w);\n", "_, w)");
   const later = `fn vrep(n : Nat()) -> (v : Vec(Nat(), n)) {
   sorry(_)

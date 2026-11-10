@@ -509,7 +509,7 @@
      },
      {
       "pos": 553,
-      "value": "VCons(Nat(), Zero(), Succ(Zero()), VNil(Nat()))"
+      "value": "VCons(_, Zero(), Succ(Zero()), VNil(_))"
      }
     ],
     "qed": "none",
@@ -729,7 +729,7 @@
     "prints": [
      {
       "pos": 800,
-      "value": "VCons(Pair(Nat(), Nat()), Succ(Zero()), MkPair(Nat(), Nat(), Zero(), Zero()), VCons(Pair(Nat(), Nat()), Zero(), MkPair(Nat(), Nat(), Succ(Zero()), Succ(Zero())), VNil(Pair(Nat(), Nat()))))"
+      "value": "VCons(_, Succ(Zero()), MkPair(_, _, Zero(), Zero()), VCons(_, Zero(), MkPair(_, _, Succ(Zero()), Succ(Zero())), VNil(_)))"
      }
     ],
     "qed": "none",
@@ -1033,7 +1033,7 @@
      },
      {
       "pos": 1505,
-      "value": "VCons(Nat(), Succ(Succ(Zero())), Zero(), VCons(Nat(), Succ(Zero()), Succ(Zero()), VCons(Nat(), Zero(), Succ(Succ(Zero())), VNil(Nat()))))"
+      "value": "VCons(_, Succ(Succ(Zero())), Zero(), VCons(_, Succ(Zero()), Succ(Zero()), VCons(_, Zero(), Succ(Succ(Zero())), VNil(_))))"
      }
     ],
     "qed": "checks",
@@ -1465,7 +1465,7 @@
     "prints": [
      {
       "pos": 483,
-      "value": "VCons(Nat(), Zero(), Succ(Zero()), VNil(Nat()))"
+      "value": "VCons(_, Zero(), Succ(Zero()), VNil(_))"
      }
     ],
     "qed": "none",
@@ -1484,7 +1484,7 @@
     "prints": [
      {
       "pos": 424,
-      "value": "VCons(Nat(), Zero(), Succ(Zero()), VNil(Nat()))"
+      "value": "VCons(_, Zero(), Succ(Zero()), VNil(_))"
      }
     ],
     "qed": "none",
@@ -1766,7 +1766,7 @@
    "expected": {
     "error": {
      "pos": 1061,
-     "message": "this evaluates to `None(Even(Succ(Zero())))`, which is not headed by `Some` (§11)"
+     "message": "this evaluates to `None(_)`, which is not headed by `Some` (§11)"
     },
     "prints": [],
     "qed": "none",
@@ -3904,11 +3904,11 @@
      },
      {
       "pos": 769,
-      "value": "Vec(_, _)"
+      "value": "_"
      },
      {
       "pos": 785,
-      "value": "Vec(_, _)"
+      "value": "_"
      }
     ],
     "qed": "none",
@@ -4411,7 +4411,7 @@
    "expected": {
     "error": {
      "pos": 275,
-     "message": "`_` stands for an erased argument (§16), and field `head` of `VCons` is not erased"
+     "message": "`_` stands for an argument that is erased or has type `Type()`, or for part of a type (§16), and field `head` of `VCons` is none of these"
     },
     "prints": [],
     "qed": "none",
@@ -4428,7 +4428,7 @@
    "expected": {
     "error": {
      "pos": 117,
-     "message": "`_` stands for an erased argument (§16), and parameter `n` of `f` is not erased"
+     "message": "`_` stands for an argument that is erased or has type `Type()`, or for part of a type (§16), and parameter `n` of `f` is none of these"
     },
     "prints": [],
     "qed": "none",
@@ -4445,7 +4445,7 @@
    "expected": {
     "error": {
      "pos": 268,
-     "message": "this `_` cannot be inferred: this checker solves a `_` only from the other arguments and what the position is given, and these do not determine it"
+     "message": "this `_` cannot be inferred: a `_` is solved only by unification, from the arguments around it and what its position is given, before the call, statement, scrutinee, body or binder it is in ends, and these do not determine it (§16)"
     },
     "prints": [],
     "qed": "none",
@@ -4462,7 +4462,7 @@
    "expected": {
     "error": {
      "pos": 329,
-     "message": "this `_` cannot be inferred: this checker solves a `_` only from the other arguments and what the position is given, and these do not determine it"
+     "message": "this `_` cannot be inferred: a `_` is solved only by unification, from the arguments around it and what its position is given, before the call, statement, scrutinee, body or binder it is in ends, and these do not determine it (§16)"
     },
     "prints": [],
     "qed": "none",
@@ -4561,7 +4561,7 @@
    "expected": {
     "error": {
      "pos": 570,
-     "message": "this `_` cannot be inferred: this checker solves a `_` only from the other arguments and what the position is given, and these do not determine it"
+     "message": "this `_` cannot be inferred: a `_` is solved only by unification, from the arguments around it and what its position is given, before the call, statement, scrutinee, body or binder it is in ends, and these do not determine it (§16)"
     },
     "prints": [],
     "qed": "unreached",
@@ -4578,7 +4578,7 @@
    "expected": {
     "error": {
      "pos": 662,
-     "message": "this `_` cannot be inferred: this checker solves a `_` only from the other arguments and what the position is given, and these do not determine it"
+     "message": "this `_` cannot be inferred: a `_` is solved only by unification, from the arguments around it and what its position is given, before the call, statement, scrutinee, body or binder it is in ends, and these do not determine it (§16)"
     },
     "prints": [],
     "qed": "none",
@@ -4595,7 +4595,7 @@
    "expected": {
     "error": {
      "pos": 346,
-     "message": "this `_` would be `?1@9:66`, which mentions what is produced only after it, such as a result of the call it is an argument of, and this checker solves a `_` only to what exists before it"
+     "message": "this `_` would be `?1@9:66`, which mentions what is produced only after it, such as a result of the call it is an argument of, and a `_` is solved only to what exists before it"
     },
     "prints": [],
     "qed": "none",
@@ -4612,7 +4612,7 @@
    "expected": {
     "error": {
      "pos": 169,
-     "message": "this `_` would be `?@7:12`, which mentions what is produced only after it, such as a result of the call it is an argument of, and this checker solves a `_` only to what exists before it"
+     "message": "this `_` would be `?@7:12`, which mentions what is produced only after it, such as a result of the call it is an argument of, and a `_` is solved only to what exists before it"
     },
     "prints": [],
     "qed": "none",
@@ -4858,6 +4858,688 @@
   },
   {
    "id": 275,
+   "origin": "src/holes.test.ts:16",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nprint VCons(_, Zero(), Zero(), VNil(_));\n",
+   "expected": {
+    "error": null,
+    "prints": [
+     {
+      "pos": 236,
+      "value": "VCons(_, Zero(), Zero(), VNil(_))"
+     }
+    ],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 276,
+   "origin": "src/holes.test.ts:18",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nfn mk(A : Type(), x : A) -> (r : Vec(A, Succ(Zero()))) {\n  VCons(_, Zero(), x, VNil(_))\n}\nprint mk(_, Zero());\n",
+   "expected": {
+    "error": null,
+    "prints": [
+     {
+      "pos": 326,
+      "value": "VCons(_, Zero(), Zero(), VNil(_))"
+     }
+    ],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 277,
+   "origin": "src/holes.test.ts:19",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nprint VCons(Nat(), _, Zero(), VNil(Nat()));\n",
+   "expected": {
+    "error": {
+     "pos": 255,
+     "message": "`_` stands for an argument that is erased or has type `Type()`, or for part of a type (§16), and field `n` of `VCons` is none of these"
+    },
+    "prints": [],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 278,
+   "origin": "src/holes.test.ts:20",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nprint Succ(_);\n",
+   "expected": {
+    "error": {
+     "pos": 83,
+     "message": "`_` stands for an argument that is erased or has type `Type()`, or for part of a type (§16), and field `pred` of `Succ` is none of these"
+    },
+    "prints": [],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 279,
+   "origin": "src/holes.test.ts:21",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nprint VNil(_);\n",
+   "expected": {
+    "error": {
+     "pos": 247,
+     "message": "this `_` cannot be inferred: a `_` is solved only by unification, from the arguments around it and what its position is given, before the call, statement, scrutinee, body or binder it is in ends, and these do not determine it (§16)"
+    },
+    "prints": [],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 280,
+   "origin": "src/holes.test.ts:25",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Eq(A : Type(), a : A, b : A) : Type() {\n  Refl(A : Type(), a : A) : Eq(A, a, a);\n}\nprint Eq(_, Zero(), Zero());\n",
+   "expected": {
+    "error": null,
+    "prints": [
+     {
+      "pos": 160,
+      "value": "_"
+     }
+    ],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 281,
+   "origin": "src/holes.test.ts:26",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nlet v : Vec(_, _) = VCons(Nat(), Zero(), Zero(), VNil(Nat()));\nlet w : Vec(Nat(), _) = VNil(_);\nlet z : _ = Zero();\nprint w;\n",
+   "expected": {
+    "error": null,
+    "prints": [
+     {
+      "pos": 352,
+      "value": "VNil(_)"
+     }
+    ],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 282,
+   "origin": "src/holes.test.ts:27",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Eq(A : Type(), a : A, b : A) : Type() {\n  Refl(A : Type(), a : A) : Eq(A, a, a);\n}\nfn f(n : Nat(), p : Eq(_, n, n)) -> (q : Eq(_, n, n)) {\n  p\n}\n",
+   "expected": {
+    "error": null,
+    "prints": [],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 283,
+   "origin": "src/holes.test.ts:28",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nlet (m : Nat(), v : Vec(_, m)) = (Zero(), VNil(Nat()));\nlet w is VNil(_) = v;\n",
+   "expected": {
+    "error": null,
+    "prints": [],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 284,
+   "origin": "src/holes.test.ts:29",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Eq(A : Type(), a : A, b : A) : Type() {\n  Refl(A : Type(), a : A) : Eq(A, a, a);\n}\ngoal Eq(_, Zero(), Zero());\nqed Refl(_, Zero());\n",
+   "expected": {
+    "error": null,
+    "prints": [],
+    "qed": "checks",
+    "goalProved": true,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 285,
+   "origin": "src/holes.test.ts:30",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nfn f(n : Nat(), v : Vec(_, n)) -> (r : Nat()) {\n  n\n}\n",
+   "expected": {
+    "error": {
+     "pos": 260,
+     "message": "this `_` cannot be inferred: a `_` is solved only by unification, from the arguments around it and what its position is given, before the call, statement, scrutinee, body or binder it is in ends, and these do not determine it (§16)"
+    },
+    "prints": [],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 286,
+   "origin": "src/holes.test.ts:31",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nprint Vec(Nat(), Succ(_));\n",
+   "expected": {
+    "error": {
+     "pos": 258,
+     "message": "this `_` cannot be inferred: a `_` is solved only by unification, from the arguments around it and what its position is given, before the call, statement, scrutinee, body or binder it is in ends, and these do not determine it (§16)"
+    },
+    "prints": [],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 287,
+   "origin": "src/holes.test.ts:32",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nfn f(n : _) -> (r : Nat()) {\n  Zero()\n}\n",
+   "expected": {
+    "error": {
+     "pos": 81,
+     "message": "this `_` cannot be inferred: a `_` is solved only by unification, from the arguments around it and what its position is given, before the call, statement, scrutinee, body or binder it is in ends, and these do not determine it (§16)"
+    },
+    "prints": [],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 288,
+   "origin": "src/holes.test.ts:33",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nlet x is _ = Zero();\n",
+   "expected": {
+    "error": {
+     "pos": 81,
+     "message": "`_` stands only for a whole argument or inside a type (§16)"
+    },
+    "prints": [],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 289,
+   "origin": "src/holes.test.ts:34",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nlet v : Vec(_, Succ(_)) = VNil(Nat());\n",
+   "expected": {
+    "error": {
+     "pos": 262,
+     "message": "binder `v` must have type `Vec(Nat(), Succ(_@10:21))`, and this has type `Vec(Nat(), Zero())`"
+    },
+    "prints": [],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 290,
+   "origin": "src/holes.test.ts:35",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nlet (v : Vec(_, Zero()), w : Vec(Nat(), Zero()), e is v) = (VNil(Nat()), VNil(Nat()), VNil(Nat()));\nprint e;\n",
+   "expected": {
+    "error": null,
+    "prints": [
+     {
+      "pos": 336,
+      "value": "VNil(_)"
+     }
+    ],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 291,
+   "origin": "src/holes.test.ts:37",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nfn pair() -> (m : Nat(), v : Vec(Nat(), m)) {\n  (Zero(), VNil(_))\n}\nlet (m : Nat(), v : Vec(Nat(), _)) = pair();\nlet (k, u : Vec(_, _)) = pair();\nprint u;\n",
+   "expected": {
+    "error": null,
+    "prints": [
+     {
+      "pos": 382,
+      "value": "VNil(_)"
+     }
+    ],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 292,
+   "origin": "src/holes.test.ts:38",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nlet y : Vec(_, _) = sorry(_);\n",
+   "expected": {
+    "error": {
+     "pos": 262,
+     "message": "`_` stands for the whole telescope given at its position, and none is given here (§10)"
+    },
+    "prints": [],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": true,
+    "inspects": []
+   }
+  },
+  {
+   "id": 293,
+   "origin": "src/holes.test.ts:43",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nfn pair() -> (T : Type(), x : T) {\n  (Nat(), Zero())\n}\nlet (_, x) = pair();\nprint VCons(_, Zero(), x, VNil(_));\n",
+   "expected": {
+    "error": null,
+    "prints": [
+     {
+      "pos": 312,
+      "value": "VCons(_, Zero(), Zero(), VNil(_))"
+     }
+    ],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 294,
+   "origin": "src/holes.test.ts:44",
+   "phase": 2,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Box(A : Type()) : Type() {\n  MkBox(A : Type(), x : A) : Box(A);\n}\nfn h(erased A : Type(), x : A) -> (b : Box(A)) {\n  MkBox(_, x)\n}\nprint h(Nat(), Zero());\n",
+   "expected": {
+    "error": null,
+    "prints": [
+     {
+      "pos": 208,
+      "value": "MkBox(_, Zero())"
+     }
+    ],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 295,
+   "origin": "src/holes.test.ts:46",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\ndata IsZero(n : Nat()) : Type() {\n  IsZeroHere() : IsZero(Zero());\n}\nfn keep(n : Nat(), p : IsZero(n)) -> (r : Nat()) {\n  match n : _ {\n    Zero() => n;\n    Succ(m) => m;\n  }\n}\nprint Vec(Nat(), keep(Zero(), IsZeroHere()));\nprint Vec(Nat(), Succ(Zero()));\n",
+   "expected": {
+    "error": null,
+    "prints": [
+     {
+      "pos": 413,
+      "value": "_"
+     },
+     {
+      "pos": 459,
+      "value": "_"
+     }
+    ],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 296,
+   "origin": "src/holes.test.ts:47",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\ndata IsZero(n : Nat()) : Type() {\n  IsZeroHere() : IsZero(Zero());\n}\nfn keep(n : Nat(), p : IsZero(n)) -> (r : Nat()) {\n  match n : _ {\n    Zero() => n;\n    Succ(m) => m;\n  }\n}\nprint Vec(Nat(), keep(_, IsZeroHere()));\n",
+   "expected": {
+    "error": null,
+    "prints": [
+     {
+      "pos": 413,
+      "value": "_"
+     }
+    ],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 297,
+   "origin": "src/holes.test.ts:48",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\ndata IsZero(n : Nat()) : Type() {\n  IsZeroHere() : IsZero(Zero());\n}\nfn keep(n : Nat(), p : IsZero(n)) -> (r : Nat()) {\n  match n : _ {\n    Zero() => n;\n    Succ(m) => m;\n  }\n}\nprint keep(_, IsZeroHere());\n",
+   "expected": {
+    "error": {
+     "pos": 424,
+     "message": "`_` stands for an argument that is erased or has type `Type()`, or for part of a type (§16), and parameter `n` of `keep` is none of these"
+    },
+    "prints": [],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 298,
+   "origin": "src/holes.test.ts:53",
+   "phase": 2,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(erased A : Type()) : Vec(A, Zero());\n  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nfn mk(erased B : Type()) -> (v : Vec(B, Zero())) {\n  VNil(_)\n}\nlet x : Vec(Nat(), Zero()) = mk(_);\nlet y : Vec(Nat(), _) = VNil(_);\nlet z : Vec(Nat(), _) = mk(_);\n",
+   "expected": {
+    "error": null,
+    "prints": [],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 299,
+   "origin": "src/holes.test.ts:54",
+   "phase": 2,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(erased A : Type()) : Vec(A, Zero());\n  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nfn mk(erased B : Type()) -> (v : Vec(B, Zero())) {\n  VNil(_)\n}\nlet x = mk(_);\n",
+   "expected": {
+    "error": {
+     "pos": 331,
+     "message": "this `_` cannot be inferred: a `_` is solved only by unification, from the arguments around it and what its position is given, before the call, statement, scrutinee, body or binder it is in ends, and these do not determine it (§16)"
+    },
+    "prints": [],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 300,
+   "origin": "src/holes.test.ts:55",
+   "phase": 2,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Head(n : Nat()) : Type() {\n  HeadSucc(erased m : Nat()) : Head(Succ(m));\n}\ndata Wrap(n : Nat()) : Type() {\n  W(erased n : Nat(), h : Head(n)) : Wrap(n);\n}\nfn f(n : Nat()) -> (w : Wrap(Succ(n))) {\n  W(_, HeadSucc(_))\n}\n",
+   "expected": {
+    "error": null,
+    "prints": [],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 301,
+   "origin": "src/holes.test.ts:57",
+   "phase": 2,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(erased A : Type()) : Vec(A, Zero());\n  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nfn second(erased A : Type(), erased n : Nat(), v : Vec(A, Zero()), w : Vec(A, n)) -> (r : Vec(A, n)) {\n  w\n}\nprint second(_, _, VNil(_), VCons(_, _, Zero(), VNil(_)));\n",
+   "expected": {
+    "error": null,
+    "prints": [
+     {
+      "pos": 366,
+      "value": "VCons(_, _, Zero(), VNil(_))"
+     }
+    ],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 302,
+   "origin": "src/holes.test.ts:58",
+   "phase": 2,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(erased A : Type()) : Vec(A, Zero());\n  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nfn second(erased A : Type(), erased n : Nat(), v : Vec(A, Zero()), w : Vec(A, n)) -> (r : Vec(A, n)) {\n  w\n}\nfn len(erased A : Type(), v : Vec(A, Zero())) -> (r : Nat()) {\n  Zero()\n}\nprint len(_, VNil(_));\n",
+   "expected": {
+    "error": {
+     "pos": 450,
+     "message": "this `_` cannot be inferred: a `_` is solved only by unification, from the arguments around it and what its position is given, before the call, statement, scrutinee, body or binder it is in ends, and these do not determine it (§16)"
+    },
+    "prints": [],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 303,
+   "origin": "src/holes.test.ts:63",
+   "phase": 2,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Box(A : Type()) : Type() {\n  MkBox(A : Type(), x : A) : Box(A);\n}\nfn pick(n : Nat()) -> (b : Box(Nat())) {\n  match n : _ {\n    Zero() => MkBox(_, n);\n    Succ(m) => MkBox(_, m);\n  }\n}\nprint pick(Zero());\n",
+   "expected": {
+    "error": null,
+    "prints": [
+     {
+      "pos": 261,
+      "value": "MkBox(_, Zero())"
+     }
+    ],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 304,
+   "origin": "src/holes.test.ts:64",
+   "phase": 2,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(erased A : Type()) : Vec(A, Zero());\n  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nfn f(n : Nat()) -> (r : Nat()) {\n  match VNil(_) : _ {\n    VNil(_) => n;\n  }\n}\n",
+   "expected": {
+    "error": {
+     "pos": 303,
+     "message": "this `_` cannot be inferred: a `_` is solved only by unification, from the arguments around it and what its position is given, before the call, statement, scrutinee, body or binder it is in ends, and these do not determine it (§16)"
+    },
+    "prints": [],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 305,
+   "origin": "src/holes.test.ts:69",
+   "phase": 2,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Box(A : Type()) : Type() {\n  MkBox(A : Type(), x : A) : Box(A);\n}\nlet t = sorry(T : Type());\nprint MkBox(_, sorry(x : t));\nlet (z : Box(_), k) = (MkBox(_, sorry(x : t)), Zero());\nprint k;\nprint z;\n",
+   "expected": {
+    "error": null,
+    "prints": [
+     {
+      "pos": 170,
+      "value": "sorry"
+     },
+     {
+      "pos": 256,
+      "value": "Zero()"
+     },
+     {
+      "pos": 265,
+      "value": "sorry"
+     }
+    ],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": true,
+    "inspects": []
+   }
+  },
+  {
+   "id": 306,
+   "origin": "src/holes.test.ts:76",
+   "phase": 2,
+   "source": "data False() : Type() {}\nlet erased s = sorry(p : False());\ndata W() : Type() {\n  MkW(erased p is s) : W();\n}\nfn f() -> (r : False()) {\n  let erased MkW(q) = MkW(_);\n  match erased q : _ {}\n}\ngoal fn () -> (r : False());\nqed f;\n",
+   "expected": {
+    "error": null,
+    "prints": [],
+    "qed": "checks",
+    "goalProved": false,
+    "containsSorry": true,
+    "inspects": []
+   }
+  },
+  {
+   "id": 307,
+   "origin": "src/holes.test.ts:76",
+   "phase": 2,
+   "source": "data False() : Type() {}\nlet erased s = sorry(p : False());\ndata W() : Type() {\n  MkW(erased p is s) : W();\n}\nfn f() -> (r : False()) {\n  let erased MkW(q) = MkW(s);\n  match erased q : _ {}\n}\ngoal fn () -> (r : False());\nqed f;\n",
+   "expected": {
+    "error": null,
+    "prints": [],
+    "qed": "checks",
+    "goalProved": false,
+    "containsSorry": true,
+    "inspects": []
+   }
+  },
+  {
+   "id": 308,
+   "origin": "src/holes.test.ts:77",
+   "phase": 2,
+   "source": "data False() : Type() {}\nlet erased s = sorry(p : False());\ndata W() : Type() {\n  MkW(erased p is s) : W();\n}\nfn f() -> (r : False()) {\n  let erased MkW(q) = MkW(_);\n  match erased q : _ {}\n}\nprint f();\n",
+   "expected": {
+    "error": null,
+    "prints": [
+     {
+      "pos": 192,
+      "value": "sorry"
+     }
+    ],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": true,
+    "inspects": []
+   }
+  },
+  {
+   "id": 309,
+   "origin": "src/holes.test.ts:77",
+   "phase": 2,
+   "source": "data False() : Type() {}\nlet erased s = sorry(p : False());\ndata W() : Type() {\n  MkW(erased p is s) : W();\n}\nfn f() -> (r : False()) {\n  let erased MkW(q) = MkW(s);\n  match erased q : _ {}\n}\nprint f();\n",
+   "expected": {
+    "error": null,
+    "prints": [
+     {
+      "pos": 192,
+      "value": "sorry"
+     }
+    ],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": true,
+    "inspects": []
+   }
+  },
+  {
+   "id": 310,
+   "origin": "src/holes.test.ts:81",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nlet t = sorry(T : Type());\ndata K(A : Type()) : Type() {\n  MkK() : K(t);\n}\ndata Pack() : Type() {\n  MkPack(A : Type(), k : K(A)) : Pack();\n}\nlet p = MkPack(_, MkK());\nprint p;\ngoal Pack();\nqed p;\n",
+   "expected": {
+    "error": null,
+    "prints": [
+     {
+      "pos": 239,
+      "value": "sorry"
+     }
+    ],
+    "qed": "checks",
+    "goalProved": false,
+    "containsSorry": true,
+    "inspects": []
+   }
+  },
+  {
+   "id": 311,
+   "origin": "src/holes.test.ts:81",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nlet t = sorry(T : Type());\ndata K(A : Type()) : Type() {\n  MkK() : K(t);\n}\ndata Pack() : Type() {\n  MkPack(A : Type(), k : K(A)) : Pack();\n}\nlet p = MkPack(t, MkK());\nprint p;\ngoal Pack();\nqed p;\n",
+   "expected": {
+    "error": null,
+    "prints": [
+     {
+      "pos": 239,
+      "value": "sorry"
+     }
+    ],
+    "qed": "checks",
+    "goalProved": false,
+    "containsSorry": true,
+    "inspects": []
+   }
+  },
+  {
+   "id": 312,
+   "origin": "src/holes.test.ts:85",
+   "phase": 2,
+   "source": "data False() : Type() {}\nlet erased s = sorry(p : False());\ndata W() : Type() {\n  MkW(erased p is s) : W();\n}\ndata Is(x : W()) : Type() {\n  MkIs(x : W()) : Is(x);\n}\ngoal Is(MkW(_));\nqed MkIs(MkW(_));\n",
+   "expected": {
+    "error": null,
+    "prints": [],
+    "qed": "checks",
+    "goalProved": false,
+    "containsSorry": true,
+    "inspects": []
+   }
+  },
+  {
+   "id": 313,
+   "origin": "src/holes.test.ts:90",
+   "phase": 1,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nfn pair() -> (m : Nat(), v : Vec(Nat(), m)) {\n  (Zero(), VNil(Nat()))\n}\nlet (k, u : Vec(_, _)) = pair();\n",
+   "expected": {
+    "error": null,
+    "prints": [],
+    "qed": "none",
+    "goalProved": null,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 314,
    "origin": "src/messages.test.ts:11",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ncomptime let x = Zero();\n",
@@ -4874,7 +5556,7 @@
    }
   },
   {
-   "id": 276,
+   "id": 315,
    "origin": "src/messages.test.ts:11",
    "phase": 2,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Box() : Type() {\n  B(x : Nat()) : Box();\n}\nfn f(erased b : Box()) -> (r : Nat()) { let B(x) = b; Zero() }\n",
@@ -4891,7 +5573,7 @@
    }
   },
   {
-   "id": 277,
+   "id": 316,
    "origin": "src/messages.test.ts:11",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nfn f(erased n : Nat()) -> (r : Nat()) { n }\n",
@@ -4908,7 +5590,7 @@
    }
   },
   {
-   "id": 278,
+   "id": 317,
    "origin": "src/messages.test.ts:11",
    "phase": 2,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nfn f(erased n : Nat(), m : Nat()) -> (r : Nat()) { match m : (k : Nat()) { Zero() => n; Succ(_) => n; } }\n",
@@ -4925,7 +5607,7 @@
    }
   },
   {
-   "id": 279,
+   "id": 318,
    "origin": "src/messages.test.ts:11",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nfn f(n : Nat()) -> (Nat()) { n }\n",
@@ -4942,7 +5624,7 @@
    }
   },
   {
-   "id": 280,
+   "id": 319,
    "origin": "src/messages.test.ts:11",
    "phase": 2,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nfn f(n : Nat()) -> (erased r : Nat()) { n }\nprint f(Zero());\n",
@@ -4959,7 +5641,7 @@
    }
   },
   {
-   "id": 281,
+   "id": 320,
    "origin": "src/messages.test.ts:11",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nfn f(n : Nat()) -> (r : Nat()) {\n  match n : (r : Nat()) {\n    Zero => Zero();\n    Succ(m) => m;\n  }\n}\n",
@@ -4976,7 +5658,7 @@
    }
   },
   {
-   "id": 282,
+   "id": 321,
    "origin": "src/messages.test.ts:11",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nfn f(n : Nat()) -> (r : Nat()) {\n  match n : (r : Nat()) {\n    Zero() => Zero();\n    Succ(Succ(m)) => m;\n  }\n}\n",
@@ -4993,7 +5675,7 @@
    }
   },
   {
-   "id": 283,
+   "id": 322,
    "origin": "src/messages.test.ts:11",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nfn f(n : Nat()) -> (r : Nat()) {\n  match n : (r : Nat()) {\n    Zero() => Zero();\n    _ => Zero();\n  }\n}\n",
@@ -5010,7 +5692,7 @@
    }
   },
   {
-   "id": 284,
+   "id": 323,
    "origin": "src/messages.test.ts:11",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nfn f(n : Nat()) -> (r : Nat()) { let m = n; }\n",
@@ -5027,7 +5709,7 @@
    }
   },
   {
-   "id": 285,
+   "id": 324,
    "origin": "src/messages.test.ts:11",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nfn f(n : Nat()) -> (r : Nat()) { n; }\n",
@@ -5044,7 +5726,7 @@
    }
   },
   {
-   "id": 286,
+   "id": 325,
    "origin": "src/messages.test.ts:11",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nfn f(n : Nat()) -> Nat() { n }\n",
@@ -5061,7 +5743,7 @@
    }
   },
   {
-   "id": 287,
+   "id": 326,
    "origin": "src/messages.test.ts:11",
    "phase": 2,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nlet erased a = Zero();\nlet b = a;\n",
@@ -5078,7 +5760,7 @@
    }
   },
   {
-   "id": 288,
+   "id": 327,
    "origin": "src/messages.test.ts:11",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nlet many x = Zero();\n",
@@ -5095,7 +5777,7 @@
    }
   },
   {
-   "id": 289,
+   "id": 328,
    "origin": "src/messages.test.ts:11",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nlet x = sorry(Nat());\n",
@@ -5112,7 +5794,7 @@
    }
   },
   {
-   "id": 290,
+   "id": 329,
    "origin": "src/messages.test.ts:11",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nmutual {\n  fn f(n : Nat()) -> (r : Nat()) { g(n) }\n  fn g(n : Nat()) -> (r : Nat()) { n }\n}\n",
@@ -5129,7 +5811,7 @@
    }
   },
   {
-   "id": 291,
+   "id": 330,
    "origin": "src/messages.test.ts:11",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nprint Nat;\n",
@@ -5146,24 +5828,7 @@
    }
   },
   {
-   "id": 292,
-   "origin": "src/messages.test.ts:11",
-   "phase": 1,
-   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nprint Succ(_);\n",
-   "expected": {
-    "error": {
-     "pos": 83,
-     "message": "`_` stands for an erased argument only from phase 2 on (§16), and this program is checked under phase 1"
-    },
-    "prints": [],
-    "qed": "none",
-    "goalProved": null,
-    "containsSorry": false,
-    "inspects": []
-   }
-  },
-  {
-   "id": 293,
+   "id": 331,
    "origin": "src/messages.test.ts:11",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nprint Succ;\n",
@@ -5180,7 +5845,7 @@
    }
   },
   {
-   "id": 294,
+   "id": 332,
    "origin": "src/messages.test.ts:11",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nprint Zero;\n",
@@ -5197,7 +5862,7 @@
    }
   },
   {
-   "id": 295,
+   "id": 333,
    "origin": "src/messages.test.ts:11",
    "phase": 1,
    "source": "let x = 2x;\n",
@@ -5214,7 +5879,7 @@
    }
   },
   {
-   "id": 296,
+   "id": 334,
    "origin": "src/messages.test.ts:11",
    "phase": 1,
    "source": "let x = 3;\n",
@@ -5231,7 +5896,7 @@
    }
   },
   {
-   "id": 297,
+   "id": 335,
    "origin": "src/messages.test.ts:18",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Eq(A : Type(), x : A, y : A) : Type() {\n  Refl(A : Type(), x : A) : Eq(A, x, x);\n}\ndata False() : Type() {}\nfn zeroNotOne(e : Eq(Nat(), Zero(), Succ(Zero()))) -> (f : False()) {\n  match e : (f : False()) {\n    Refl(_, x) => x;\n  }\n}\n",
@@ -5248,7 +5913,7 @@
    }
   },
   {
-   "id": 298,
+   "id": 336,
    "origin": "src/messages.test.ts:18",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nlet Succ(m) = Zero();\n",
@@ -5265,7 +5930,7 @@
    }
   },
   {
-   "id": 299,
+   "id": 337,
    "origin": "src/report.test.ts:25",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nlet a = Succ(Zero());\nprint a;\nlet b = Succ(",
@@ -5287,7 +5952,7 @@
    }
   },
   {
-   "id": 300,
+   "id": 338,
    "origin": "src/report.test.ts:38",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nprint Zero();\nlet c = Zero(); é",
@@ -5309,7 +5974,7 @@
    }
   },
   {
-   "id": 301,
+   "id": 339,
    "origin": "src/report.test.ts:45",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nprint Succ(Nat());\nlet b = (;\n",
@@ -5326,7 +5991,7 @@
    }
   },
   {
-   "id": 302,
+   "id": 340,
    "origin": "src/report.test.ts:51",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ngoal Nat(\n",
@@ -5343,7 +6008,7 @@
    }
   },
   {
-   "id": 303,
+   "id": 341,
    "origin": "src/report.test.ts:51",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ngoal Nat();\nlet b = (;\nqed Zero();\n",
@@ -5360,7 +6025,7 @@
    }
   },
   {
-   "id": 304,
+   "id": 342,
    "origin": "src/report.test.ts:51",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ngoal Nat();\nprint Succ(Nat());\nqed Zero();\n",
@@ -5377,7 +6042,7 @@
    }
   },
   {
-   "id": 305,
+   "id": 343,
    "origin": "src/report.test.ts:51",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ngoal Nat();\nqed Zero();\n",
@@ -5391,7 +6056,7 @@
    }
   },
   {
-   "id": 306,
+   "id": 344,
    "origin": "src/report.test.ts:51",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ngoal Nat();\nqed Zero();\nprint Succ(Nat());\n",
@@ -5408,7 +6073,7 @@
    }
   },
   {
-   "id": 307,
+   "id": 345,
    "origin": "src/report.test.ts:51",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ngoal Nat();\nqed Zero();\nqed Zero();\n",
@@ -5425,7 +6090,7 @@
    }
   },
   {
-   "id": 308,
+   "id": 346,
    "origin": "src/report.test.ts:51",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nprint Zero();\n",
@@ -5444,7 +6109,7 @@
    }
   },
   {
-   "id": 309,
+   "id": 347,
    "origin": "src/report.test.ts:65",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nlet a = Zero();\nfn f(n : Nat()) -> (r : Nat()) {\n  let m = Succ(n);\n  inspect;\n  m\n}\nlet b = f(a);\ninspect;\n",
@@ -5467,7 +6132,7 @@
    }
   },
   {
-   "id": 310,
+   "id": 348,
    "origin": "src/report.test.ts:76",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nfn f(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (r : A) {\n  let VCons(_, _, h, _) = v;\n  inspect;\n  h\n}\nprint f(Nat(), Zero(), VCons(Nat(), Zero(), Zero(), VNil(Nat())));\ninspect;\n",
@@ -5495,7 +6160,7 @@
    }
   },
   {
-   "id": 311,
+   "id": 349,
    "origin": "src/report.test.ts:80",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nlet t = sorry(T : Type());\ninspect;\nlet u = { let w = sorry(x : t); Zero() };\ninspect;\n",
@@ -5518,7 +6183,7 @@
    }
   },
   {
-   "id": 312,
+   "id": 350,
    "origin": "src/report.test.ts:84",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ndata IsSucc(n : Nat()) : Type() {\n  IsSuccHere(m : Nat()) : IsSucc(Succ(m));\n}\nlet k = sorry(k : Nat());\nlet p = sorry(p : IsSucc(k));\nlet IsSuccHere(_) = p;\nfn f() -> (r : IsSucc(k)) { sorry(_) }\n",
@@ -5532,7 +6197,7 @@
    }
   },
   {
-   "id": 313,
+   "id": 351,
    "origin": "src/report.test.ts:91",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\n\nfn vhead(A : Type(), n : Nat(), v : Vec(A, Succ(n)))\n    -> (x : A) {\n  let VCons(_, _, hd, _) = v;\n  hd\n}\n\nlet x = VCons(Nat(), Zero(), Zero(), VNil(Nat()));\nprint vhead(Nat(), Zero(), x);\n",
@@ -5551,7 +6216,7 @@
    }
   },
   {
-   "id": 314,
+   "id": 352,
    "origin": "src/report.test.ts:107",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nfn f(n : Nat()) -> (r : Nat()) { let g = n; g }\nfn g(m : Nat()) -> (r : Nat()) { m }\n",
@@ -5565,7 +6230,7 @@
    }
   },
   {
-   "id": 315,
+   "id": 353,
    "origin": "src/report.test.ts:112",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\ngoal fn (a : Nat()) -> (b : Nat());\nfn f(n : Nat()) -> (r : Nat()) { n }\nqed f;\n",
@@ -5579,7 +6244,7 @@
    }
   },
   {
-   "id": 316,
+   "id": 354,
    "origin": "src/report.test.ts:115",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\nfn f(n : Nat()) -> (r : Nat()) { Succ(Nat()) }\nprint f(Zero());\nlet z = Zero();\n",
@@ -5596,7 +6261,7 @@
    }
   },
   {
-   "id": 317,
+   "id": 355,
    "origin": "src/tutorial/appendix.test.ts:11",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\n\nfn pair(x : Nat()) -> (n : Nat(), v : Vec(Nat(), Succ(n))) {\n  (Zero(), VCons(Nat(), Zero(), x, VNil(Nat())))\n}\nlet x = Succ(Zero());\nlet (m, v : Vec(Nat(), Succ(m))) = pair(x);\nprint v;\n",
@@ -5613,7 +6278,7 @@
    }
   },
   {
-   "id": 318,
+   "id": 356,
    "origin": "src/tutorial/appendix.test.ts:23",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\n\ndata Eq(A : Type(), x : A, y : A) : Type() {\n  Refl(A : Type(), x : A) : Eq(A, x, x);\n}\n\nfn pair(x : Nat()) -> (n : Nat(), v : Vec(Nat(), Succ(n))) {\n  (Zero(), VCons(Nat(), Zero(), x, VNil(Nat())))\n}\nlet (n, v) = pair(Succ(Zero()));\nlet h = { let VCons(_, _, hd, tl) = v; hd };\ninspect;\nlet k = tl;\nlet VCons(_, _, _, t) = v;\ngoal Eq(Vec(Nat(), Succ(n)), v, VCons(Nat(), n, h, t));\nqed Refl(Vec(Nat(), Succ(n)), v);\n",
@@ -5635,7 +6300,7 @@
    }
   },
   {
-   "id": 319,
+   "id": 357,
    "origin": "src/tutorial/appendix.test.ts:25",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\n\ndata Eq(A : Type(), x : A, y : A) : Type() {\n  Refl(A : Type(), x : A) : Eq(A, x, x);\n}\n\nfn pair(x : Nat()) -> (n : Nat(), v : Vec(Nat(), Succ(n))) {\n  (Zero(), VCons(Nat(), Zero(), x, VNil(Nat())))\n}\nlet (n, v) = pair(Succ(Zero()));\nlet h = Zero();\ninspect;\nlet VCons(_, _, _, t) = v;\ngoal Eq(Vec(Nat(), Succ(n)), v, VCons(Nat(), n, h, t));\nqed Refl(Vec(Nat(), Succ(n)), v);\n",
@@ -5657,7 +6322,7 @@
    }
   },
   {
-   "id": 320,
+   "id": 358,
    "origin": "src/tutorial/appendix.test.ts:57",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Eq(A : Type(), x : A, y : A) : Type() {\n  Refl(A : Type(), x : A) : Eq(A, x, x);\n}\n-- Change the goal or succEq so that the qed proves the goal.\ngoal fn (a : Nat(), b is Succ(a)) -> (e : Eq(Nat(), Succ(a), b));\nfn succEq(subterm x : Nat(), y is Succ(x))\n    -> (e : Eq(Nat(), Succ(x), y)) {\n  Refl(Nat(), y)\n}\nqed succEq;\n",
@@ -5671,7 +6336,7 @@
    }
   },
   {
-   "id": 321,
+   "id": 359,
    "origin": "src/tutorial/arithmetic.test.ts:15",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Plus(m : Nat(), n : Nat(), r : Nat()) : Type() {\n  PlusZero(n : Nat()) : Plus(Zero(), n, n);\n  PlusSucc(m : Nat(), n : Nat(), r : Nat(), p : Plus(m, n, r))\n    : Plus(Succ(m), n, Succ(r));\n}\n\ndata Times(m : Nat(), n : Nat(), r : Nat()) : Type() {\n  TimesZero(n : Nat()) : Times(Zero(), n, Zero());\n  TimesSucc(m : Nat(), n : Nat(), r : Nat(), s : Nat(),\n      t : Times(m, n, r), p : Plus(r, n, s)) : Times(Succ(m), n, s);\n}\nfn plusZeroRight(subterm n : Nat()) -> (p : Plus(n, Zero(), n)) {\n  match n : _ {\n    Zero() => PlusZero(Zero());\n    Succ(k) => PlusSucc(k, Zero(), k, plusZeroRight(subterm k));\n  }\n}\n\nfn plusSucc(m : Nat(), n : Nat(), r : Nat(), subterm p : Plus(m, n, r))\n    -> (q : Plus(m, Succ(n), Succ(r))) {\n  match p : _ {\n    PlusZero(_) => PlusZero(Succ(n));\n    PlusSucc(m1, _, r1, p1) =>\n      PlusSucc(m1, Succ(n), Succ(r1), plusSucc(m1, n, r1, subterm p1));\n  }\n}\n\nfn plusComm(m : Nat(), n : Nat(), r : Nat(), subterm p : Plus(m, n, r))\n    -> (q : Plus(n, m, r)) {\n  match p : _ {\n    PlusZero(_) => plusZeroRight(n);\n    PlusSucc(m1, _, r1, p1) =>\n      plusSucc(n, m1, r1, plusComm(m1, n, r1, subterm p1));\n  }\n}\nfn plusAssoc(a : Nat(), b : Nat(), c : Nat(), ab : Nat(), r : Nat(),\n    subterm p : Plus(a, b, ab), q : Plus(ab, c, r))\n    -> (bc : Nat(), q1 : Plus(b, c, bc), q2 : Plus(a, bc, r)) {\n  match p : _ {\n    PlusZero(_) => (r, q, PlusZero(r));\n    PlusSucc(a1, _, ab1, p1) => {\n      let PlusSucc(_, _, r1, q3) = q;\n      let (bc, s1, s2) = plusAssoc(a1, b, c, ab1, r1, subterm p1, q3);\n      (bc, s1, PlusSucc(a1, bc, r1, s2))\n    };\n  }\n}\n\nfn plusAssocRev(a : Nat(), b : Nat(), c : Nat(), bc : Nat(), r : Nat(),\n    p : Plus(b, c, bc), subterm q : Plus(a, bc, r))\n    -> (ab : Nat(), q1 : Plus(a, b, ab), q2 : Plus(ab, c, r)) {\n  match q : _ {\n    PlusZero(_) => (b, PlusZero(b), p);\n    PlusSucc(a1, _, r1, q3) => {\n      let (ab1, s1, s2) = plusAssocRev(a1, b, c, bc, r1, p, subterm q3);\n      (Succ(ab1), PlusSucc(a1, b, ab1, s1), PlusSucc(ab1, c, r1, s2))\n    };\n  }\n}\nfn exchange(w : Nat(), y : Nat(), x : Nat(), z : Nat(), wy : Nat(),\n    xz : Nat(), r : Nat(), p : Plus(w, y, wy), q : Plus(x, z, xz),\n    s : Plus(wy, xz, r))\n    -> (wx : Nat(), yz : Nat(), p1 : Plus(w, x, wx),\n        q1 : Plus(y, z, yz), s1 : Plus(wx, yz, r)) {\n  let (yxz, s2 : Plus(y, xz, yxz), s3 : Plus(w, yxz, r)) =\n    plusAssoc(w, y, xz, wy, r, p, s);\n  let (yx : Nat(), s4 : Plus(y, x, yx), s5 : Plus(yx, z, yxz)) =\n    plusAssocRev(y, x, z, xz, yxz, q, s2);\n  let (s6 : Plus(x, y, yx)) = plusComm(y, x, yx, s4);\n  let (yz : Nat(), s7 : Plus(y, z, yz), s8 : Plus(x, yz, yxz)) =\n    plusAssoc(x, y, z, yx, yxz, s6, s5);\n  let (wx : Nat(), s9 : Plus(w, x, wx), s10 : Plus(wx, yz, r)) =\n    plusAssocRev(w, x, yz, yxz, r, s8, s3);\n  (wx, yz, s9, s7, s10)\n}\ngoal fn (a : Nat(), b : Nat(), c : Nat(), bc : Nat(), r : Nat(),\n    p : Plus(b, c, bc), t : Times(a, bc, r))\n    -> (ab : Nat(), ac : Nat(), t1 : Times(a, b, ab),\n        t2 : Times(a, c, ac), q : Plus(ab, ac, r));\nfn timesDistrib(a : Nat(), b : Nat(), c : Nat(), bc : Nat(), r : Nat(),\n    p : Plus(b, c, bc), subterm t : Times(a, bc, r))\n    -> (ab : Nat(), ac : Nat(), t1 : Times(a, b, ab),\n        t2 : Times(a, c, ac), q : Plus(ab, ac, r)) {\n  match t : _ {\n    TimesZero(_) =>\n      (Zero(), Zero(), TimesZero(b), TimesZero(c), PlusZero(Zero()));\n    TimesSucc(a1, _, r1, _, t3, p1) => {\n      let (ab1, ac1, t4, t5, q1) =\n        timesDistrib(a1, b, c, bc, r1, p, subterm t3);\n      let (ab, ac, s1, s2, q2) =\n        exchange(ab1, ac1, b, c, r1, bc, r, q1, p, p1);\n      (ab, ac, TimesSucc(a1, b, ab1, ab, t4, s1),\n        TimesSucc(a1, c, ac1, ac, t5, s2), q2)\n    };\n  }\n}\nqed timesDistrib;\n",
@@ -5688,7 +6353,7 @@
    }
   },
   {
-   "id": 322,
+   "id": 360,
    "origin": "src/tutorial/dependent.test.ts:10",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nfn vhead(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (x : A) {\n  match v : (x : A) {\n    VNil(_) => v;\n    VCons(_, _, hd, _) => hd;\n  }\n}\nlet v = VCons(Nat(), Zero(), Succ(Zero()), VNil(Nat()));\nprint vhead(Nat(), Zero(), v);\n",
@@ -5705,7 +6370,7 @@
    }
   },
   {
-   "id": 323,
+   "id": 361,
    "origin": "src/tutorial/dependent.test.ts:11",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nfn vhead(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (x : A) {\n  match v : (x : A) {\n    VCons(_, _, hd, _) => hd;\n  }\n}\nlet v = VCons(Nat(), Zero(), Succ(Zero()), VNil(Nat()));\nprint vhead(Nat(), Zero(), v);\nprint vhead(Nat(), Zero(), VNil(Nat()));\n",
@@ -5727,7 +6392,7 @@
    }
   },
   {
-   "id": 324,
+   "id": 362,
    "origin": "src/tutorial/dependent.test.ts:23",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nlet one = Succ(Zero());\nlet xs = VCons(Nat(), one, Zero(),\n  VCons(Nat(), Zero(), one, VNil(Nat())));\n-- Return both the head and the tail, then bind and print both.\nfn vuncons(A : Type(), n : Nat(), v : Vec(A, Succ(n)))\n    -> (hd : A, tl : Vec(A, n)) {\n  match v : (hd : A, tl : Vec(A, n)) {\n    VCons(_, _, h, t) => (h, t);\n  }\n}\nlet h = vuncons(Nat(), one, xs);\nprint h;\n",
@@ -5744,7 +6409,7 @@
    }
   },
   {
-   "id": 325,
+   "id": 363,
    "origin": "src/tutorial/dependent.test.ts:35",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nlet one = Succ(Zero());\nlet xs = VCons(Nat(), one, Zero(),\n  VCons(Nat(), Zero(), one, VNil(Nat())));\n-- Replace the match's annotation with _, then give y a type.\nfn vuncons(A : Type(), n : Nat(), v : Vec(A, Succ(n)))\n    -> (hd : A, tl : Vec(A, n)) {\n  match v : _ {\n    VCons(_, _, h, t) => (h, t);\n  }\n}\nlet (h, t) = vuncons(Nat(), one, xs);\nlet y = match t : _ {\n  VCons(_, _, z, _) => z;\n};\nprint y;\n",
@@ -5761,7 +6426,7 @@
    }
   },
   {
-   "id": 326,
+   "id": 364,
    "origin": "src/tutorial/dependent.test.ts:43",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nlet one = Succ(Zero());\nlet xs = VCons(Nat(), one, Zero(),\n  VCons(Nat(), Zero(), one, VNil(Nat())));\n-- Replace the match's annotation with _, then give y a type.\nfn vuncons(A : Type(), n : Nat(), v : Vec(A, Succ(n)))\n    -> (hd : A, tl : Vec(A, n)) {\n  match v : (hd : A, tl : Vec(A, n)) {\n    VCons(_, _, h, t) => (h, t);\n  }\n}\nlet (h, t) = vuncons(Nat(), one, xs);\nlet y : Nat() = match t : _ {\n  VCons(_, _, z, _) => z;\n};\nprint y;\n",
@@ -5780,7 +6445,7 @@
    }
   },
   {
-   "id": 327,
+   "id": 365,
    "origin": "src/tutorial/dependent.test.ts:46",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nlet one = Succ(Zero());\nlet xs = VCons(Nat(), one, Zero(),\n  VCons(Nat(), Zero(), one, VNil(Nat())));\nfn vuncons(A : Type(), n : Nat(), v : Vec(A, Succ(n)))\n    -> (hd : A, tl : Vec(A, n)) {\n  match v : _ {\n    VCons(_, _, h, t) => (h, t);\n  }\n}\nlet (h, t) = vuncons(Nat(), one, xs);\nlet y : Nat() = { match t : _ {\n  VCons(_, _, z, _) => z;\n} };\nprint y;\n",
@@ -5799,7 +6464,7 @@
    }
   },
   {
-   "id": 328,
+   "id": 366,
    "origin": "src/tutorial/dependent.test.ts:49",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nlet one = Succ(Zero());\nlet xs = VCons(Nat(), one, Zero(),\n  VCons(Nat(), Zero(), one, VNil(Nat())));\nfn vuncons(A : Type(), n : Nat(), v : Vec(A, Succ(n)))\n    -> (hd : A, tl : Vec(A, n)) {\n  match v : _ {\n    VCons(_, _, h, t) => (h, t);\n  }\n}\nlet (h, t) = vuncons(Nat(), one, xs);\nlet y : Nat() = match t : _ {\n  VCons(_, _, z, _) => z;\n};\nprint y;\nlet (u : Nat(), w : Nat()) = (Zero(), sorry(_));\n",
@@ -5821,7 +6486,7 @@
    }
   },
   {
-   "id": 329,
+   "id": 367,
    "origin": "src/tutorial/dependent.test.ts:49",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nlet one = Succ(Zero());\nlet xs = VCons(Nat(), one, Zero(),\n  VCons(Nat(), Zero(), one, VNil(Nat())));\nfn vuncons(A : Type(), n : Nat(), v : Vec(A, Succ(n)))\n    -> (hd : A, tl : Vec(A, n)) {\n  match v : _ {\n    VCons(_, _, h, t) => (h, t);\n  }\n}\nlet (h, t) = vuncons(Nat(), one, xs);\nlet y : Nat() = match t : _ {\n  VCons(_, _, z, _) => z;\n};\nprint y;\nprint Succ(match t : _ {\n  VCons(_, _, z, _) => z;\n});\n",
@@ -5843,7 +6508,7 @@
    }
   },
   {
-   "id": 330,
+   "id": 368,
    "origin": "src/tutorial/dependent.test.ts:63",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\n\nfn vhead(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (x : A) {\n  match v : (x : A) {\n    VCons(_, _, hd, _) => hd;\n  }\n}\nfn cons(A : Type(), n : Nat(), x : A, v : Vec(A, n))\n    -> (m is Succ(Succ(n)), w : Vec(A, m)) {\n  (Succ(n), VCons(A, n, x, v))\n}\nlet (m, w) = cons(Nat(), Zero(), Zero(), VNil(Nat()));\nprint vhead(Nat(), Zero(), w);\n",
@@ -5860,7 +6525,7 @@
    }
   },
   {
-   "id": 331,
+   "id": 369,
    "origin": "src/tutorial/dependent.test.ts:72",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nlet one = Succ(Zero());\nlet xs = VCons(Nat(), one, Zero(),\n  VCons(Nat(), Zero(), one, VNil(Nat())));\nfn vsecond(A : Type(), n : Nat(), v : Vec(A, Succ(Succ(n))))\n    -> (x : A) {\n  let Succ(k) = n;\n  let VCons(_, _, _, rest) = v;\n  let VCons(_, _, y, _) = rest;\n  y\n}\nprint vsecond(Nat(), Zero(), xs);\n",
@@ -5877,7 +6542,7 @@
    }
   },
   {
-   "id": 332,
+   "id": 370,
    "origin": "src/tutorial/erasure.test.ts:8",
    "phase": 2,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(erased A : Type()) : Vec(A, Zero());\n  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\n\ndata Eq(A : Type(), x : A, y : A) : Type() {\n  Refl(erased A : Type(), erased x : A) : Eq(A, x, x);\n}\ngoal fn (erased m : Nat(), erased n : Nat(),\n    erased p : Eq(Nat(), m, n), v : Vec(Nat(), m))\n    -> (w : Vec(Nat(), n));\nfn cast(erased m : Nat(), erased n : Nat(),\n    erased p : Eq(Nat(), m, n), v : Vec(Nat(), m))\n    -> (w : Vec(Nat(), n)) {\n  match p : _ {\n    Refl(_, _) => v;\n  }\n}\n",
@@ -5894,7 +6559,7 @@
    }
   },
   {
-   "id": 333,
+   "id": 371,
    "origin": "src/tutorial/erasure.test.ts:8",
    "phase": 2,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(erased A : Type()) : Vec(A, Zero());\n  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\n\ndata Eq(A : Type(), x : A, y : A) : Type() {\n  Refl(erased A : Type(), erased x : A) : Eq(A, x, x);\n}\ngoal fn (erased m : Nat(), erased n : Nat(),\n    erased p : Eq(Nat(), m, n), v : Vec(Nat(), m))\n    -> (w : Vec(Nat(), n));\nfn g(erased n : Nat()) -> (r : Nat()) {\n  match erased n : (r : Nat()) { Zero() => Zero(); Succ(k) => k; }\n}\n",
@@ -5911,14 +6576,31 @@
    }
   },
   {
-   "id": 334,
+   "id": 372,
+   "origin": "src/tutorial/erasure.test.ts:8",
+   "phase": 2,
+   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(erased A : Type()) : Vec(A, Zero());\n  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\n\nfn vhead(erased A : Type(), erased n : Nat(), v : Vec(A, Succ(n)))\n    -> (x : A) {\n  let VCons(_, _, hd, _) = v;\n  hd\n}\ngoal Vec(Nat(), Succ(Succ(Zero())));\nfn two(erased n : Nat(), v : Vec(_, n)) -> (r : Nat()) {\n  Zero()\n}\n",
+   "expected": {
+    "error": {
+     "pos": 450,
+     "message": "this `_` cannot be inferred: a `_` is solved only by unification, from the arguments around it and what its position is given, before the call, statement, scrutinee, body or binder it is in ends, and these do not determine it (§16)"
+    },
+    "prints": [],
+    "qed": "none",
+    "goalProved": false,
+    "containsSorry": false,
+    "inspects": []
+   }
+  },
+  {
+   "id": 373,
    "origin": "src/tutorial/erasure.test.ts:8",
    "phase": 2,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(erased A : Type()) : Vec(A, Zero());\n  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\n\nfn vhead(erased A : Type(), erased n : Nat(), v : Vec(A, Succ(n)))\n    -> (x : A) {\n  let VCons(_, _, hd, _) = v;\n  hd\n}\ngoal Vec(Nat(), Succ(Succ(Zero())));\nfn vrep(n : Nat()) -> (v : Vec(Nat(), n)) {\n  sorry(_)\n}\nfn num(x : Nat()) -> (n : Nat()) {\n  x\n}\nlet i = VCons(_, _, Zero(), vrep(num(Zero())));\n",
    "expected": {
     "error": {
      "pos": 532,
-     "message": "this `_` would be `?@24:34`, which mentions what is produced only after it, such as a result of the call it is an argument of, and this checker solves a `_` only to what exists before it"
+     "message": "this `_` would be `?@24:34`, which mentions what is produced only after it, such as a result of the call it is an argument of, and a `_` is solved only to what exists before it"
     },
     "prints": [],
     "qed": "none",
@@ -5928,31 +6610,14 @@
    }
   },
   {
-   "id": 335,
-   "origin": "src/tutorial/erasure.test.ts:8",
-   "phase": 2,
-   "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(erased A : Type()) : Vec(A, Zero());\n  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\n\nfn vhead(erased A : Type(), erased n : Nat(), v : Vec(A, Succ(n)))\n    -> (x : A) {\n  let VCons(_, _, hd, _) = v;\n  hd\n}\ngoal Vec(Nat(), Succ(Succ(Zero())));\nlet (e : Vec(_, Zero())) = VNil(Nat());\n",
-   "expected": {
-    "error": {
-     "pos": 430,
-     "message": "expected a name, found `_`"
-    },
-    "prints": [],
-    "qed": "none",
-    "goalProved": false,
-    "containsSorry": false,
-    "inspects": []
-   }
-  },
-  {
-   "id": 336,
+   "id": 374,
    "origin": "src/tutorial/erasure.test.ts:8",
    "phase": 2,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(erased A : Type()) : Vec(A, Zero());\n  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\n\nfn vhead(erased A : Type(), erased n : Nat(), v : Vec(A, Succ(n)))\n    -> (x : A) {\n  let VCons(_, _, hd, _) = v;\n  hd\n}\ngoal Vec(Nat(), Succ(Succ(Zero())));\nlet w = VCons(Nat(), Zero(), Zero(), VNil(Nat()));\nprint VCons(_, _, _, w);\n",
    "expected": {
     "error": {
      "pos": 486,
-     "message": "`_` stands for an erased argument (§16), and field `head` of `VCons` is not erased"
+     "message": "`_` stands for an argument that is erased or has type `Type()`, or for part of a type (§16), and field `head` of `VCons` is none of these"
     },
     "prints": [],
     "qed": "none",
@@ -5962,14 +6627,14 @@
    }
   },
   {
-   "id": 337,
+   "id": 375,
    "origin": "src/tutorial/erasure.test.ts:8",
    "phase": 2,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(erased A : Type()) : Vec(A, Zero());\n  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\n\nfn vhead(erased A : Type(), erased n : Nat(), v : Vec(A, Succ(n)))\n    -> (x : A) {\n  let VCons(_, _, hd, _) = v;\n  hd\n}\ngoal Vec(Nat(), Succ(Succ(Zero())));\nprint VNil(_);\n",
    "expected": {
     "error": {
      "pos": 428,
-     "message": "this `_` cannot be inferred: this checker solves a `_` only from the other arguments and what the position is given, and these do not determine it"
+     "message": "this `_` cannot be inferred: a `_` is solved only by unification, from the arguments around it and what its position is given, before the call, statement, scrutinee, body or binder it is in ends, and these do not determine it (§16)"
     },
     "prints": [],
     "qed": "none",
@@ -5979,7 +6644,7 @@
    }
   },
   {
-   "id": 338,
+   "id": 376,
    "origin": "src/tutorial/erasure.test.ts:27",
    "phase": 2,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(erased A : Type()) : Vec(A, Zero());\n  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nfn len(erased A : Type(), n : Nat(), v : Vec(A, n))\n    -> (m is n) {\n  n\n}\nlet v = VCons(Nat(), Zero(), Zero(), VNil(Nat()));\nlet erased k = len(Nat(), Succ(Zero()), v);\nlet (w : Vec(Nat(), k)) = v;\nprint w;\n",
@@ -5998,7 +6663,7 @@
    }
   },
   {
-   "id": 339,
+   "id": 377,
    "origin": "src/tutorial/erasure.test.ts:35",
    "phase": 2,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(erased A : Type()) : Vec(A, Zero());\n  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nfn len(erased A : Type(), erased n : Nat(), v : Vec(A, n))\n    -> (erased m is n) {\n  n\n}\nlet v = VCons(Nat(), Zero(), Zero(), VNil(Nat()));\nlet erased k = len(Nat(), Succ(Zero()), v);\nlet (w : Vec(Nat(), k)) = v;\nprint w;\nprint len(Nat(), Succ(Zero()), v);\n",
@@ -6020,7 +6685,7 @@
    }
   },
   {
-   "id": 340,
+   "id": 378,
    "origin": "src/tutorial/erasure.test.ts:35",
    "phase": 2,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(erased A : Type()) : Vec(A, Zero());\n  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\nfn len(erased A : Type(), n : Nat(), v : Vec(A, n))\n    -> (m is n) {\n  n\n}\nlet v = VCons(Nat(), Zero(), Zero(), VNil(Nat()));\nlet erased k = len(Nat(), Succ(Zero()), v);\nlet (w : Vec(Nat(), k)) = v;\nprint w;\nprint len(Nat(), Succ(Zero()), v);\n",
@@ -6043,7 +6708,7 @@
    }
   },
   {
-   "id": 341,
+   "id": 379,
    "origin": "src/tutorial/erasure.test.ts:43",
    "phase": 2,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(erased A : Type()) : Vec(A, Zero());\n  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\n\nfn vhead(erased A : Type(), erased n : Nat(), v : Vec(A, Succ(n)))\n    -> (x : A) {\n  let VCons(_, _, hd, _) = v;\n  hd\n}\ngoal Vec(Nat(), Succ(Succ(Zero())));\nlet one = Succ(Zero());\nlet (e : Vec(Nat(), Zero())) = VNil(_);\nlet v = VCons(_, _, Zero(), VCons(_, _, one, e));\nprint vhead(_, _, v);\nqed VCons(_, _, one, VCons(_, _, Zero(), VNil(_)));\nprint vhead(_, _, { v });\n",
@@ -6066,7 +6731,7 @@
    }
   },
   {
-   "id": 342,
+   "id": 380,
    "origin": "src/tutorial/erasure.test.ts:79",
    "phase": 2,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(erased A : Type()) : Vec(A, Zero());\n  VCons(erased A : Type(), erased n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\n\ndata Eq(A : Type(), x : A, y : A) : Type() {\n  Refl(erased A : Type(), erased x : A) : Eq(A, x, x);\n}\ngoal fn (erased m : Nat(), erased n : Nat(),\n    erased p : Eq(Nat(), m, n), v : Vec(Nat(), m))\n    -> (w : Vec(Nat(), n));\nfn g(erased n : Nat()) -> (erased r : Nat()) {\n  match erased n : (erased r : Nat()) { Zero() => Zero(); Succ(k) => k; }\n}\n",
@@ -6080,7 +6745,7 @@
    }
   },
   {
-   "id": 343,
+   "id": 381,
    "origin": "src/tutorial/evidence.test.ts:11",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\nmutual {\n  data Even(n : Nat()) : Type() {\n    EvenZero() : Even(Zero());\n    EvenSucc(n : Nat(), p : Odd(n)) : Even(Succ(n));\n  }\n  data Odd(n : Nat()) : Type() {\n    OddSucc(n : Nat(), p : Even(n)) : Odd(Succ(n));\n  }\n}\nlet two = Succ(Succ(Zero()));\ngoal Even(two);\nqed EvenZero();\n",
@@ -6097,7 +6762,7 @@
    }
   },
   {
-   "id": 344,
+   "id": 382,
    "origin": "src/tutorial/evidence.test.ts:14",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\nmutual {\n  data Even(n : Nat()) : Type() {\n    EvenZero() : Even(Zero());\n    EvenSucc(n : Nat(), p : Odd(n)) : Even(Succ(n));\n  }\n  data Odd(n : Nat()) : Type() {\n    OddSucc(n : Nat(), p : Even(n)) : Odd(Succ(n));\n  }\n}\nlet two = Succ(Succ(Zero()));\ngoal Even(two);\nqed OddSucc(Zero(), EvenZero());\n",
@@ -6114,7 +6779,7 @@
    }
   },
   {
-   "id": 345,
+   "id": 383,
    "origin": "src/tutorial/evidence.test.ts:28",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\nmutual {\n  data Even(n : Nat()) : Type() {\n    EvenZero() : Even(Zero());\n    EvenSucc(n : Nat(), p : Odd(n)) : Even(Succ(n));\n  }\n  data Odd(n : Nat()) : Type() {\n    OddSucc(n : Nat(), p : Even(n)) : Odd(Succ(n));\n  }\n}\nlet three = Succ(Succ(Succ(Zero())));\nlet four = Succ(three);\ngoal Even(four);\n-- Replace sorry(_) with evidence that four is even.\nlet p : Even(four) = EvenSucc(three, sorry(q : Odd(three)));\nprint p;\nqed p;\n",
@@ -6133,7 +6798,7 @@
    }
   },
   {
-   "id": 346,
+   "id": 384,
    "origin": "src/tutorial/evidence.test.ts:46",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Eq(A : Type(), x : A, y : A) : Type() {\n  Refl(A : Type(), x : A) : Eq(A, x, x);\n}\n-- Replace sorry(_): match on e, and return a Refl in its branch.\nfn succBoth(a : Nat(), b : Nat(), e : Eq(Nat(), a, b))\n    -> (f : Eq(Nat(), Succ(a), Succ(b))) {\n  Refl(Nat(), Succ(a))\n}\n",
@@ -6150,7 +6815,7 @@
    }
   },
   {
-   "id": 347,
+   "id": 385,
    "origin": "src/tutorial/evidence.test.ts:48",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Eq(A : Type(), x : A, y : A) : Type() {\n  Refl(A : Type(), x : A) : Eq(A, x, x);\n}\nfn succBoth(a : Nat(), b : Nat(), e : Eq(Nat(), a, b))\n    -> (f : Eq(Nat(), Succ(a), Succ(b))) {\n  match e : _ {\n    Refl(_, _) => sorry(_);\n  }\n}\n",
@@ -6164,7 +6829,7 @@
    }
   },
   {
-   "id": 348,
+   "id": 386,
    "origin": "src/tutorial/evidence.test.ts:52",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Eq(A : Type(), x : A, y : A) : Type() {\n  Refl(A : Type(), x : A) : Eq(A, x, x);\n}\n-- Replace sorry(_): match on e, and return a Refl in its branch.\nfn succBoth(a : Nat(), b : Nat(), e : Eq(Nat(), a, b))\n    -> (f : Eq(Nat(), Succ(a), Succ(b))) {\n  let Refl(_, _) = e;\n  Refl(Nat(), Succ(a))\n}\n",
@@ -6178,7 +6843,7 @@
    }
   },
   {
-   "id": 349,
+   "id": 387,
    "origin": "src/tutorial/evidence.test.ts:59",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Eq(A : Type(), x : A, y : A) : Type() {\n  Refl(A : Type(), x : A) : Eq(A, x, x);\n}\n\ndata IsZero(n : Nat()) : Type() {\n  IsZeroHere() : IsZero(Zero());\n}\nfn f(n : Nat(), p : IsZero(n)) -> (e : Eq(Nat(), n, Zero())) {\n  match n : _ {\n    Zero() => Refl(Nat(), n);\n    Succ(m) => Refl(Nat(), n);\n  }\n}\n",
@@ -6195,7 +6860,7 @@
    }
   },
   {
-   "id": 350,
+   "id": 388,
    "origin": "src/tutorial/limits.test.ts:12",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\nmutual {\n  data Even(n : Nat()) : Type() {\n    EvenZero() : Even(Zero());\n    EvenSucc(n : Nat(), p : Odd(n)) : Even(Succ(n));\n  }\n  data Odd(n : Nat()) : Type() {\n    OddSucc(n : Nat(), p : Even(n)) : Odd(Succ(n));\n  }\n}\n\ndata Option(A : Type()) : Type() {\n  None(A : Type()) : Option(A);\n  Some(A : Type(), x : A) : Option(A);\n}\n\nfn decideEvenRec(subterm n : Nat()) -> (r : Option(Even(n))) {\n  match n : (r : Option(Even(n))) {\n    Zero() => Some(Even(n), EvenZero());\n    Succ(m) => match m : (r : Option(Even(n))) {\n      Zero() => None(Even(n));\n      Succ(k) => match decideEvenRec(subterm k) : _ {\n        None(_) => None(Even(n));\n        Some(_, q) => Some(Even(n), EvenSucc(m, OddSucc(k, q)));\n      };\n    };\n  }\n}\n\nfn decideEven(n : Nat()) -> (r : Option(Even(n))) {\n  decideEvenRec(n)\n}\nfn plus(subterm m : Nat(), n : Nat()) -> (r : Nat()) {\n  match m : (r : Nat()) {\n    Zero() => n;\n    Succ(k) => Succ(plus(subterm k, n));\n  }\n}\n\nfn times(subterm m : Nat(), n : Nat()) -> (r : Nat()) {\n  match m : (r : Nat()) {\n    Zero() => Zero();\n    Succ(k) => plus(times(subterm k, n), n);\n  }\n}\n\nlet five = Succ(Succ(Succ(Succ(Succ(Zero())))));\nlet ten = plus(five, five);\nlet n = times(ten, ten);\nprint n;\ngoal Even(n);\nqed EvenSucc(Succ(Zero()), OddSucc(Zero(), EvenZero()));\n",
@@ -6217,7 +6882,7 @@
    }
   },
   {
-   "id": 351,
+   "id": 389,
    "origin": "src/tutorial/limits.test.ts:13",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\nmutual {\n  data Even(n : Nat()) : Type() {\n    EvenZero() : Even(Zero());\n    EvenSucc(n : Nat(), p : Odd(n)) : Even(Succ(n));\n  }\n  data Odd(n : Nat()) : Type() {\n    OddSucc(n : Nat(), p : Even(n)) : Odd(Succ(n));\n  }\n}\n\ndata Option(A : Type()) : Type() {\n  None(A : Type()) : Option(A);\n  Some(A : Type(), x : A) : Option(A);\n}\n\nfn decideEvenRec(subterm n : Nat()) -> (r : Option(Even(n))) {\n  match n : (r : Option(Even(n))) {\n    Zero() => Some(Even(n), EvenZero());\n    Succ(m) => match m : (r : Option(Even(n))) {\n      Zero() => None(Even(n));\n      Succ(k) => match decideEvenRec(subterm k) : _ {\n        None(_) => None(Even(n));\n        Some(_, q) => Some(Even(n), EvenSucc(m, OddSucc(k, q)));\n      };\n    };\n  }\n}\n\nfn decideEven(n : Nat()) -> (r : Option(Even(n))) {\n  decideEvenRec(n)\n}\nfn plus(subterm m : Nat(), n : Nat()) -> (r : Nat()) {\n  match m : (r : Nat()) {\n    Zero() => n;\n    Succ(k) => Succ(plus(subterm k, n));\n  }\n}\n\nfn times(subterm m : Nat(), n : Nat()) -> (r : Nat()) {\n  match m : (r : Nat()) {\n    Zero() => Zero();\n    Succ(k) => plus(times(subterm k, n), n);\n  }\n}\n\nlet five = Succ(Succ(Succ(Succ(Succ(Zero())))));\nlet ten = plus(five, five);\nlet n = times(ten, ten);\nprint n;\ngoal Even(n);\nlet p = match decideEven(n) : (p : Even(n)) {\n  None(_) => sorry(_);\n  Some(_, q) => q;\n};\nqed p;\n",
@@ -6236,7 +6901,7 @@
    }
   },
   {
-   "id": 352,
+   "id": 390,
    "origin": "src/tutorial/limits.test.ts:18",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata False() : Type() {}\n\nfn explode(A : Type(), f : False()) -> (x : A) {\n  match f : _ {}\n}\ngoal False();\n-- Try each cheat as the body of loop. Can you prove the goal?\nfn loop(n : Nat()) -> (f : False()) {\n  match n : _ {}\n}\nqed loop(Zero());\n",
@@ -6253,7 +6918,7 @@
    }
   },
   {
-   "id": 353,
+   "id": 391,
    "origin": "src/tutorial/limits.test.ts:20",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata False() : Type() {}\n\nfn explode(A : Type(), f : False()) -> (x : A) {\n  match f : _ {}\n}\ngoal False();\n-- Try each cheat as the body of loop. Can you prove the goal?\nfn loop(subterm n : Nat()) -> (f : False()) {\n  loop(subterm n)\n}\nqed loop(Zero());\n",
@@ -6270,7 +6935,7 @@
    }
   },
   {
-   "id": 354,
+   "id": 392,
    "origin": "src/tutorial/recursion.test.ts:23",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Bool() : Type() {\n  Yes() : Bool();\n  No() : Bool();\n}\n  fn isEven(subterm n : Nat()) -> (b : Bool()) {\n    match n : (b : Bool()) {\n      Zero() => Yes();\n      Succ(m) => isOdd(subterm m);\n    }\n  }\n  fn isOdd(subterm n : Nat()) -> (b : Bool()) {\n    match n : (b : Bool()) {\n      Zero() => No();\n      Succ(m) => isEven(subterm m);\n    }\n  }\nlet two = Succ(Succ(Zero()));\nprint isEven(two);\nprint isOdd(two);\n",
@@ -6287,7 +6952,7 @@
    }
   },
   {
-   "id": 355,
+   "id": 393,
    "origin": "src/tutorial/recursion.test.ts:38",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\n\ndata Pair(A : Type(), B : Type()) : Type() {\n  MkPair(A : Type(), B : Type(), fst : A, snd : B) : Pair(A, B);\n}\nlet one = Succ(Zero());\nlet xs = VCons(Nat(), one, Zero(),\n  VCons(Nat(), Zero(), one, VNil(Nat())));\nfn vzip(A : Type(), B : Type(), n : Nat(), subterm v : Vec(A, n),\n    w : Vec(B, n)) -> (r : Vec(Pair(A, B), n)) {\n  match v : (r : Vec(Pair(A, B), n)) {\n    VNil(_) => VNil(Pair(A, B));\n    VCons(_, k, x, vs) => {\n      let VCons(_, _, y, ws) = w;\n      VCons(Pair(A, B), k, MkPair(A, B, x, y),\n        vzip(A, B, k, vs, ws))\n    };\n  }\n}\nprint vzip(Nat(), Nat(), Succ(one), xs, xs);\n",
@@ -6304,7 +6969,7 @@
    }
   },
   {
-   "id": 356,
+   "id": 394,
    "origin": "src/tutorial/recursion.test.ts:41",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\n\ndata Pair(A : Type(), B : Type()) : Type() {\n  MkPair(A : Type(), B : Type(), fst : A, snd : B) : Pair(A, B);\n}\nlet one = Succ(Zero());\nlet xs = VCons(Nat(), one, Zero(),\n  VCons(Nat(), Zero(), one, VNil(Nat())));\nfn vzip(A : Type(), B : Type(), n : Nat(), subterm v : Vec(A, n),\n    w : Vec(B, n)) -> (r : Vec(Pair(A, B), n)) {\n  match v : (r : Vec(Pair(A, B), n)) {\n    VNil(_) => VNil(Pair(A, B));\n    VCons(_, k, x, vs) => {\n      let VCons(_, _, y, ws) = w;\n      VCons(Pair(A, B), k, MkPair(A, B, x, y),\n        vzip(A, B, k, subterm vs, ws))\n    };\n  }\n}\nprint vzip(Nat(), Nat(), Succ(one), xs, xs);\nprint vzip(Nat(), Nat(), Succ(one), xs, VNil(Nat()));\n",
@@ -6316,7 +6981,7 @@
     "prints": [
      {
       "pos": 800,
-      "value": "VCons(Pair(Nat(), Nat()), Succ(Zero()), MkPair(Nat(), Nat(), Zero(), Zero()), VCons(Pair(Nat(), Nat()), Zero(), MkPair(Nat(), Nat(), Succ(Zero()), Succ(Zero())), VNil(Pair(Nat(), Nat()))))"
+      "value": "VCons(_, Succ(Zero()), MkPair(_, _, Zero(), Zero()), VCons(_, Zero(), MkPair(_, _, Succ(Zero()), Succ(Zero())), VNil(_)))"
      }
     ],
     "qed": "none",
@@ -6326,7 +6991,7 @@
    }
   },
   {
-   "id": 357,
+   "id": 395,
    "origin": "src/tutorial/relation.test.ts:12",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Eq(A : Type(), x : A, y : A) : Type() {\n  Refl(A : Type(), x : A) : Eq(A, x, x);\n}\n\ndata Plus(m : Nat(), n : Nat(), r : Nat()) : Type() {\n  PlusZero(n : Nat()) : Plus(Zero(), n, n);\n  PlusSucc(m : Nat(), n : Nat(), r : Nat(), p : Plus(m, n, r))\n    : Plus(Succ(m), n, Succ(r));\n}\nfn plus(subterm m : Nat(), n : Nat())\n    -> (r : Nat(), p : Plus(m, n, r)) {\n  match m : _ {\n    Zero() => (n, PlusZero(n));\n    Succ(k) => {\n      let (r, p) = plus(subterm k, n);\n      (Succ(r), PlusSucc(k, n, r, p))\n    };\n  }\n}\nlet one = Succ(Zero());\nlet two = Succ(one);\nlet three = Succ(two);\nlet four = Succ(three);\ngoal Plus(two, two, four);\n-- Replace sorry(_) with evidence that two plus two is four.\nlet e : Plus(two, two, four) = PlusSucc(one, two, three, sorry(p : Plus(one, two, three)));\nqed e;\nlet (s, q) = plus(two, two);\nprint s;\nprint q;\n",
@@ -6349,7 +7014,7 @@
    }
   },
   {
-   "id": 358,
+   "id": 396,
    "origin": "src/tutorial/relation.test.ts:23",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Eq(A : Type(), x : A, y : A) : Type() {\n  Refl(A : Type(), x : A) : Eq(A, x, x);\n}\n\ndata Plus(m : Nat(), n : Nat(), r : Nat()) : Type() {\n  PlusZero(n : Nat()) : Plus(Zero(), n, n);\n  PlusSucc(m : Nat(), n : Nat(), r : Nat(), p : Plus(m, n, r))\n    : Plus(Succ(m), n, Succ(r));\n}\nfn plus(subterm m : Nat(), n : Nat())\n    -> (r : Nat(), p : Plus(m, n, r)) {\n  match m : _ {\n    Zero() => (n, PlusZero(n));\n    Succ(k) => {\n      let (r, p) = plus(subterm k, n);\n      (Succ(r), PlusSucc(k, n, r, p))\n    };\n  }\n}\nlet one = Succ(Zero());\nlet two = Succ(one);\nlet three = Succ(two);\nlet four = Succ(three);\ngoal Plus(two, two, four);\nfn bad(n : Nat()) -> (e : Eq(Nat(), plus(n, Zero()), n)) {\n  sorry(_)\n}\n",
@@ -6366,7 +7031,7 @@
    }
   },
   {
-   "id": 359,
+   "id": 397,
    "origin": "src/tutorial/relation.test.ts:34",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Eq(A : Type(), x : A, y : A) : Type() {\n  Refl(A : Type(), x : A) : Eq(A, x, x);\n}\n\ndata Plus(m : Nat(), n : Nat(), r : Nat()) : Type() {\n  PlusZero(n : Nat()) : Plus(Zero(), n, n);\n  PlusSucc(m : Nat(), n : Nat(), r : Nat(), p : Plus(m, n, r))\n    : Plus(Succ(m), n, Succ(r));\n}\ngoal fn (n : Nat(), r : Nat(), p : Plus(n, Zero(), r))\n    -> (e : Eq(Nat(), r, n));\n--\nfn plusZero(subterm n : Nat(), r : Nat(), p : Plus(n, Zero(), r))\n    -> (e : Eq(Nat(), r, n)) {\n  match p : _ {\n    PlusZero(_) => Refl(Nat(), r);\n    PlusSucc(m, _, r1, q) => match plusZero(subterm m, r1, q) : _ {\n      Refl(_, _) => sorry(_);\n    };\n  }\n}\nqed plusZero;\n",
@@ -6380,7 +7045,7 @@
    }
   },
   {
-   "id": 360,
+   "id": 398,
    "origin": "src/tutorial/relation.test.ts:49",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\n\ndata Plus(m : Nat(), n : Nat(), r : Nat()) : Type() {\n  PlusZero(n : Nat()) : Plus(Zero(), n, n);\n  PlusSucc(m : Nat(), n : Nat(), r : Nat(), p : Plus(m, n, r))\n    : Plus(Succ(m), n, Succ(r));\n}\n\nfn plus(subterm m : Nat(), n : Nat())\n    -> (r : Nat(), p : Plus(m, n, r)) {\n  match m : _ {\n    Zero() => (n, PlusZero(n));\n    Succ(k) => {\n      let (r, p) = plus(subterm k, n);\n      (Succ(r), PlusSucc(k, n, r, p))\n    };\n  }\n}\n\nfn vhead(A : Type(), n : Nat(), v : Vec(A, Succ(n)))\n    -> (x : A) {\n  let VCons(_, _, hd, _) = v;\n  hd\n}\nlet one = Succ(Zero());\nlet two = Succ(one);\nlet xs = VCons(Nat(), one, Zero(),\n  VCons(Nat(), Zero(), one, VNil(Nat())));\nlet ys = VCons(Nat(), Zero(), two, VNil(Nat()));\ngoal fn (A : Type(), m : Nat(), n : Nat(), v : Vec(A, m), w : Vec(A, n))\n    -> (r : Nat(), p : Plus(m, n, r), u : Vec(A, r));\nfn vappend(A : Type(), m : Nat(), n : Nat(), subterm v : Vec(A, m),\n    w : Vec(A, n)) -> (r : Nat(), p : Plus(m, n, r), u : Vec(A, r)) {\n  match v : _ {\n    VNil(_) => (n, PlusZero(n), w);\n    VCons(_, m1, x, rest) => {\n      let (r1, p1, u1) = vappend(A, m1, n, subterm rest, w);\n      sorry(_)\n    };\n  }\n}\nqed vappend;\nlet (r, p, u) = vappend(Nat(), two, one, xs, ys);\nprint r;\nprint u;\n",
@@ -6403,7 +7068,7 @@
    }
   },
   {
-   "id": 361,
+   "id": 399,
    "origin": "src/tutorial/relation.test.ts:65",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Vec(A : Type(), n : Nat()) : Type() {\n  VNil(A : Type()) : Vec(A, Zero());\n  VCons(A : Type(), n : Nat(), head : A, rest : Vec(A, n))\n    : Vec(A, Succ(n));\n}\n\ndata Plus(m : Nat(), n : Nat(), r : Nat()) : Type() {\n  PlusZero(n : Nat()) : Plus(Zero(), n, n);\n  PlusSucc(m : Nat(), n : Nat(), r : Nat(), p : Plus(m, n, r))\n    : Plus(Succ(m), n, Succ(r));\n}\n\nfn plus(subterm m : Nat(), n : Nat())\n    -> (r : Nat(), p : Plus(m, n, r)) {\n  match m : _ {\n    Zero() => (n, PlusZero(n));\n    Succ(k) => {\n      let (r, p) = plus(subterm k, n);\n      (Succ(r), PlusSucc(k, n, r, p))\n    };\n  }\n}\n\nfn vhead(A : Type(), n : Nat(), v : Vec(A, Succ(n)))\n    -> (x : A) {\n  let VCons(_, _, hd, _) = v;\n  hd\n}\nlet one = Succ(Zero());\nlet two = Succ(one);\nlet xs = VCons(Nat(), one, Zero(),\n  VCons(Nat(), Zero(), one, VNil(Nat())));\nlet ys = VCons(Nat(), Zero(), two, VNil(Nat()));\ngoal fn (A : Type(), m : Nat(), n : Nat(), v : Vec(A, m), w : Vec(A, n))\n    -> (r : Nat(), p : Plus(m, n, r), u : Vec(A, r));\nfn vappend(A : Type(), m : Nat(), n : Nat(), subterm v : Vec(A, m),\n    w : Vec(A, n)) -> (r : Nat(), p : Plus(m, n, r), u : Vec(A, r)) {\n  match v : _ {\n    VNil(_) => (n, PlusZero(n), w);\n    VCons(_, m1, x, rest) => {\n      let (r1, p1, u1) = vappend(A, m1, n, subterm rest, w);\n      (Succ(r1), PlusSucc(m1, n, r1, p1), VCons(A, r1, x, u1))\n    };\n  }\n}\nqed vappend;\nlet (r, p, u) = vappend(Nat(), two, one, xs, ys);\nprint r;\nprint u;\nprint vhead(Nat(), two, u);\n",
@@ -6419,7 +7084,7 @@
      },
      {
       "pos": 1505,
-      "value": "VCons(Nat(), Succ(Succ(Zero())), Zero(), VCons(Nat(), Succ(Zero()), Succ(Zero()), VCons(Nat(), Zero(), Succ(Succ(Zero())), VNil(Nat()))))"
+      "value": "VCons(_, Succ(Succ(Zero())), Zero(), VCons(_, Succ(Zero()), Succ(Zero()), VCons(_, Zero(), Succ(Succ(Zero())), VNil(_))))"
      }
     ],
     "qed": "checks",
@@ -6429,7 +7094,7 @@
    }
   },
   {
-   "id": 362,
+   "id": 400,
    "origin": "src/tutorial/start.test.ts:24",
    "phase": 1,
    "source": "data Nat() : Type() {\n  Zero() : Nat();\n  Succ(pred : Nat()) : Nat();\n}\n\ndata Bool() : Type() {\n  Yes() : Bool();\n  No() : Bool();\n}\nfn isZero(n : Nat()) -> (b : Bool()) {\n  match n : (b : Bool()) {\n    Zero() => Yes();\n    Succ(Succ(m)) => No();\n  }\n}\nprint isZero(Succ(Zero()));\n",

@@ -14,7 +14,7 @@ It follows the shape of Sleight's
 which argues the same points for a larger language. A second
 implementation of the checker and evaluator, in Lean under `lean/`,
 comes with Lean-checked counterparts of most of the lemmas below, for
-programs without `_` arguments (§16) under phase 1 or 2, `sorry`
+programs with no `_` for an argument or inside a type (§16) under phase 1 or 2, `sorry`
 included, so their statements take in taint (§12), which part 12
 argues, and erasure (§16), which part 13 argues. Parts 11 to 13 list
 them. Those results are about the Lean implementation and about the
@@ -369,7 +369,7 @@ If any of these changed, the argument would need revisiting:
 
 `lean/README.md` describes the Lean implementation, the model its
 theorems are stated in and what they assume. Lean checks the theorems
-below for programs without `_` arguments (`Program.holeFree`), under
+below for programs with no `_` for an argument or inside a type (`Program.holeFree`), under
 any phase, with or without `sorry`, with no axioms beyond `propext`,
 `Classical.choice` and `Quot.sound`. Each is meant to be the
 counterpart of the part of this note it is listed under; the
@@ -440,7 +440,7 @@ by `Rel`, or by `Approx` at an erased position (`Core.lean`).
   taken on ideal arguments. Part 13 names the Lean counterpart of each
   of its steps beside it.
 
-The following have no Lean counterpart: programs with `_` arguments,
+The following have no Lean counterpart: programs with a `_` for an argument or inside a type,
 and so §16's unification and taint through a `_`, which this note does
 not argue either; the TypeScript implementation; and the parsers, about
 which no theorem says anything. That the Lean checker implements
@@ -453,7 +453,7 @@ verdicts with the TypeScript checker's on a corpus of programs
 This part extends parts 3 to 8 to a phase 1 program that contains
 `sorry`. Beside each step it names the Lean theorem or definition that
 checks its counterpart in the Lean implementation, for programs
-without `_` arguments in phases 1 and 2 (part 11); file names are
+with no `_` for an argument or inside a type in phases 1 and 2 (part 11); file names are
 under `lean/Pledge/`, and the correspondence is a Claude session's
 reading.
 
@@ -693,7 +693,7 @@ a program with `sorry` or without (`no_empty_goal`).
 
 ### What this part does not cover
 
-- `_` arguments (§16), and so taint through a solved `_` (§12): neither
+- `_` for an argument or inside a type (§16), and so taint through a solved `_` (§12): neither
   this part nor any Lean theorem covers them.
 - Erasure (§16): part 13 extends this part to phase 2.
 - The TypeScript code: this part is about the taint rules as it reads
@@ -710,7 +710,7 @@ a program with `sorry` or without (`no_empty_goal`).
 This part extends parts 3 to 8, and part 12, to a phase 2 program
 (§16), with or without `sorry`. Beside each step it names the Lean
 theorem or definition that checks its counterpart in the Lean
-implementation, for programs without `_` arguments (part 11); file
+implementation, for programs with no `_` for an argument or inside a type (part 11); file
 names are under `lean/Pledge/`, and the correspondence is a Claude
 session's reading. Without `sorry` every result is untainted, and
 nothing of part 12 is needed but its notation.
@@ -878,7 +878,7 @@ check is about skeleton terms in the caller's scope, which Corollary
 3.2 relates to ideal values (`call_lt`, `Sound/Basic.lean`). This lets
 a function decrease only on an erased `subterm` parameter, as `len`
 does in `lean/tests/extra/phase2_erased_subterm_len.pledge`, a program
-with no `_` argument:
+with no `_` for an argument or inside a type:
 
 ```
 fn len(erased A : Type(), subterm erased n : Nat(), v : Vec(A, n)) -> (r : Nat()) {
@@ -1064,7 +1064,7 @@ approximation, `v`'s subtree itself included.
 
 ### What this part does not cover
 
-- `_` arguments (§16), and so the solving of a `_` by unification:
+- `_` for an argument or inside a type (§16), and so the solving of a `_` by unification:
   neither this part nor any Lean theorem covers them. The two programs
   of `lean/tests/extra/` other than `len`'s pass `_` arguments, so they
   are outside the theorems, and are only compared with the TypeScript

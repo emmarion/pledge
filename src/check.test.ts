@@ -60,7 +60,7 @@ test("proof by reflection with a mutual decideEven, proving a goal", () => {
   assert.equal(p?.type.text, `Even(${nats(2)})`);
   assert.deepEqual(verdicts(r), [false, true, true]);
   err(`${decide}let Some(_, p) = decideEven(${nats(2)});\n`, "Some(_, p)", /`None` is not refuted/);
-  err(`${decide}comptime let Some(_, p) = decideEven(${nats(1)});\n`, `decideEven(${nats(1)})`, /evaluates to `None\(Even\(Succ\(Zero\(\)\)\)\)`, which is not headed by `Some`/);
+  err(`${decide}comptime let Some(_, p) = decideEven(${nats(1)});\n`, `decideEven(${nats(1)})`, /evaluates to `None\(_\)`, which is not headed by `Some`/);
 });
 
 test("a goal proved without sorry", () => {

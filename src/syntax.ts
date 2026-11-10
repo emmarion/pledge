@@ -6,7 +6,7 @@ export interface Id { name: string | null; span: Span }
 
 export interface Name { name: string; span: Span }
 
-export interface WrittenTerm { head: Name; args: WrittenTerm[] | null; span: Span }
+export interface WrittenTerm { head: Name; args: WrittenTerm[] | null; span: Span; hole?: true }
 
 export type Mult = "many" | "erased";
 

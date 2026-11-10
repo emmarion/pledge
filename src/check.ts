@@ -8,7 +8,7 @@ import { bindPattern, evalOne, evalStmt, showValue } from "./eval.ts";
 import type { Env, FnDef, Value } from "./eval.ts";
 import { Failure, attempt, code, declareGlobal, fail, labelled, newName, occur, record } from "./context.ts";
 import type { Ctx, Declared, FnCtx, FnSig, Given, Global, Local, Snapshot, State } from "./context.ts";
-import { annotate, expr, header, single, stmt, telescope, term } from "./expr.ts";
+import { annotate, closed, header, single, stmt, telescope, term } from "./expr.ts";
 import { goalGiven, qedFn, rejectFn } from "./goal.ts";
 import type { Goal } from "./goal.ts";
 import { info, queries } from "./info.ts";
@@ -36,7 +36,7 @@ export const check: Check = (source, phase, where = position(source)) => {
   const st: State = { phase, globals: [], index: new Map(), snapshots: [], explains: [], occurrences: [],
     erased: [], record: true };
   declareGlobal(st, { kind: "type", name: "Type", sig: signature(top.scope, "Type")!, ctors: null, done: true });
-  const ctx: Ctx = { st, fn: null, skeleton: false, limit: null, erased: false, holes: [], decl: null };
+  const ctx: Ctx = { st, fn: null, skeleton: false, limit: null, erased: false, inType: false, holes: [], decl: null };
   const prints: CheckResult["prints"] = [], gaps: Snapshot[] = [];
   const fns = new Map<string, FnDef>();
   let env: Env = new Map(), proved = false, qedChecks = false;
@@ -107,7 +107,7 @@ export const check: Check = (source, phase, where = position(source)) => {
     const logs = [st.snapshots, st.explains, st.occurrences, st.erased], marks = logs.map(log => log.length);
     for (;;) {
       logs.forEach((log, i) => { log.length = marks[i]!; });
-      const bodies = heads.map((h, i) => expr(h.c, h.local, h.f.body, { wants: h.sig.returns, env: h.env, whole: true,
+      const bodies = heads.map((h, i) => closed(h.c, h.local, h.f.body, { wants: h.sig.returns, env: h.env, whole: true,
         label: j => labelled("return", h.sig.returns[j]?.name ?? null, j, names[i]) }));
       const now = bodies.map(b => b.results.some(r => r.tainted));
       if (!now.some((t, i) => t && !heads[i]!.sig.tainted)) {
@@ -124,7 +124,7 @@ export const check: Check = (source, phase, where = position(source)) => {
 
   const qedExpr = (e: Expr, given: Given, span: Span): boolean => {
     rejectFn(ctx, top, e, given);
-    const out = expr(ctx, top, e, given), tainted = out.results.some(r => r.tainted);
+    const out = closed(ctx, top, e, given), tainted = out.results.some(r => r.tainted);
     top = out.local;
     evaluated(span, out.tree, tainted);
     return tainted;
@@ -160,7 +160,7 @@ export const check: Check = (source, phase, where = position(source)) => {
       }
       case "print": {
         here(t.span);
-        const out = expr(ctx, top, t.expr, null, "the expression of a `print`");
+        const out = closed(ctx, top, t.expr, null, "the expression of a `print`");
         top = out.local;
         const v = evaluated(t.span, out.tree, single(out, t.expr.span).tainted);
         prints.push({ span: t.span, value: v ? showValue(v) : "sorry" });

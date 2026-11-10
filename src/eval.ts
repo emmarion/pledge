@@ -32,7 +32,7 @@ export const evalOne = (fns: Fns, env: Env, e: Expr): Value => one(evalExpr(fns,
 export const bindPattern = (env: Env, pat: Pattern, v: Value, mult: Mult | null = null): Env =>
   mult === "erased" ? bindValues(env, pat.fields, pat.fields.map(() => removed))
   : tag(v) === pat.ctor.name ? bindValues(env, pat.fields, v.args)
-    : internal(`pattern ${pat.ctor.name} met ${showValue(v)}`);
+    : internal(`pattern ${pat.ctor.name} met ${v.head}`);
 
 const afterStmt = (env: Env, s: Stmt, vs: Value[]): Env =>
   s.kind === "let" ? bindValues(env, s.binders.map(b => b.name), take(vs, s.binders.length))
@@ -71,7 +71,7 @@ export const evalExpr = (fns: Fns, env: Env, e: Expr): Value[] => {
   const branch = (env: Env, m: Match, v: Value): Step => {
     const [only, ...others] = m.branches;
     const br = m.mult !== "erased" ? m.branches.find(b => b.pat.ctor.name === tag(v))
-      ?? internal(`no branch for ${showValue(v)}`)
+      ?? internal(`no branch for ${tag(v)}`)
       : only && !others.length ? only : internal(`an erased match with ${m.branches.length} branches`);
     if (Array.isArray(m.ann)) returning(m.ann.length);
     return { expr: br.body, env: bindPattern(env, br.pat, v, m.mult) };

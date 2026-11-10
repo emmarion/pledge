@@ -245,6 +245,7 @@ theorem comptimeLet_sound {st st' : TopState} {ρ : List Value} {p : Pos} {m : O
   rename_i hm
   obtain ⟨-, -, h⟩ := bind_eq_ok.1 h
   obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
+  rw [closed_eq hI.holes fun o h => (Expr.shape rhs hp _ _ _ o hI.holes h).2.2.1] at ho
   rw [keep_ok] at h
   obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
   obtain ⟨fs, hfs, h⟩ := bind_eq_ok.1 h
@@ -294,7 +295,8 @@ theorem comptimeLet_sound {st st' : TopState} {ρ : List Value} {p : Pos} {m : O
       simpa [Ctx.posMult, TopState.ctx, MultRel] using this
     obtain ⟨c, ws, sig, Γ', ids', pat', rfl, hfc, hsig, hws, hsat, hpre, -, hids, -, hent⟩ :=
       forcings_value hI₁ hfs hvi hV
-    obtain ⟨as, rfl⟩ : ∃ as, v = .app ⟨.ctor, c⟩ as := by cases hR; exact ⟨_, rfl⟩
+    obtain ⟨as, rfl⟩ : ∃ as, v = .app ⟨.ctor, c⟩ as := by
+      cases hR with | type h => cases h | app => exact ⟨_, rfl⟩
     simp only [Value.headName] at hhead
     subst hhead
     rw [hfc] at hf
@@ -362,6 +364,7 @@ theorem print_sound {st st' : TopState} {ρ : List Value} {p : Pos} {e : Expr} (
     ∃ ρ', (st.world ρ).Le (st'.world (ρ ++ ρ')) ∧ TopInv st' (ρ ++ ρ') := by
   simp only [topItem] at h
   obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
+  rw [closed_eq hI.holes fun o h => (Expr.shape e hp _ _ _ o hI.holes h).2.2.1] at ho
   obtain ⟨v, -, h⟩ := bind_eq_ok.1 h
   cases h
   obtain ⟨hsig, hnm, hh, hpre, htnt⟩ := Expr.shape e hp _ st.sc none o hI.holes ho
@@ -408,13 +411,14 @@ type, in an untainted scope, and that type has type `Type()`. -/
 theorem typeQed_sound {st st' : TopState} {ρ : List Value} {p : Pos} {e : Expr} {goal : CheckedGoal} {t : Term}
     (hI : TopInv st ρ) (hp : e.holeFree = true) (hgoal : st.goal = some goal) (hk : goal.kind = .type t)
     (h : (do
-        let o ← checkExpr st.ctx st.sc (some goal.given) e
+        let o ← closed st.sc (checkExpr st.ctx · (some goal.given) e)
         let _ ← keep o.snaps (st.eval p o.tree (o.res.any fun x => x.tainted))
         let st ← pure { st with sc := o.sc, proved := !o.res.any fun x => x.tainted, snaps := st.snaps ++ o.snaps }
         pure { st with qedChecks := true, proved := st.proved && st.sc.taintedBy.isNone && !goal.tainted } :
         CheckM TopState) = .ok st') :
     ∃ ρ', (st.world ρ).Le (st'.world (ρ ++ ρ')) ∧ TopInv st' (ρ ++ ρ') := by
   obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
+  rw [closed_eq hI.holes fun o h => (Expr.shape e hp _ _ _ o hI.holes h).2.2.1] at ho
   obtain ⟨-, -, h⟩ := bind_eq_ok.1 h
   cases h
   obtain ⟨hsig, hnm, hh, hpre, htnt⟩ := Expr.shape e hp _ st.sc _ o hI.holes ho

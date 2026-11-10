@@ -12,6 +12,7 @@ termination_by v => sizeOf v
 
 theorem Rel.approx {S : Sigs} {phase : Nat} {a i : Value} (h : Rel S phase a i) : Approx a i := by
   induction h with
+  | type => exact .removed
   | app hl hA hR ih =>
     refine .app hl fun k a i ha hi => ?_
     cases he : Sigs.erasedArg _ _ _ k
@@ -47,6 +48,7 @@ theorem Sigs.erasedArg_mono {S S' : Sigs} (hS : S.Sub S') {phase : Nat} {h : Hea
 theorem Rel.mono_sigs {S S' : Sigs} (hS : S.Sub S') {phase : Nat} {a i : Value} (h : Rel S phase a i) :
     Rel S' phase a i := by
   induction h with
+  | type ht => exact .type ht
   | app hl hA hR ih =>
     refine .app hl (fun k a i ha hi he' => ?_) fun k a i ha hi he' => ?_
     · cases he : Sigs.erasedArg _ _ _ k
@@ -88,7 +90,7 @@ theorem Rel.app_iff {S : Sigs} {phase : Nat} {h h' : Head} {as is : List Value} 
       ∀ (k : Nat) (a i : Value), as[k]? = some a → is[k]? = some i →
         MultRel S phase (if S.erasedArg phase h k then .erased else .many) a i := by
   constructor
-  · rintro (⟨hl, hA, hR⟩)
+  · rintro (⟨⟩ | ⟨hl, hA, hR⟩)
     refine ⟨rfl, hl, fun k a i ha hi => ?_⟩
     cases he : S.erasedArg phase h k
     · exact hR k a i ha hi he

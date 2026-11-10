@@ -46,7 +46,7 @@ theorem dataGroup_sound {st st' : TopState} {ρ : List Value} {ds : List Data} (
   exact ⟨hg.le hI hg.junk, hg.topInv hI hg.junk⟩
 
 theorem fnGroup_sound {st st' : TopState} {ρ : List Value} {fs : List Fn} (hI : TopInv st ρ)
-    (hp : fs.all (·.body.holeFree) = true) (h : fnGroup st fs = .ok st') :
+    (hp : fs.all Fn.holeFree = true) (h : fnGroup st fs = .ok st') :
     (st.world ρ).Le (st'.world ρ) ∧ TopInv st' ρ :=
   FnGroup.fnGroup_ok hI hp h
 
@@ -84,7 +84,7 @@ theorem topItem_sound {st st' : TopState} {ρ : List Value} {t : Top} (hI : TopI
     | inspect => exact topStmt_sound hI hp (fun _ _ _ _ h => by cases h) h
   | print p e => exact print_sound hI hp h
   | goal p g =>
-    obtain ⟨h1, h2⟩ := goalItem_sound hI h
+    obtain ⟨h1, h2⟩ := goalItem_sound hI hp h
     exact ⟨[], by simpa using h1, by simpa using h2⟩
   | qed p e => exact qed_sound hI hp h
 
@@ -189,7 +189,7 @@ theorem topItems_final (phase : Nat) (prog : Program) (hp : Program.holeFree pro
   · obtain ⟨ρ, -, hI⟩ := topItems_sound (ρ := []) (prog := prog) (TopInv.init phase) hp
     exact ⟨ρ, by simpa using hI, fun hn hpr => absurd ⟨hn, hpr⟩ hc⟩
 
-/-- Soundness of the checker and evaluator, for hole-free programs (no `_` argument, §16; `sorry` and
+/-- Soundness of the checker and evaluator, for hole-free programs (no `_`, §16; `sorry` and
 multiplicities allowed), under any phase: there is an ideal valuation `W.ρ` of the final top-level entries, the
 program's signatures closed by it typing values, with `W.P` the evaluator's view of the program; it satisfies the
 final scope if that scope is untainted (`tainted` is false); and if the goal is reported proved,
@@ -325,11 +325,12 @@ theorem no_empty_goal (phase : Nat) (prog : Program) (has : String → Bool) (er
   rw [ownedBy_empty (List.nodup_append.1 hgr.nodup).1 hdds hc] at hcomp
   obtain ⟨preg, postg, hsplitg⟩ := List.append_of_mem hg
   obtain ⟨sg, -, hsg, hpostg⟩ := topItems_split (hsplitg ▸ hnone)
+  obtain ⟨-, hpg, -⟩ := hsplitp hsplitg
   obtain ⟨-, goal, rfl, ty, is, tn, hann, -, rfl⟩ := goal_spec hsg
   have hgF' := topItems_goal (hpostg ▸ hsplitg ▸ hnone) rfl
   rw [hpostg, ← hsplitg, hgF] at hgF'
   cases hgF'
-  obtain ⟨r, hr, rfl⟩ := annotate_type hann
+  obtain ⟨r, hr, rfl⟩ := annotate_type (by simpa [Top.holeFree] using hpg) hann
   obtain ⟨k, ts, hrt⟩ := checkTerm_app_head hr
   obtain ⟨v, V, hV, hv, -⟩ := hgoal _ (World.Le.refl _)
   simp only [hrt, Term.eval_app] at hV
@@ -380,7 +381,7 @@ theorem wantsCons_closed {S : Sigs} {ρ : List Value} :
 
 end DataTop
 
-/-- Evaluation at a state `st` the checker reaches on a program without `_` arguments, while its scope is untainted
+/-- Evaluation at a state `st` the checker reaches on a hole-free program, while its scope is untainted
 (§12): an expression checked there at the top level with an untainted result, given closed types of multiplicity
 `many`, as `print`, `qed` against a type goal and a `comptime` pattern `let` check theirs, has an evaluation (`Eval`)
 to one run-time value related (`Rel`) to a typed ideal value, under an ideal valuation `ρ` satisfying the scope; any
@@ -438,7 +439,7 @@ theorem reached_eval_ok (phase : Nat) {pre : Program} (hp : Program.holeFree pre
   have hus : us = [a] := by
     rcases (take_ok htk).2 with h' | ⟨rfl, h'⟩
     · exact h'.symm
-    · cases h'; cases hR
+    · cases h'; rfl
   subst hus
   refine ⟨ρ, a, v, V, hL.sat, hev, hR, hV, fun pos w hw => ?_⟩
   rw [hrt] at hw
@@ -446,7 +447,7 @@ theorem reached_eval_ok (phase : Nat) {pre : Program} (hp : Program.holeFree pre
   obtain rfl := Option.some.inj hw'
   simpa using (Eval.det hev hcert).symm
 
-/-- At a state `st` the checker reaches on a program without `_` arguments, while its scope is untainted, a
+/-- At a state `st` the checker reaches on a hole-free program, while its scope is untainted, a
 statement checked there at the top level that leaves the scope untainted has a run (`EvalStmt`). -/
 theorem reached_run_ok (phase : Nat) {pre : Program} (hp : Program.holeFree pre = true) {st : TopState}
     (hst : st = (topItems (.init phase) pre).1) (ht : st.sc.taintedBy = none) {C : Ctx} {s : Stmt} {o : StmtOut}

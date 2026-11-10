@@ -105,6 +105,7 @@ def isMult (t : Token) : Bool := t.kind == .keyword && phase2Mults.contains t.te
 def mult : M b (Option Mult) := whenTok isMult fun t => pure (if t.text == "erased" then .erased else .many)
 
 def term : M b WTerm := fix fun term t => do
+  if t.kind == .underscore then return .hole t.pos
   let head ← nameOf t
   if ← see "(" then .app head <$> parens term false else pure (.var head)
 
@@ -181,20 +182,18 @@ def blockAfter (expr : M b Expr) : M b Expr := do
 
 def underPhase1 := ", and this program is checked under phase 1"
 
-def arg (phase : Nat) (expr : M b Expr) : M b Arg := do
+def arg (expr : M b Expr) : M b Arg := do
   let mark ← whenTok (fun t => isText t "subterm" || isText t "same") fun t =>
     pure (if t.text == "same" then Mark.same else .subterm)
   let t ← peek
   if t.kind != .underscore then return .mk mark (← expr)
-  unless phase ≥ 2 do fail t fun _ =>
-    s!"`_` stands for an erased argument only from phase 2 on (§16){underPhase1}"
   discard next
   pure (.mk mark (.var ⟨none, t.pos⟩))
 
-/-- An expression, under `phase` (§19 `expr`). -/
-def expr (phase : Nat) : M b Expr := fix fun expr t => do
+/-- An expression (§19 `expr`). -/
+def expr : M b Expr := fix fun expr t => do
   if t.kind == .name then
-    return ← if ← see "(" then .app ⟨t.text, t.pos⟩ <$> parens (arg phase expr) false
+    return ← if ← see "(" then .app ⟨t.text, t.pos⟩ <$> parens (arg expr) false
       else pure (.var ⟨some t.text, t.pos⟩)
   match t.text with
   | "(" => .tuple t.pos <$> parensAfter expr true
@@ -244,19 +243,19 @@ def header : M b Header := do
   unless ← see "(" do failHere fun _ => "a function's returns are a telescope, as in `-> (r : Nat())` (§8)"
   pure ⟨params, ← tele⟩
 
-def fn (phase : Nat) : M b Fn := do
+def fn : M b Fn := do
   let n ← name
   let h ← header
   expect "{"
-  let body ← blockAfter (expr phase)
+  let body ← blockAfter expr
   skipSemis
   pure ⟨n, h, body⟩
 
-def mutualAfter (phase : Nat) (pos : Pos) : M b Top := do
+def mutualAfter (pos : Pos) : M b Top := do
   expect "{"
   let t ← peek
   let top ← if isText t "data" then .mutualData pos <$> manyAfter "data" data
-    else if isText t "fn" then .mutualFn pos <$> manyAfter "fn" (fn phase)
+    else if isText t "fn" then .mutualFn pos <$> manyAfter "fn" fn
     else if isText t "}" then fail t fun _ => "a `mutual` block declares at least one `data` declaration or function"
     else expected t "`data` or `fn`"
   let u ← next
@@ -267,12 +266,12 @@ def mutualAfter (phase : Nat) (pos : Pos) : M b Top := do
   pure top
 
 /-- A declaration or top-level statement, after its first token `t`. -/
-def topAfter (phase : Nat) (t : Token) : M b Top := do
-  let e := expr phase
+def topAfter (t : Token) : M b Top := do
+  let e := expr
   match t.kind, t.text with
   | .keyword, "data" => .data <$> data
-  | .keyword, "fn" => .fn <$> fn phase
-  | .keyword, "mutual" => mutualAfter phase t.pos
+  | .keyword, "fn" => .fn <$> fn
+  | .keyword, "mutual" => mutualAfter t.pos
   | .keyword, "let" | .keyword, "inspect" => .stmt <$> stmtAfter e t
   | .keyword, "comptime" =>
     expect "let"
@@ -285,9 +284,9 @@ def topAfter (phase : Nat) (t : Token) : M b Top := do
   | _, _ => expected t "a declaration or a top-level statement"
 
 /-- The items of the program up to the first error, and that error. -/
-def program (phase : Nat) : M b (Program × Option Err) := fix fun program t =>
+def program : M b (Program × Option Err) := fix fun program t =>
   if t.kind == .eof then pure ([], none) else
-    tryCatch (do let top ← topAfter phase t; let (tops, e) ← program; pure (top :: tops, e))
+    tryCatch (do let top ← topAfter t; let (tops, e) ← program; pure (top :: tops, e))
       fun e => pure ([], some e)
 
 /-- Where an error is reported and its message: a lexical error's own, or, under phase 1, a hint when the token
@@ -305,7 +304,7 @@ end Parser
 /-- The items of `source` before its first syntax error under `phase`, and that error's position and message. -/
 def parse (source : String) (phase : Nat) : Program × Option (Pos × String) :=
   let tokens := lex source phase
-  match Parser.program phase ⟨tokens.dropLast, tokens.getLastD ⟨.eof, "", source.length⟩, Nat.le_refl _⟩ with
+  match Parser.program ⟨tokens.dropLast, tokens.getLastD ⟨.eof, "", source.length⟩, Nat.le_refl _⟩ with
   | .ok ((tops, e), _) => (tops, e.map (Parser.report phase tokens))
   | .error e => ([], some (Parser.report phase tokens e))
 
