@@ -126,8 +126,8 @@ whose forcing survived, so the match has a branch for it, whose results are the 
 scrutinee's tag picks that branch. With no branch, it is absurd: its results are tainted, or it is not reached. -/
 theorem matchMany_sound {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Branch}
     (hm : m ≠ some .erased) (ihs : ExprSound s) (ihss : ExprShape s) (ihb : ∀ b ∈ bs, ExprSound b.body)
-    (ihbs : ∀ b ∈ bs, ExprShape b.body) : ExprSound (.match p m s ann bs) := by
-  sorry
+    (ihbs : ∀ b ∈ bs, ExprShape b.body) : ExprSound (.match p m s ann bs) :=
+  MatchMany.sound hm ihs ihss ihb ihbs
 
 /-- An erased `match` (§16): the scrutinee is not run; when a result is untainted and the match is not wholly
 erased, an annotation entry is `many`, so at most one branch is not absurd, and the branch for the value
@@ -174,8 +174,8 @@ theorem let_sound {p : Pos} {bs : List LetBinder} {rhs : Expr} (ih : ExprSound r
 /-- A pattern `let` that is not erased (§10): as a `match` with one branch, the rest of the body; a tainted
 scrutinee taints the scope after it (§12). -/
 theorem patletMany_sound {p : Pos} {ct : Bool} {m : Option Mult} {pat : Pattern} {rhs : Expr}
-    (hm : m ≠ some .erased) (ih : ExprSound rhs) (ihs : ExprShape rhs) : StmtSound (.patlet p ct m pat rhs) := by
-  sorry
+    (hm : m ≠ some .erased) (ih : ExprSound rhs) (ihs : ExprShape rhs) : StmtSound (.patlet p ct m pat rhs) :=
+  MatchMany.patletSound hm ih ihs
 
 /-- An erased pattern `let` (§16): the right-hand side is not run, and the fields are bound to `removed`. -/
 theorem patletErased_sound {p : Pos} {ct : Bool} {pat : Pattern} {rhs : Expr} (ih : ExprSound rhs)
