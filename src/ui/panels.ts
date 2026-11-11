@@ -156,8 +156,11 @@ const card = (head: Child, e: Shown, who: string, ctx: Host): HTMLElement => {
       elsewhere(e.ruleAt, e, ctx))));
 };
 
-const scopeEntry = (e: EntryInfo, ctx: Host): HTMLElement => card([h("span", { class: "name" }, entryName(e, ctx)),
-  tag("erased", ctx.showErased && e.erased)], e, e.names.join(", ") || e.marker, ctx);
+const scopeEntry = (e: EntryInfo, ctx: Host): HTMLElement => {
+  const erased = ctx.showErased && e.erased;
+  return card([h("span", { class: erased ? "name hl-erased" : "name" }, entryName(e, ctx)), tag("erased", erased)], e,
+    e.names.join(", ") || e.marker, ctx);
+};
 
 export function infoView(info: PositionInfo, ctx: Host): HTMLElement[] {
   const { expected, termination, refutations } = info;
