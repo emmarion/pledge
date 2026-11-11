@@ -595,6 +595,8 @@ global at that position:
 
 Clicking the name of a type constructor, value constructor or function,
 in these panels or in a term a panel shows, goes to where it is declared.
+In phase 2, these panels set in italics each erased binder, with its
+`erased` and its type, and each type constructor's parameter, with its type.
 
 Types and skeleton terms are shown canonicalized, except where this
 section says otherwise. An anonymous entry is
@@ -655,7 +657,8 @@ TBD:
 
 In phase 2, the interface sets erased code in italics: every expression
 in an erased position (§16) other than a type, with everything inside
-it; each erased binder's name where it is bound, with its `erased`; at
+it; each erased binder where it is bound, with its `erased` and its type;
+each type constructor's parameter where it is bound, with its type; at
 an erased match, `erased`, the scrutinee, the patterns and the absurd
 branches; and a `let` whose binders are all erased, or an erased
 pattern `let`, as a whole.
