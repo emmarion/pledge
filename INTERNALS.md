@@ -22,8 +22,10 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
   carries. `Rendered` is display text whose names and anonymous-entry
   markers are linked to entries. `CheckResult.infoAt` answers §13's
   panels for a caret position, `nameAt` says what the name at a
-  position refers to, and `explainAt` and `evalAt` serve the Term panel
-  and the interactive mode.
+  position refers to and where that name was declared or bound,
+  `usesAt` lists the other occurrences of the name declared or bound
+  there, and `explainAt` and `evalAt` serve the Term panel and the
+  interactive mode.
 - `src/terms.ts`: skeleton terms (entries, bound variables of a
   telescope, applications), the persistent scope of entries, their
   types and `is` rules, canonicalization, identity, the strict-subterm
@@ -38,7 +40,7 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
   offset falls in among several joined by newlines.
 - `src/context.ts`: shared checker state, the first-error exception,
   the snapshots behind §13, the record of what each name occurrence
-  refers to, and the spans of erased code the editor sets in italics.
+  refers to and where that name was declared or bound, and the spans of erased code the editor sets in italics.
 - `src/expr.ts`: expressions, statements, telescopes, what a position
   is given (§8), `match` and pattern `let` (§10), the §9 marks,
   per-result taint and erasure (§12, §16), `_` for an argument or inside a
@@ -51,7 +53,7 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
 - `src/goal.ts`: what a `qed` is given, and `qed f;` against a function
   goal (§12).
 - `src/eval.ts`: the tree-walking interpreter (§11, §14).
-- `src/info.ts`: `infoAt`, `nameAt`, `explainAt`, `evalAt`, and what
+- `src/info.ts`: `infoAt`, `nameAt`, `usesAt`, `explainAt`, `evalAt`, and what
   the Local entries panel lists.
 - `src/examples.ts`: the `Nat`, `Vec` and `vhead` sources shared by the
   tutorial and the tests, the front page's starting program, and the
@@ -64,7 +66,7 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
   Workers, so that a long check does not block the page. A worker runs
   `check` once, replies with the result's plain fields and the kind of
   each name occurrence, keeps the `CheckResult`, and then answers
-  `infoAt`, `nameAt`, `explainAt` and `evalAt` by message. Every thunk
+  `infoAt`, `nameAt`, `usesAt`, `explainAt` and `evalAt` by message. Every thunk
   in a reply (message texts, derivations) is forced when the reply is
   sent and arrives as a thunk again. Each check gets a new worker: an
   edit terminates a check that is still running, and the worker of the

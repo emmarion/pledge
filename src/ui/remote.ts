@@ -2,7 +2,7 @@ import type { CheckResult } from "../api.ts";
 import type { Phase } from "../syntax.ts";
 import type { NameKind } from "./editor.ts";
 
-type Queries = Pick<CheckResult, "infoAt" | "nameAt" | "explainAt" | "evalAt">;
+type Queries = Pick<CheckResult, "infoAt" | "nameAt" | "usesAt" | "explainAt" | "evalAt">;
 
 export type Summary = Omit<CheckResult, keyof Queries> & { kinds: [offset: number, kind: NameKind | null][] };
 

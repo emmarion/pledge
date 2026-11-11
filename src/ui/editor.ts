@@ -114,6 +114,9 @@ function reuse(parent: HTMLElement, old: Line[], keys: string[], build: (i: numb
 
 const within = (r: DOMRect, x: number, y: number): boolean => x >= r.left && x < r.right && y >= r.top && y < r.bottom;
 
+const following = (e: MouseEvent | KeyboardEvent): boolean =>
+  /Mac|iPhone|iPad/.test(navigator.platform) ? e.metaKey : e.ctrlKey;
+
 export class Editor {
   readonly area: HTMLTextAreaElement;
   readonly root: HTMLElement;
@@ -131,11 +134,15 @@ export class Editor {
   private shown: string;
   private hovered: Token | null = null;
   private hoverTimer = 0;
+  private link: Span | null = null;
+  private linking: Token | null = null;
+  private pointer: MouseEvent | null = null;
 
   constructor(text: string, editable: boolean, label: string | null, private readonly phase: () => Phase,
     private readonly firstLine: () => number,
     onEdit: () => void, onCaret: () => void, private readonly describe: (token: Token) => Promise<Child>,
-    private readonly kinds: (offset: number, name: string) => NameKind | null | undefined) {
+    private readonly kinds: (offset: number, name: string) => NameKind | null | undefined,
+    private readonly follow: (token: Token, go: boolean) => Promise<boolean>) {
     this.area = h("textarea", {
       class: "source", wrap: "off", spellcheck: "false", autocomplete: "off", autocapitalize: "off",
       readonly: !editable, "aria-label": editable ? "Your program" : "Read-only source",
@@ -147,9 +154,18 @@ export class Editor {
     document.addEventListener("selectionchange", () => { if (document.activeElement === this.area) this.paint(); });
     this.area.addEventListener("scroll", () => this.scrolled());
     addEventListener("scroll", () => this.hover(null), true);
-    this.area.addEventListener("mousemove", e => this.hover(e));
+    this.area.addEventListener("mousemove", e => {
+      this.pointer = e;
+      this.hover(e);
+      this.linkAt(following(e));
+    });
     for (const event of ["mouseleave", "keydown", "mousedown"]) this.area.addEventListener(event,
       () => this.hover(null));
+    this.area.addEventListener("mouseleave", () => { this.pointer = null; this.linkAt(false); });
+    this.area.addEventListener("mousedown", e => this.go(following(e) && this.at(e)?.token, e));
+    this.area.addEventListener("keydown", e => e.key === "F12" && this.go(this.tokens.find(t => t.kind === "name"
+      && t.span.start <= this.caret && this.caret <= t.span.end), e));
+    for (const event of ["keydown", "keyup"] as const) addEventListener(event, e => this.linkAt(following(e)));
     this.code.append(this.area);
     this.root = h("div", { class: "box" }, label && h("div", { class: "box-label" }, label),
       h("div", { class: editable ? "editor" : "editor readonly" }, this.gutter, this.code, this.outputs));
@@ -170,6 +186,7 @@ export class Editor {
 
   show(mark: Span | null, outputs: Output[] | null, erased?: { spans: Span[]; keepFrom: number }): void {
     this.mark = mark;
+    this.link = this.linking = null;
     const kept = edited(this.erased, this.shown, this.text);
     this.erased = erased ? [...erased.spans, ...kept.filter(s => s.start >= erased.keepFrom)] : kept;
     this.shown = this.text;
@@ -200,6 +217,7 @@ export class Editor {
       ...this.mark ? errorMarks(text, this.mark) : [],
       ...this.erased.flatMap(s => runs(text, s, "hl-erased")),
       ...bracket ? [bracket, this.pairs.get(bracket)!].map(t => ({ ...t.span, cls: "hl-bracket" })) : [],
+      ...this.link ? [{ ...this.link, cls: "hl-link" }] : [],
     ]).sort((a, b) => a.start - b.start);
     let from = 0, taken = 0;
     const rows = text.split("\n").map(line => {
@@ -222,6 +240,7 @@ export class Editor {
       i => h("span", { class: numbers[i]!.cls }, numbers[i]!.text));
     this.caretLine.hidden = !caretLine;
     this.caretLine.style.top = `${padding + (caretLine - 1) * lineHeight}px`;
+    this.area.classList.toggle("following", this.link !== null);
     this.scrolled();
   }
 
@@ -230,14 +249,39 @@ export class Editor {
     this.code.style.setProperty("--scroll-y", `${-this.area.scrollTop}px`);
   }
 
-  private hover(e: MouseEvent | null): void {
-    const at = e && [...this.layer.querySelectorAll<HTMLElement>(".hl-name, .hl-hole")]
+  private at(e: MouseEvent, holes = false): { token: Token; el: HTMLElement } | null {
+    const el = [...this.layer.querySelectorAll<HTMLElement>(holes ? ".hl-name, .hl-hole" : ".hl-name")]
       .find(el => within(el.getBoundingClientRect(), e.clientX, e.clientY));
-    const row = at ? this.lines.findIndex(l => l.row === at.parentElement) : -1;
-    const before = this.text.split("\n").slice(0, Math.max(row, 0)).reduce((sum, line) => sum + line.length + 1, 0);
-    const offset = at ? before + Number(at.dataset.at) : -1;
-    const token = this.tokens.find(t => (t.kind === "name" || t.kind === "underscore") && t.span.start <= offset
-      && offset < t.span.end) ?? null;
+    if (!el) return null;
+    const row = this.lines.findIndex(l => l.row === el.parentElement);
+    const offset = this.text.split("\n").slice(0, row).reduce((sum, line) => sum + line.length + 1, 0)
+      + Number(el.dataset.at);
+    const token = this.tokens.find(t => (t.kind === "name" || holes && t.kind === "underscore")
+      && t.span.start <= offset && offset < t.span.end);
+    return token ? { token, el } : null;
+  }
+
+  private go(token: Token | false | undefined, e: Event): void {
+    if (!token) return;
+    e.preventDefault();
+    void this.follow(token, true);
+  }
+
+  private linkAt(on: boolean): void {
+    const token = on && this.pointer ? this.at(this.pointer)?.token ?? null : null;
+    if (token === this.linking) return;
+    this.linking = token;
+    const show = (link: Span | null): void => {
+      if (this.linking !== token || this.link === link) return;
+      this.link = link;
+      this.paint();
+    };
+    if (!token) return show(null);
+    void this.follow(token, false).then(ok => show(ok ? token.span : null));
+  }
+
+  private hover(e: MouseEvent | null): void {
+    const found = e && this.at(e, true), token = found?.token ?? null, at = found?.el;
     if (token === this.hovered) return;
     this.hovered = token;
     clearTimeout(this.hoverTimer);

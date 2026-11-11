@@ -137,6 +137,27 @@ test("nameAt: what each name occurrence refers to", () => {
   assert.equal(named(b, at(broken, "n : Nat()")), "entry n : Nat()");
 });
 
+test("nameAt's def and usesAt: where a name was bound or declared, and its other occurrences", () => {
+  const source = `${nat}fn f(n : Nat()) -> (r : Nat()) { let g = n; Succ(g) }\nlet x = f(Zero());\nprint f(x);\n` +
+    "let t = Type();\n";
+  const r = check(source, 1), def = (offset: number) => r.nameAt(offset)?.def;
+  const uses = (offset: number) => r.usesAt(offset)?.map(s => `${source.slice(s.start, s.end)}@${s.start}`);
+  const each = (...needles: string[]) => needles.map(n => `${/\w+/.exec(n)![0]}@${at(source, n)}`);
+  assert.equal(r.error, null);
+  assert.equal(def(at(source, "g)"))?.start, at(source, "g = n"));
+  assert.equal(def(at(source, "g = n"))?.start, at(source, "g = n"));
+  assert.equal(def(at(source, "n; "))?.start, at(source, "n : Nat()"));
+  assert.equal(def(at(source, "Succ(g"))?.start, at(source, "Succ(pred"));
+  assert.equal(def(at(source, "f(x"))?.start, at(source, "f(n"));
+  assert.equal(def(at(source, "Type();")), null);
+  assert.deepEqual(uses(at(source, "g = n")), each("g)"));
+  assert.deepEqual(uses(at(source, "n : Nat()")), each("n; "));
+  assert.deepEqual(uses(at(source, "f(n")), each("f(Zero", "f(x"));
+  assert.deepEqual(uses(at(source, "x = ")), each("x);"));
+  assert.deepEqual(uses(at(source, "Zero() :")), each("Zero());"));
+  assert.equal(r.usesAt(at(source, "Type();")), null);
+});
+
 test("the dialog's data: raw form, the rules applied written with an arrow, and how each rule was made (§13)", () => {
   const source = file("sort.pledge", "examples"), r = check(source, 2), where = position(source);
   const info = r.infoAt(at(source, "(Cons(y, zs), InsThere")), entry = (n: string) => listed(info).find(e => e.names.includes(n))!;

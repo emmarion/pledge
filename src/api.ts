@@ -68,9 +68,9 @@ export interface PositionInfo {
   globals: GlobalInfo[];
 }
 
-export type NameInfo =
+export type NameInfo = { def: Span | null } & (
   | { kind: "entry"; entry: EntryInfo }
-  | { kind: "fn" | "type" | "ctor"; name: string; signature: Rendered };
+  | { kind: "fn" | "type" | "ctor"; name: string; signature: Rendered });
 
 export interface Rewrite { from: Rendered; to: Rendered; by: EntryId; at: Span; rule: Rendered; how: () => Rendered[] }
 
@@ -87,6 +87,7 @@ export interface CheckResult {
   inspects: { span: Span; info: PositionInfo }[];
   infoAt(offset: number): PositionInfo;
   nameAt(offset: number): NameInfo | null;
+  usesAt(offset: number): Span[] | null;
 
   explainAt(offset: number): Explained | null;
 

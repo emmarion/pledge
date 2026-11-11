@@ -74,16 +74,23 @@ export function info(st: State, snap: Snapshot): PositionInfo {
 }
 
 export function queries(st: State, fallback: (offset: number) => Snapshot):
-    Pick<CheckResult, "infoAt" | "nameAt" | "explainAt" | "evalAt"> {
+    Pick<CheckResult, "infoAt" | "nameAt" | "usesAt" | "explainAt" | "evalAt"> {
   const at = (offset: number): Snapshot => innermost(st.snapshots, offset) ?? fallback(offset);
   return {
     infoAt: offset => info(st, at(offset)),
     nameAt: offset => {
       const o = innermost(st.occurrences, offset);
       if (!o) return null;
-      const { local, of } = o;
-      return typeof of === "number" ? { kind: "entry", entry: scoped(local, entry(local.scope, of)) }
-        : { kind: of.kind, name: of.name, signature: declared(local.scope, of) };
+      const { local, of, def } = o;
+      return typeof of === "number" ? { kind: "entry", entry: scoped(local, entry(local.scope, of)), def }
+        : { kind: of.kind, name: of.name, signature: declared(local.scope, of), def };
+    },
+    usesAt: offset => {
+      const def = innermost(st.occurrences, offset)?.def;
+      if (!def) return null;
+      const uses = new Map(st.occurrences.filter(o => o.def?.start === def.start && o.span.start !== def.start)
+        .map(o => [o.span.start, o.span]));
+      return [...uses.values()].sort((a, b) => a.start - b.start);
     },
     explainAt: offset => {
       const p = innermost(st.explains, offset);

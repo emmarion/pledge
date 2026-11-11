@@ -42,6 +42,7 @@ export interface Local {
   scope: Scope;
   tainted: ReadonlySet<string>;
   erased: ReadonlySet<string>;
+  boundAt: ReadonlyMap<string, Span>;
   taintedBy: Span | null;
 }
 export interface Result { id: EntryId; tainted: boolean; erased: boolean }
@@ -62,7 +63,7 @@ export interface Snapshot {
 interface ExplainPoint { span: Span; scope: Scope; of: Term | Given }
 
 export type Declared = Exclude<Global, { kind: "binding" }>;
-export interface Occurrence { span: Span; local: Local; of: EntryId | Declared }
+export interface Occurrence { span: Span; local: Local; of: EntryId | Declared; def: Span | null }
 
 export interface State {
   phase: Phase;
@@ -126,8 +127,11 @@ export function point(ctx: Ctx, scope: Scope, span: Span, of: Term | Given): voi
   if (ctx.st.record) ctx.st.explains.push({ span, scope, of });
 }
 
-export function occur(ctx: Ctx, span: Span, local: Local, of: EntryId | Declared): void {
-  if (ctx.st.record) ctx.st.occurrences.push({ span, local, of });
+const declaredAt = (g: Declared): Span | null => (g.kind === "fn" ? g.at : g.sig.at) ?? null;
+
+export function occur(ctx: Ctx, span: Span, local: Local, of: EntryId | Declared,
+    def = typeof of === "number" ? null : declaredAt(of)): void {
+  if (ctx.st.record) ctx.st.occurrences.push({ span, local, of, def });
 }
 
 export function erases(ctx: Ctx, span: Span): void {

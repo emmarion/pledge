@@ -249,6 +249,8 @@ header.top h1 a { color: inherit; text-decoration: none; }
   text-underline-offset: 3px;
 }
 .hl-bracket { box-shadow: inset 0 0 0 1px var(--hl-quiet); border-radius: 2px; }
+.hl-link { text-decoration: underline; }
+.source.following { cursor: pointer; }
 
 textarea.source {
   position: relative;

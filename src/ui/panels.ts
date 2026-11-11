@@ -102,16 +102,36 @@ const canonicalView = (title: Child, raw: Rendered, from: Child, c: Canonical, c
         h("td", {}, h("span", { class: "muted", title: s.rule.text }, `by ${number(i)}`)))))]];
 };
 
-const dialog = (text: Child, title: string, body: () => Child): Child[] => {
+const popover = (body: () => Child, closed = (): void => {}): HTMLElement => {
   const close = h("button", { class: "close", type: "button", title: "Close", "aria-label": "Close",
     onclick: () => pop.hidePopover() }, "\u00d7");
   const pop = h("div", { class: "canonical-pop", popover: "auto",
     ontoggle: (e: Event) => {
-      if ((e as ToggleEvent).newState === "open" && !pop.hasChildNodes()) fill(pop, close, body());
+      if ((e as ToggleEvent).newState === "closed") closed();
+      else if (!pop.hasChildNodes()) fill(pop, close, body());
     },
   });
+  return pop;
+};
+
+const dialog = (text: Child, title: string, body: () => Child): Child[] => {
+  const pop = popover(body);
   return [link(text, title, () => pop.togglePopover()), pop];
 };
+
+export function showDialog(body: () => Child): void {
+  const pop = popover(body, () => pop.remove());
+  document.body.append(pop);
+  pop.showPopover();
+}
+
+export const usesView = (ctx: Host, name: string, introduced: string, def: Span, uses: readonly Span[],
+  line: (offset: number) => Child): Child[] => [
+  h("h4", {}, "Uses of ", h("code", {}, name)),
+  h("p", {}, `${introduced} at `, goto(ctx, def.start), ": ", line(def.start)),
+  uses.length ? h("ul", { class: "uses" }, uses.map(u => h("li", {}, goto(ctx, u.start), ": ", line(u.start))))
+    : muted("No uses."),
+];
 
 const scopeRow = (label: string, title: Child, raw: Rendered, c: Canonical, ctx: Host, from: Child = null):
     HTMLElement =>

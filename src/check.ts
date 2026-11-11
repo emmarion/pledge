@@ -32,7 +32,8 @@ const union = (spans: readonly Span[]): Span[] => [...spans].sort((a, b) => a.st
 export const check: Check = (source, phase, where = position(source)) => {
   const { program: { tops }, error: syntax } = parse(source, phase);
   const has = (word: string): boolean => hasKeyword(source, phase, word);
-  let top: Local = { scope: emptyScope(where), tainted: new Set(), erased: new Set(), taintedBy: null };
+  let top: Local = { scope: emptyScope(where), tainted: new Set(), erased: new Set(), boundAt: new Map(),
+    taintedBy: null };
   const st: State = { phase, globals: [], index: new Map(), snapshots: [], explains: [], occurrences: [],
     erased: [], record: true };
   declareGlobal(st, { kind: "type", name: "Type", sig: signature(top.scope, "Type")!, ctors: null, done: true });

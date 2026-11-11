@@ -154,7 +154,7 @@ function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snaps
         "`_` stands only for a whole argument or inside a type (§16)");
       const found = lookup(local.scope, name);
       if (!found) return notValue(ctx, { name, span: e.name.span });
-      occur(ctx, e.name.span, local, found.id);
+      occur(ctx, e.name.span, local, found.id, local.boundAt.get(name) ?? null);
       point(ctx, local.scope, e.span, ref(found.id));
       return produced(ctx, local, given, [{ id: found.id, tainted: local.tainted.has(name),
         erased: found.erased || local.erased.has(name) }], e.span, e);
@@ -439,12 +439,14 @@ const never = (): boolean => false;
 function bind(ctx: Ctx | null, local: Local, ids: readonly Id[], entries: readonly EntryId[],
     tainted: (i: number) => boolean = never, erased: (i: number) => boolean = never): { local: Local; bound: Named[] } {
   let scope = local.scope;
-  const sets = { tainted: new Set(local.tainted), erased: new Set(local.erased) }, bound: Named[] = [];
+  const sets = { tainted: new Set(local.tainted), erased: new Set(local.erased), boundAt: new Map(local.boundAt) };
+  const bound: Named[] = [];
   ids.forEach(({ name, span }, i) => {
     const id = entries[i];
     if (id === undefined) return;
     if (name === null) { scope = blank(scope, id, span); return; }
     scope = withName(scope, id, name);
+    sets.boundAt.set(name, span);
     bound.push({ name, id });
     if (tainted(i)) sets.tainted.add(name);
     if (erased(i)) sets.erased.add(name);
@@ -453,7 +455,7 @@ function bind(ctx: Ctx | null, local: Local, ids: readonly Id[], entries: readon
   if (ctx) ids.forEach(({ name, span }, i) => {
     const id = entries[i];
     if (name === null || id === undefined) return;
-    occur(ctx, span, out, id);
+    occur(ctx, span, out, id, span);
     if (entry(scope, id).erased || sets.erased.has(name)) erases(ctx, span);
   });
   return { local: out, bound };

@@ -6,7 +6,7 @@ import { fill, h, load, save, type Child } from "./dom.ts";
 import { Editor, highlight, type NameKind } from "./editor.ts";
 import { marked } from "./links.ts";
 import { entryTip, evalView, explainTip, explainView, globalsView, globalTip, infoView, inspectView, section,
-  statusView, verdict, type Host } from "./panels.ts";
+  showDialog, statusView, usesView, verdict, type Host } from "./panels.ts";
 import { remote, type Remote, type Summary } from "./remote.ts";
 
 interface Box { text: string; key: string | null; holdsQed?: boolean }
@@ -87,6 +87,24 @@ class Program implements Host {
     const n = await r.call("nameAt", at);
     return !n ? null : n.kind === "entry" ? entryTip(n.entry, this.showErased)
       : globalTip(kindNames[n.kind], n.name, n.signature);
+  }
+
+  async follow(box: number, { text, span }: Token, go: boolean): Promise<boolean> {
+    const r = this.stale ? null : this.holder, at = this.offset(box, span.start);
+    const n = r && await r.call("nameAt", at), def = n?.def;
+    if (!r || !n || !def || r !== this.holder) return false;
+    if (!go) return true;
+    if (at !== def.start) this.goto(def.start);
+    else {
+      const uses = await r.call("usesAt", at) ?? [], source = this.texts.join("\n"), phase = this.ws.phase();
+      const line = (offset: number): Child => {
+        const shown = source.slice(source.lastIndexOf("\n", offset - 1) + 1, (source.indexOf("\n", offset) + 1
+          || source.length + 1) - 1).trim();
+        return h("code", {}, highlight(shown, lex(shown, phase), t => this.kinds.get(t.text)));
+      };
+      showDialog(() => usesView(this, text, n.kind === "entry" ? "Bound" : "Declared", def, uses, line));
+    }
+    return true;
   }
 
   kindAt(box: number, local: number, name: string): NameKind | null | undefined {
@@ -205,7 +223,8 @@ export class Workspace {
           clearTimeout(this.timer);
           this.timer = setTimeout(() => affected.forEach(p => p.run()), 200);
         },
-        () => this.select(i), token => home().describe(i, token), (local, name) => home().kindAt(i, local, name));
+        () => this.select(i), token => home().describe(i, token), (local, name) => home().kindAt(i, local, name),
+        (token, go) => home().follow(i, token, go));
     });
     this.program = this.programs[0]!;
     this.active = this.program.members.at(-1)!;

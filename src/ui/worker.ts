@@ -12,7 +12,7 @@ const encode = (v: unknown): unknown => typeof v === "function" ? { [LAZY]: enco
 const run: Checker["check"] = (texts, phase) => {
   const source = texts.join("\n");
   result = check(source, phase);
-  const { infoAt, nameAt, explainAt, evalAt, ...summary } = result;
+  const { infoAt, nameAt, usesAt, explainAt, evalAt, ...summary } = result;
   return { ...summary, kinds: lex(source, phase).flatMap(t => {
     const n = t.kind === "name" && nameAt(t.span.start);
     return n ? [[t.span.start, n.kind === "entry" ? null : n.kind]] : [];
