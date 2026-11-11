@@ -162,7 +162,8 @@ export class Editor {
     for (const event of ["mouseleave", "keydown", "mousedown"]) this.area.addEventListener(event,
       () => this.hover(null));
     this.area.addEventListener("mouseleave", () => { this.pointer = null; this.linkAt(false); });
-    this.area.addEventListener("mousedown", e => this.go(following(e) && this.at(e)?.token, e));
+    this.area.addEventListener("mousedown", e => { if (following(e) && this.at(e)) e.preventDefault(); });
+    this.area.addEventListener("click", e => this.go(following(e) && this.at(e)?.token, e));
     this.area.addEventListener("keydown", e => e.key === "F12" && this.go(this.tokens.find(t => t.kind === "name"
       && t.span.start <= this.caret && this.caret <= t.span.end), e));
     for (const event of ["keydown", "keyup"] as const) addEventListener(event, e => this.linkAt(following(e)));
