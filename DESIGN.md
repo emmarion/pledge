@@ -595,6 +595,13 @@ global at that position:
 
 Clicking the name of a type constructor, value constructor or function,
 in these panels or in a term a panel shows, goes to where it is declared.
+In the source, Ctrl-click (Cmd-click on a Mac) on a name, or F12 with the
+caret on it, goes to where that name is declared or bound; for a value,
+that is the binder that introduced that name, so after `let y = x;` the
+target of `y` is the `let`. Done where the name is declared or bound, it
+shows instead, in a dialog, every other occurrence of the name, each
+linking to where it is. While the modifier is held, a name with somewhere
+to go is underlined.
 In phase 2, these panels set in italics each erased binder, with its
 `erased` and its type, and each type constructor's parameter, with its type.
 
