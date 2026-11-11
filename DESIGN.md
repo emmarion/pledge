@@ -561,7 +561,8 @@ At any position in a program, the interface shows:
 - **Local entries**: every entry in the scope at that position (§7) that is
   not global, in the order the entries were created, each with its
   names, which of them are tainted (§12), its type and its `is` rule,
-  and, in phase 2, whether it is erased; and whether the scope is
+  and, in phase 2, whether it is erased, an erased entry's names, or its
+  marker, set in italics; and whether the scope is
   tainted, with the scrutinee that tainted it. An entry with several
   names (§8) is shown once, with all of them. An entry with no name is
   listed under its marker, like any other entry. An entry is global
