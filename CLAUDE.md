@@ -141,3 +141,13 @@ by the owner and apply to every session.
     vetted mode"); at other times, don't. In either mode, DECISIONS.md
     is an exception to rule 11: it records open questions together with
     proposed answers, each marked as not approved.
+
+22. **Pass the Lean gate before pushing.** Before any push, and before
+    fast-forwarding `origin/main`, run `node lean/tests/gate.mjs` on the
+    commit to be pushed (lean/README.md says how to set up Lean). Where
+    Lean cannot be installed in the session, run at least its Node-only
+    step: `node lean/tests/gen-corpus.mjs`, then
+    `git diff --exit-code lean/tests/corpus.json`, committing the
+    regenerated corpus if it changed (adding or moving a test under
+    `src/` changes it); and fast-forward `origin/main` only to a commit
+    whose Lean gate run on its branch has passed.
