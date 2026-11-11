@@ -37,13 +37,14 @@ const declared = (scope: Scope, g: Declared): Rendered => g.kind !== "fn" ? sign
 function globalInfo(scope: Scope, g: Global, st: State, limit: number): GlobalInfo[] {
   switch (g.kind) {
     case "ctor": return [];
-    case "fn": return [{ kind: "fn", name: g.name, signature: declared(scope, g) }];
+    case "fn": return [{ kind: "fn", name: g.name, at: g.at, signature: declared(scope, g) }];
     case "type": {
       const ctors = (g.ctors ?? []).flatMap(name => {
         const c = globalAt(st, limit, name);
-        return c?.kind === "ctor" ? [{ name, signature: signatureOf(scope, c.sig) }] : [];
+        return c?.kind === "ctor" ? [{ name, at: c.sig.at ?? null, signature: signatureOf(scope, c.sig) }] : [];
       });
-      return [{ kind: "type", name: g.name, signature: declared(scope, g), ...(g.ctors ? { ctors } : {}) }];
+      return [{ kind: "type", name: g.name, at: g.sig.at ?? null, signature: declared(scope, g),
+        ...(g.ctors ? { ctors } : {}) }];
     }
     case "binding": return [];
   }

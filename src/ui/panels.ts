@@ -1,5 +1,5 @@
-import type { Canonical, CheckResult, EntryId, EntryInfo, ExpectedEntry, Explained, PositionInfo, Rendered, Rewrite }
-  from "../api.ts";
+import type { Canonical, CheckResult, EntryId, EntryInfo, ExpectedEntry, Explained, GlobalInfo, PositionInfo, Rendered,
+  Rewrite } from "../api.ts";
 import type { Span } from "../syntax.ts";
 import { fill, h, type Child } from "./dom.ts";
 import { linked, marked, unbroken } from "./links.ts";
@@ -21,16 +21,22 @@ const link = (text: Child, title: string, onclick: () => void): HTMLElement =>
 const goto = (ctx: Host, offset: number, text: Child = ctx.where(offset)): HTMLElement =>
   link(text, `Go to ${ctx.where(offset)}`, () => ctx.goto(offset));
 
+const declaredAt = (ctx: Host, at: Span, name: Child): HTMLElement =>
+  link(name, `Declared at ${ctx.where(at.start)}`, () => ctx.goto(at.start));
+
 function rendered(r: Rendered, ctx: Host): HTMLElement {
   const out = h("code", { class: "term" });
   let at = 0;
-  for (const { span, entry } of [...r.refs].sort((a, b) => a.span.start - b.span.start)) {
+  for (const ref of [...r.refs].sort((a, b) => a.span.start - b.span.start)) {
+    const { span } = ref;
     if (span.start < at) continue;
-    const info = ctx.entry(entry);
     const text = unbroken(r.text.slice(span.start, span.end));
-    out.append(...unbroken(r.text.slice(at, span.start)), ...info ? [link(text,
-      `${info.origin.kind} at ${ctx.where(info.origin.span.start)}`, () => ctx.goto(info.origin.span.start))] : text);
-    at = span.end;
+    const info = "entry" in ref ? ctx.entry(ref.entry) : null, paren = "declared" in ref && r.text[span.end] === "(";
+    out.append(...unbroken(r.text.slice(at, span.start)), ..."declared" in ref
+      ? [h("span", { class: "head" }, declaredAt(ctx, ref.declared, text), paren && "(")]
+      : info ? [link(text, `${info.origin.kind} at ${ctx.where(info.origin.span.start)}`,
+        () => ctx.goto(info.origin.span.start))] : text);
+    at = span.end + (paren ? 1 : 0);
   }
   out.append(...unbroken(r.text.slice(at)));
   return out;
@@ -159,16 +165,33 @@ export function infoView(info: PositionInfo, ctx: Host): HTMLElement[] {
   ];
 }
 
-const hidden = (ctx: Host, title: string, count: number, ...body: Child[]): HTMLElement =>
-  h("details", { class: "panel", open: ctx.opened.has(title), ontoggle: (e: Event) => {
-    if ((e.currentTarget as HTMLDetailsElement).open) ctx.opened.add(title); else ctx.opened.delete(title);
-  } }, h("summary", {}, `${title} (${count})`), body);
+const remembered = (ctx: Host, key: string, attrs: Record<string, string>, summary: Child, ...body: Child[]):
+    HTMLElement =>
+  h("details", { ...attrs, open: ctx.opened.has(key), ontoggle: (e: Event) => {
+    if ((e.currentTarget as HTMLDetailsElement).open) ctx.opened.add(key); else ctx.opened.delete(key);
+  } }, h("summary", {}, summary), body);
 
-export const globalsView = (info: PositionInfo, ctx: Host): HTMLElement => hidden(ctx,
-  "Declarations", info.globals.length, list(info.globals.map(g => h("li", { class: "global" },
-    globalLine(g.kind, g.name, rendered(g.signature, ctx)),
-    g.ctors && h("ul", {}, g.ctors.map(c => h("li", {}, signed(c.name, rendered(c.signature, ctx))))))),
-    "No top-level names in scope."));
+const hidden = (ctx: Host, title: string, count: number, ...body: Child[]): HTMLElement =>
+  remembered(ctx, title, { class: "panel" }, `${title} (${count})`, ...body);
+
+const declaration = (ctx: Host, g: { name: string; at: Span | null; signature: Rendered }): HTMLElement =>
+  h("code", {}, h("span", { class: "name" }, g.at ? declaredAt(ctx, g.at, g.name) : g.name),
+    rendered(g.signature, ctx));
+
+const dataType = (ctx: Host, g: GlobalInfo): HTMLElement => h("li", { class: "global" }, g.ctors
+  ? remembered(ctx, `data ${g.name}`, {}, declaration(ctx, g), g.ctors.length
+    ? h("ul", {}, g.ctors.map(c => h("li", {}, declaration(ctx, c)))) : muted("No value constructors."))
+  : declaration(ctx, g));
+
+export const globalsView = (info: PositionInfo, ctx: Host): HTMLElement[] => {
+  const of = (kind: GlobalInfo["kind"]) => info.globals.filter(g => g.kind === kind);
+  return [
+    hidden(ctx, "Data declarations", of("type").length,
+      list(of("type").map(g => dataType(ctx, g)), "No data declarations.")),
+    hidden(ctx, "Functions", of("fn").length, list(of("fn").map(g => h("li", { class: "global" },
+      declaration(ctx, g))), "No functions.")),
+  ];
+};
 
 const text = (r: Rendered | null): Child => r && unbroken(r.text);
 
@@ -187,7 +210,7 @@ export const explainTip = (r: Explained, showErased: boolean): Child => h("code"
 export const inspectView = (info: PositionInfo, ctx: Host): HTMLElement => {
   const body = h("div", { class: "inspect-body" });
   return h("details", { class: "inspect",
-    ontoggle: () => { if (!body.hasChildNodes()) body.append(...infoView(info, ctx), globalsView(info, ctx)); } },
+    ontoggle: () => { if (!body.hasChildNodes()) body.append(...infoView(info, ctx), ...globalsView(info, ctx)); } },
     h("summary", {}, "inspect"), body);
 };
 

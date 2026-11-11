@@ -1,5 +1,6 @@
 import type { Canonical, EntryInfo, Rendered, Rewrite } from "./api.ts";
-import { canon, entries, entry, rewrites } from "./terms.ts";
+import type { Span } from "./syntax.ts";
+import { canon, entries, entry, rewrites, signature } from "./terms.ts";
 import { APP } from "./context.ts";
 import type { Binder, Entry, EntryId, OpenTerm, Scope, Telescope } from "./terms.ts";
 
@@ -11,7 +12,7 @@ export function cat(...pieces: readonly Piece[]): Rendered {
   for (const p of pieces) {
     if (typeof p === "string") { text += p; continue; }
     const shift = text.length;
-    refs.push(...p.refs.map(r => ({ entry: r.entry, span: { start: r.span.start + shift, end: r.span.end + shift } })));
+    refs.push(...p.refs.map(r => ({ ...r, span: { start: r.span.start + shift, end: r.span.end + shift } })));
     text += p.text;
   }
   return { text, refs };
@@ -28,16 +29,21 @@ function marker(scope: Scope, { id, origin }: Entry): string {
 export const label = (scope: Scope, id: EntryId): string =>
   entry(scope, id).names[0] ?? marker(scope, entry(scope, id));
 
-export function entryRef(scope: Scope, id: EntryId): Rendered {
-  const text = label(scope, id);
-  return { text, refs: [{ span: { start: 0, end: text.length }, entry: id }] };
-}
+const whole = (text: string, to: { entry: EntryId } | { declared: Span }): Rendered =>
+  ({ text, refs: [{ span: { start: 0, end: text.length }, ...to }] });
+
+export const entryRef = (scope: Scope, id: EntryId): Rendered => whole(label(scope, id), { entry: id });
+
+const headRef = (scope: Scope, name: string): Piece => {
+  const at = signature(scope, name)?.at;
+  return at ? whole(name, { declared: at }) : name;
+};
 
 interface RenderOptions { canonical?: boolean; bound?: readonly (string | null)[] }
 
 export function render(scope: Scope, t: OpenTerm, opts: RenderOptions = {}): Rendered {
   const go = (u: OpenTerm): Rendered =>
-    u.tag === "app" ? cat(u.head.name, "(", ...join(u.args.map(go), ", "), ")")
+    u.tag === "app" ? cat(headRef(scope, u.head.name), "(", ...join(u.args.map(go), ", "), ")")
       : u.tag === "entry" ? entryRef(scope, u.id)
       : cat(opts.bound?.[u.index] ?? `_${u.index + 1}`);
   return go(opts.canonical === false ? t : canon(scope, t));

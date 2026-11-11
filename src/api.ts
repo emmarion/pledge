@@ -2,7 +2,8 @@ import type { Phase, Span } from "./syntax.ts";
 
 export interface Diagnostic { span: Span; message: () => string; derivation?: () => Rendered[] }
 
-export interface Rendered { text: string; refs: { span: Span; entry: EntryId }[] }
+export type Ref = { span: Span; entry: EntryId } | { span: Span; declared: Span };
+export interface Rendered { text: string; refs: Ref[] }
 
 export type EntryId = number;
 
@@ -51,8 +52,9 @@ export interface RefutationInfo {
 export interface GlobalInfo {
   kind: "fn" | "type";
   name: string;
+  at: Span | null;
   signature: Rendered;
-  ctors?: { name: string; signature: Rendered }[];
+  ctors?: { name: string; at: Span | null; signature: Rendered }[];
 }
 
 export interface PositionInfo {

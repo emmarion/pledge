@@ -156,7 +156,7 @@ test("IsZeroHere is refuted against IsZero(Succ(m)) in the Succ branch only", ()
     "2. Succ(m) = Zero()   (argument 1 of IsZero in 1)",
     "refuted: Succ and Zero are different heads",
   ]);
-  const nRef = d[1]?.refs.find(x => x.entry === (id(n)));
+  const nRef = d[1]?.refs.find(x => "entry" in x && x.entry === id(n));
   assert.ok(nRef);
   assert.equal(d[1]?.text.slice(nRef.span.start, nRef.span.end), "n");
   assert.equal(entry(s, id(n)).rule, null);

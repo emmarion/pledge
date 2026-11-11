@@ -72,6 +72,16 @@ test("the entries a top-level statement created are global; Local entries lists 
   assert.deepEqual(split(at(source, "\nlet b")), [["a : Nat() is Zero()"], []]);
 });
 
+test("globals and the type and value constructors in rendered terms point to where they are declared (§13)", () => {
+  const source = `${nat}fn id(n : Nat()) -> (r : Nat()) { n }\nlet a = Succ(Zero());\ninspect;\n`;
+  const info = check(source, 1).inspects[0]!.info, decl = (name: string) => at(source, `${name}(`);
+  assert.deepEqual(info.globals.map(g => [g.name, g.at?.start ?? null, g.ctors?.map(c => [c.name, c.at?.start])]),
+    [["Type", null, undefined], ["Nat", decl("Nat"), [["Zero", decl("Zero")], ["Succ", decl("Succ")]]], ["id", decl("id"), undefined]]);
+  const a = info.globalEntries.find(e => e.names.includes("a"))!.canonical.rule!.term;
+  assert.deepEqual(a.refs.map(r => [a.text.slice(r.span.start, r.span.end), "declared" in r ? r.declared.start : null]),
+    [["Succ", decl("Succ")], ["Zero", decl("Zero")]]);
+});
+
 test("every entry in scope is listed, named or not, in the order the entries were created (§13)", () => {
   const source = `${nat}${vec}fn f(A : Type(), n : Nat(), v : Vec(A, Succ(n))) -> (r : A) {\n  let VCons(_, _, h, _) = v;\n  inspect;\n  h\n}\nprint f(Nat(), Zero(), VCons(Nat(), Zero(), Zero(), VNil(Nat())));\ninspect;\n`;
   const [body, after] = check(source, 1).inspects.map(i => i.info);

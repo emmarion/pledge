@@ -12,7 +12,7 @@ export type OpenTerm = Term<Bound>;
 
 export interface Binder { name: string | null; type: OpenTerm; is: OpenTerm | null; mult: Mult; span: Span }
 export type Telescope = readonly Binder[];
-export interface Signature { head: Head; params: Telescope; ret: OpenTerm; retAt?: Span }
+export interface Signature { head: Head; params: Telescope; ret: OpenTerm; retAt?: Span; at?: Span }
 
 interface Origin { kind: string; span: Span; blank?: boolean }
 interface Rule { term: Term; at: Span; how?: (view: Scope) => Rendered[] }

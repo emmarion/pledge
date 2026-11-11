@@ -56,7 +56,8 @@ export const check: Check = (source, phase, where = position(source)) => {
       const name = d.name.name;
       const params = telescope(c, top, d.params, "binder").tele;
       const g: Global & { kind: "type" } = { kind: "type", name,
-        sig: { head: { kind: "type", name }, params, ret: TYPE, retAt: d.span }, ctors: [], done: false };
+        sig: { head: { kind: "type", name }, params, ret: TYPE, retAt: d.span, at: d.name.span },
+        ctors: [], done: false };
       top = { ...top, scope: declare(top.scope, g.sig) };
       declared(c, d.name, g);
       return g;
@@ -74,7 +75,7 @@ export const check: Check = (source, phase, where = position(source)) => {
             `of ${code(owner.name)} (§5)`);
         const ret = term(c, fields.local, k.ret);
         const sig = { head: { kind: "ctor" as const, name }, params: fields.tele,
-          ret: abstract(ret.local.scope, ref(ret.id), fields.ids), retAt: k.ret.span };
+          ret: abstract(ret.local.scope, ref(ret.id), fields.ids), retAt: k.ret.span, at: k.name.span };
         top = { ...top, scope: declare(top.scope, sig) };
         declared(c, k.name, { kind: "ctor", name, sig });
         owner.ctors?.push(name);
@@ -87,7 +88,7 @@ export const check: Check = (source, phase, where = position(source)) => {
     const names = group.map(f => f.name.name);
     const globals = group.map((f, i) => {
       newName(outer, top, f.name, new Set());
-      const g: Global & { kind: "fn" } = { kind: "fn", name: names[i]!, sig: null };
+      const g: Global & { kind: "fn" } = { kind: "fn", name: names[i]!, sig: null, at: f.name.span };
       declared(outer, f.name, g);
       return g;
     });

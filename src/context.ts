@@ -24,7 +24,7 @@ export function attempt<T>(f: () => T): T | { error: Diagnostic } {
 export interface FnSig { params: Telescope; returns: Telescope; subterm: readonly boolean[]; tainted: boolean }
 
 export type Global =
-  | { kind: "fn"; name: string; sig: FnSig | null }
+  | { kind: "fn"; name: string; sig: FnSig | null; at: Span }
   | { kind: "type"; name: string; sig: Signature; ctors: string[] | null; done: boolean }
   | { kind: "ctor"; name: string; sig: Signature }
   | { kind: "binding"; name: string; id: EntryId };
