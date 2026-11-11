@@ -128,8 +128,9 @@ export function showDialog(body: () => Child): void {
 export const usesView = (ctx: Host, name: string, introduced: string, def: Span, uses: readonly Span[],
   line: (offset: number) => Child): Child[] => [
   h("h4", {}, "Uses of ", h("code", {}, name)),
-  h("p", {}, `${introduced} at `, goto(ctx, def.start), ": ", line(def.start)),
-  uses.length ? h("ul", { class: "uses" }, uses.map(u => h("li", {}, goto(ctx, u.start), ": ", line(u.start))))
+  h("p", {}, `${introduced} at `, goto(ctx, def.start, ctx.at(def.start)), ": ", line(def.start)),
+  uses.length ? h("ul", { class: "uses" }, uses.map(u => h("li", {}, goto(ctx, u.start, ctx.at(u.start)), ": ",
+    line(u.start))))
     : muted("No uses."),
 ];
 
