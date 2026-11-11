@@ -375,8 +375,9 @@ ul.entries ul { list-style: none; padding-left: 16px; margin: 2px 0; }
 .global { padding: 2px 0; overflow-wrap: anywhere; }
 .global .name { font-weight: 600; }
 .global > details > summary { cursor: pointer; }
-.global > details > ul { padding-left: 36px; }
-.global > code, .global > details > summary, .global > details > ul > li { padding-left: 1em; text-indent: -1em; }
+.global > details > ul { padding-left: 26px; }
+.global > code, .global > details > ul > li { padding-left: 1em; text-indent: -1em; }
+.global > details > summary { padding-left: 2em; text-indent: -2em; }
 .global > code { display: block; }
 .hover-tip .tag { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .kind { font-size: 12px; color: var(--muted); }
