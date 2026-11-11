@@ -49,14 +49,18 @@ export function render(scope: Scope, t: OpenTerm, opts: RenderOptions = {}): Ren
   return go(opts.canonical === false ? t : canon(scope, t));
 }
 
-export const renderBinder = (scope: Scope, b: Binder, bound: readonly (string | null)[], canonical = true): Rendered =>
-  cat(b.mult === "erased" ? "erased " : "", b.name ?? "_", b.is ? " is " : " : ",
+export function renderBinder(scope: Scope, b: Binder, bound: readonly (string | null)[], canonical = true,
+    erased = b.mult === "erased"): Rendered {
+  const all = cat(b.mult === "erased" ? "erased " : "", b.name ?? "_", b.is ? " is " : " : ",
     render(scope, b.is ?? b.type, { canonical, bound }));
+  return erased ? { ...all, refs: [{ span: { start: 0, end: all.text.length }, erased: true }, ...all.refs] } : all;
+}
 
 export function renderTelescope(scope: Scope, tele: Telescope, outer: readonly (string | null)[] = [],
-    canonical = true): Rendered {
+    canonical = true, erased = false): Rendered {
   const bound = [...outer, ...tele.map(b => b.name)];
-  return cat("(", ...join(tele.map(b => renderBinder(scope, b, bound, canonical)), ", "), ")");
+  return cat("(", ...join(tele.map(b => renderBinder(scope, b, bound, canonical, erased || b.mult === "erased")),
+    ", "), ")");
 }
 
 export const canonicalOf = (scope: Scope, t: OpenTerm, bound: readonly (string | null)[] = []): Canonical =>

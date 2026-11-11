@@ -242,21 +242,31 @@ test("taint: a function written after a tainted pattern let in a top-level block
   assert.deepEqual(r.inspects.map(i => i.info.taintedBy), [1, 2].map(() => ({ start: scrutinee, end: scrutinee + 1 })));
 });
 
-test("the erased spans are the code evaluation skips for erasure, and never a type", () => {
+test("the erased spans are the code evaluation skips for erasure, and the erased binders and type constructors' parameters with their types", () => {
   const marked = (source: string, phase: 1 | 2 = 2): string[] =>
     ok(source, phase).erased.map(s => source.slice(s.start, s.end));
   const plus = "data Plus(m : Nat(), n : Nat(), r : Nat()) : Type() {\n  PZ(erased n : Nat()) : Plus(Zero(), n, n);\n"
     + "  PS(erased m : Nat(), erased n : Nat(), erased r : Nat(), p : Plus(m, n, r)) : Plus(Succ(m), n, Succ(r));\n}\n";
   assert.deepEqual(marked(`${nat}${vecBy("")}${vheadBy("")}`, 1), []);
-  assert.deepEqual(marked(`${nat}${plus}`), ["erased n", "erased m", "erased n", "erased r"]);
+  assert.deepEqual(marked(`${nat}${plus}`), ["m : Nat()", "n : Nat()", "r : Nat()", "erased n : Nat()", "erased m : Nat()", "erased n : Nat()", "erased r : Nat()"]);
   assert.deepEqual(marked(`${nat}fn f(subterm erased n : Nat(), m : Nat()) -> (erased r : Nat(), s : Nat()) {\n`
     + "  let (erased a, b) = (n, m);\n  let erased c = Succ(a);\n  (c, b)\n}\n"),
-    ["erased n", "erased r", "erased a", "n", "let erased c = Succ(a);", "c"]);
+    ["erased n : Nat()", "erased r : Nat()", "erased a", "n", "let erased c = Succ(a);", "c"]);
   assert.deepEqual(marked(`${nat}${plus}fn lemma(p : Plus(Zero(), Zero(), Zero())) -> (erased q : Plus(Zero(), Zero(), Zero())) {\n`
-    + "  match p : _ {\n    PZ(_) => p;\n  }\n}\n").slice(4), ["erased q", "{\n  match p : _ {\n    PZ(_) => p;\n  }\n}"]);
+    + "  match p : _ {\n    PZ(_) => p;\n  }\n}\n").slice(7), ["erased q : Plus(Zero(), Zero(), Zero())", "{\n  match p : _ {\n    PZ(_) => p;\n  }\n}"]);
   assert.deepEqual(marked(`${nat}${eq}fn cast(erased e : Eq(Nat(), Zero(), Zero()), x : Nat()) -> (r : Nat()) {\n`
-    + "  match erased e : _ {\n    Refl(_, _) => x;\n  }\n}\nprint cast(Refl(_, _), Zero());\n").slice(2),
-    ["erased e", "erased e", "Refl(_, _)", "Refl(_, _)"]);
+    + "  match erased e : _ {\n    Refl(_, _) => x;\n  }\n}\nprint cast(Refl(_, _), Zero());\n").slice(5),
+    ["erased e : Eq(Nat(), Zero(), Zero())", "erased e", "Refl(_, _)", "Refl(_, _)"]);
   assert.deepEqual(marked(`${nat}${plus}fn pred(n : Nat(), p : Plus(Succ(Zero()), Zero(), n)) -> (r : Nat()) {\n`
-    + "  let PS(m, _, k, q) = p;\n  n\n}\n").slice(4), ["m", "k"]);
+    + "  let PS(m, _, k, q) = p;\n  n\n}\n").slice(7), ["m", "k"]);
+});
+
+test("Data declarations and Functions mark erased binders, and every type constructor's parameter in phase 2", () => {
+  const source = (m: string) => `${nat}${vecBy(m)}${vheadBy(m)}\ninspect;\n`;
+  const erased = (phase: 1 | 2) => ok(source(phase === 2 ? "erased " : ""), phase).inspects[0]!.info.globals.flatMap(g => [g, ...g.ctors ?? []])
+    .map(g => [g.name, g.signature.refs.flatMap(r => "erased" in r ? [g.signature.text.slice(r.span.start, r.span.end)] : [])]);
+  assert.deepEqual(erased(2), [["Type", []], ["Nat", []], ["Zero", []], ["Succ", []], ["Vec", ["A : Type()", "n : Nat()"]],
+    ["VNil", ["erased A : Type()"]], ["VCons", ["erased A : Type()", "erased n : Nat()"]],
+    ["vhead", ["erased A : Type()", "erased n : Nat()"]]]);
+  assert.deepEqual(erased(1).map(([, r]) => r).flat(), []);
 });

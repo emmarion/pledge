@@ -6,6 +6,7 @@ import { parseExpr } from "./parser.ts";
 import { attempt, globalAt, innermost, written } from "./context.ts";
 import type { Declared, Given, Global, Local, Snapshot, State } from "./context.ts";
 import { closed, single } from "./expr.ts";
+import type { Phase } from "./syntax.ts";
 
 const shift = (t: OpenTerm, env: readonly Term[]): OpenTerm =>
   mapLeaves(t, u => u.tag === "bound" ? env[u.index] ?? bound(u.index - env.length) : u);
@@ -26,10 +27,12 @@ function expected(scope: Scope, given: Given | null): ExpectedInfo {
     entries: entries.slice(given.params) };
 }
 
-const signatureOf = (scope: Scope, sig: Signature): Rendered => cat(renderTelescope(scope, sig.params, [], false),
-  " : ", render(scope, sig.ret, { canonical: false, bound: sig.params.map(b => b.name) }));
+const signatureOf = (scope: Scope, sig: Signature, erased = false): Rendered =>
+  cat(renderTelescope(scope, sig.params, [], false, erased),
+    " : ", render(scope, sig.ret, { canonical: false, bound: sig.params.map(b => b.name) }));
 
-const declared = (scope: Scope, g: Declared): Rendered => g.kind !== "fn" ? signatureOf(scope, g.sig)
+const declared = (scope: Scope, g: Declared, phase: Phase = 1): Rendered => g.kind !== "fn"
+  ? signatureOf(scope, g.sig, g.kind === "type" && phase === 2)
   : g.sig ? cat(renderTelescope(scope, g.sig.params, [], false), " -> ",
     renderTelescope(scope, g.sig.returns, g.sig.params.map(b => b.name), false))
   : cat("(...)");
@@ -37,13 +40,13 @@ const declared = (scope: Scope, g: Declared): Rendered => g.kind !== "fn" ? sign
 function globalInfo(scope: Scope, g: Global, st: State, limit: number): GlobalInfo[] {
   switch (g.kind) {
     case "ctor": return [];
-    case "fn": return [{ kind: "fn", name: g.name, at: g.at, signature: declared(scope, g) }];
+    case "fn": return [{ kind: "fn", name: g.name, at: g.at, signature: declared(scope, g, st.phase) }];
     case "type": {
       const ctors = (g.ctors ?? []).flatMap(name => {
         const c = globalAt(st, limit, name);
         return c?.kind === "ctor" ? [{ name, at: c.sig.at ?? null, signature: signatureOf(scope, c.sig) }] : [];
       });
-      return [{ kind: "type", name: g.name, at: g.sig.at ?? null, signature: declared(scope, g),
+      return [{ kind: "type", name: g.name, at: g.sig.at ?? null, signature: declared(scope, g, st.phase),
         ...(g.ctors ? { ctors } : {}) }];
     }
     case "binding": return [];

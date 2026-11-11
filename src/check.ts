@@ -6,7 +6,7 @@ import { TYPE, abstract, declare, emptyScope, ref, signature } from "./terms.ts"
 import { position } from "./position.ts";
 import { bindPattern, evalOne, evalStmt, showValue } from "./eval.ts";
 import type { Env, FnDef, Value } from "./eval.ts";
-import { Failure, attempt, code, declareGlobal, fail, labelled, newName, occur, record } from "./context.ts";
+import { Failure, attempt, code, declareGlobal, erases, fail, labelled, newName, occur, record } from "./context.ts";
 import type { Ctx, Declared, FnCtx, FnSig, Given, Global, Local, Snapshot, State } from "./context.ts";
 import { annotate, closed, header, single, stmt, telescope, term } from "./expr.ts";
 import { goalGiven, qedFn, rejectFn } from "./goal.ts";
@@ -55,6 +55,7 @@ export const check: Check = (source, phase, where = position(source)) => {
       newName(c, top, d.name, new Set());
       const name = d.name.name;
       const params = telescope(c, top, d.params, "binder").tele;
+      if (phase === 2) for (const p of d.params) erases(c, p.span);
       const g: Global & { kind: "type" } = { kind: "type", name,
         sig: { head: { kind: "type", name }, params, ret: TYPE, retAt: d.span, at: d.name.span },
         ctors: [], done: false };

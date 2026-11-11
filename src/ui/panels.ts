@@ -24,21 +24,27 @@ const goto = (ctx: Host, offset: number, text: Child = ctx.where(offset)): HTMLE
 const declaredAt = (ctx: Host, at: Span, name: Child): HTMLElement =>
   link(name, `Declared at ${ctx.where(at.start)}`, () => ctx.goto(at.start));
 
-function rendered(r: Rendered, ctx: Host): HTMLElement {
-  const out = h("code", { class: "term" });
+const rendered = (r: Rendered, ctx: Host): HTMLElement => h("code", { class: "term" }, pieces(r, ctx));
+
+function pieces(r: Rendered, ctx: Host): Child[] {
+  const out: Child[] = [];
   let at = 0;
-  for (const ref of [...r.refs].sort((a, b) => a.span.start - b.span.start)) {
+  for (const ref of [...r.refs].sort((a, b) => a.span.start - b.span.start || b.span.end - a.span.end)) {
     const { span } = ref;
     if (span.start < at) continue;
     const text = unbroken(r.text.slice(span.start, span.end));
     const info = "entry" in ref ? ctx.entry(ref.entry) : null, paren = "declared" in ref && r.text[span.end] === "(";
-    out.append(...unbroken(r.text.slice(at, span.start)), ..."declared" in ref
-      ? [h("span", { class: "head" }, declaredAt(ctx, ref.declared, text), paren && "(")]
-      : info ? [link(text, `${info.origin.kind} at ${ctx.where(info.origin.span.start)}`,
-        () => ctx.goto(info.origin.span.start))] : text);
+    const inner = (): Rendered => ({ text: r.text.slice(span.start, span.end), refs: r.refs.flatMap(q => q !== ref
+      && q.span.start >= span.start && q.span.end <= span.end ? [{ ...q, span: { start: q.span.start - span.start,
+        end: q.span.end - span.start } }] : []) });
+    out.push(unbroken(r.text.slice(at, span.start)),
+      "erased" in ref ? h("span", { class: "hl-erased" }, pieces(inner(), ctx))
+      : "declared" in ref ? h("span", { class: "head" }, declaredAt(ctx, ref.declared, text), paren && "(")
+      : info ? link(text, `${info.origin.kind} at ${ctx.where(info.origin.span.start)}`,
+        () => ctx.goto(info.origin.span.start)) : text);
     at = span.end + (paren ? 1 : 0);
   }
-  out.append(...unbroken(r.text.slice(at)));
+  out.push(unbroken(r.text.slice(at)));
   return out;
 }
 

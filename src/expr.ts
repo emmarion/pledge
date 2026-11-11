@@ -460,7 +460,7 @@ function bind(ctx: Ctx | null, local: Local, ids: readonly Id[], entries: readon
 }
 
 function erasedBinder(ctx: Ctx, b: LetBinder): void {
-  if (b.mult === "erased") erases(ctx, { start: b.multStart, end: b.name.span.end });
+  if (b.mult === "erased") erases(ctx, { start: b.multStart, end: b.span.end });
 }
 
 const holed = (t: WrittenTerm): boolean => t.hole === true || (t.args ?? []).some(holed);

@@ -2,7 +2,7 @@ import type { Phase, Span } from "./syntax.ts";
 
 export interface Diagnostic { span: Span; message: () => string; derivation?: () => Rendered[] }
 
-export type Ref = { span: Span; entry: EntryId } | { span: Span; declared: Span };
+export type Ref = { span: Span; entry: EntryId } | { span: Span; declared: Span } | { span: Span; erased: true };
 export interface Rendered { text: string; refs: Ref[] }
 
 export type EntryId = number;
