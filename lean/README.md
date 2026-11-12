@@ -233,8 +233,14 @@ no default, which `run` reads off the tokens) and any syntax error
   otherwise `showValue a` for the run-time value `a` that the checked
   tree of `e` evaluates to (`Eval`, unique by `Eval.det`), related by
   `Rel` to the result's ideal value under `W.ρ`, which has the type
-  `typeOf` gives the result, both read in `W` (`PrintJust`). With no
-  error, `out.prints` has one entry per `print` of `prog`.
+  `typeOf` gives the result, both read in `W` (`PrintJust`). And the
+  prints are all those checked (`allPrints`): `out.prints` has one entry
+  per `print` among items `pre` at which checking stops at no error,
+  which are all of `prog` when checking stops at no error, and else the
+  items before the item `t` it stops at, `prog` being
+  `pre ++ t :: post` with `post` as long as the count of items after
+  `t` that the stop carries, and `out.error` is then not `none`; with
+  `PrintsShown`, the `i`-th entry is the `i`-th `print` of `pre`.
   `runProgramWith_sound` states the same of `runProgramWith` with any
   table (nothing about the solver is used).
 - `runProgram_eq`: `out` is `runProgramWith` with the table
@@ -316,8 +322,9 @@ state `topItems` reaches by `TopInv.runs`, the main lemma applied to
 the item; the solver evaluates nothing.
 Every definition is total, by structural or well-founded recursion,
 with no fuel, which is what the gate checks, so checking and evaluating
-a program is meant to end, by Lean's acceptance of those definitions. The top level does not evaluate a `qed`'s expression:
-its value is shown nowhere, and `reached_qed` says its evaluation
+a program is meant to end, by Lean's acceptance of those definitions.
+The top level does not evaluate a `qed`'s expression: its value is
+shown nowhere, and `reached_qed` says its evaluation
 exists and is what `TopState.eval` would return.
 
 `tests/Audit.lean` prints the axioms these use. `Sound/Top.lean` has
@@ -422,8 +429,6 @@ items 69 to 75.
   pattern `let` reports when binding the value's fields fails. The
   mark decides only whether `runProgram` consults the solver about an
   error.
-- That every `print` checked before an error is listed: with an error,
-  `OutcomeSound` says only that each listed print is justified.
 - That the Lean checker implements DESIGN.md, that the parser reads
   the source as DESIGN.md means it (`parse_shaped` says only that its
   output has the shape above), and anything about the TypeScript code

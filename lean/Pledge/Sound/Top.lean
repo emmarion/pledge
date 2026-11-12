@@ -100,6 +100,25 @@ theorem topItems_stop : ∀ {st : TopState} {h : TopOk st} {pre : List Top} (pos
     · simp
     · exact topItems_stop post hn
 
+/-- Where checking stops at an error: at an item `t`, with `n` items after it, after items `pre` at which it stops at
+no error; `t` meets the error at the state they leave, and the final state is that one with the error's snapshots. -/
+theorem topItems_stopAt : ∀ {st : TopState} {h : TopOk st} {prog : Program} {e : CheckError} {t : Top} {n : Nat},
+    (topItems st h prog).2 = some (e, t, n) → ∃ pre post, prog = pre ++ t :: post ∧ post.length = n ∧
+      (topItems st h pre).2 = none ∧ (∃ hw, topItem (topItems st h pre).1 hw t = .error e) ∧
+      (topItems st h prog).1 = { (topItems st h pre).1 with snaps := (topItems st h pre).1.snaps ++ e.snaps }
+  | _, _, [], _, _, _, hs => by simp [topItems] at hs
+  | st, h, a :: ts, e, t, n, hs => by
+    rcases hc : certify (topItem st h.runs a) with e' | ⟨st', ha⟩ <;> simp only [topItems, hc] at hs ⊢
+    · simp only [Option.some.injEq, Prod.mk.injEq] at hs
+      obtain ⟨rfl, rfl, rfl⟩ := hs
+      refine ⟨[], ts, rfl, rfl, rfl, ⟨h.runs, ?_⟩, rfl⟩
+      cases hx : topItem st h.runs a <;> rw [hx] at hc <;> simp [certify] at hc
+      show topItem st h.runs a = _
+      rw [hx, hc]
+    · obtain ⟨pre, post, rfl, hl, hn, he, hf⟩ := topItems_stopAt hs
+      have heq : topItems st h (a :: pre) = topItems st' (h.next ha) pre := by simp [topItems, hc]
+      exact ⟨a :: pre, post, rfl, hl, by rw [heq]; exact hn, by rw [heq]; exact he, by rw [heq]; exact hf⟩
+
 theorem ProvedAt.extend {phase : Nat} {table : Table} {prog : Program} {g : CheckedGoal} {ρ : List Value}
     (post : List Top) (ρ' : List Value) (h : ProvedAt phase table prog g ρ) :
     ProvedAt phase table (prog ++ post) g (ρ ++ ρ') := by
@@ -183,11 +202,31 @@ theorem checkItems_inv (phase : Nat) (table : Table) (prog : Program) :
       rw [h1]
       exact ⟨ρ, hI, fun h => absurd h h2, hS.extend (World.Le.refl _) [t], fun h => absurd h h2⟩
 
+/-- The prints checking lists: one per `print` among the items `pre` it checks before stopping, which are all of
+`prog` when it stops at no error, and else those before the item `t` it stops at, with `n` items after `t`. -/
+theorem checkItems_prints (phase : Nat) (table : Table) (prog : Program) :
+    ∃ pre, (checkItems phase table pre).2 = none ∧
+      (checkItems phase table prog).1.prints.length = pre.countP (· matches .print ..) ∧
+      match (checkItems phase table prog).2 with
+      | none => pre = prog
+      | some (_, t, n) => ∃ post, prog = pre ++ t :: post ∧ post.length = n := by
+  cases hc : (checkItems phase table prog).2 with
+  | none => exact ⟨prog, hc, (checkItems_inv phase table prog).choose_spec.2.2.2 hc, rfl⟩
+  | some s =>
+    obtain ⟨e, t, n⟩ := s
+    obtain ⟨pre, post, hp, hl, hn, -, hf⟩ := topItems_stopAt hc
+    refine ⟨pre, hn, ?_, post, hp, hl⟩
+    simp only [checkItems] at hf ⊢
+    rw [hf]
+    exact (checkItems_inv phase table pre).choose_spec.2.2.2 hn
+
 /-- What the theorems say of an outcome `out` of checking `prog` under `phase` with the table `table`, in the world
 `W`: `W.P` is the evaluator's view of the program at the final state, `W.ρ` an ideal valuation of the final entries,
 and `W.Sc` the program's signatures closed by it; `W.ρ` satisfies the final scope if that is untainted; if the goal is
 reported proved, it was proved at a `qed` (`ProvedAt`) and holds (`GoalHolds`); every print listed is what its
-`print` shows (`PrintsShown`); and with no error, every `print` is listed. -/
+`print` shows (`PrintsShown`); and there is one print per `print` among the items `pre` checked before checking stops:
+all of `prog` if it stops at no error, and else the items before the item `t` it stops at, with `n` items after `t`, in
+which case the outcome reports an error. -/
 structure OutcomeSound (W : World) (phase : Nat) (table : Table) (prog : Program) (out : Outcome) : Prop where
   P : W.P = (checkItems phase table prog).1.prog
   Sc : W.Sc = out.sigs.map (Sig.close W.ρ)
@@ -197,27 +236,34 @@ structure OutcomeSound (W : World) (phase : Nat) (table : Table) (prog : Program
   goal : out.goalProved = some true → ∃ g, out.goal = some g ∧ ProvedAt phase table prog g W.ρ ∧
     GoalHolds W phase g out.qedFn
   prints : PrintsShown W phase table prog out.prints
-  allPrints : out.error = none → out.prints.length = prog.countP (· matches .print ..)
+  allPrints : ∃ pre, (checkItems phase table pre).2 = none ∧ out.prints.length = pre.countP (· matches .print ..) ∧
+    match (checkItems phase table prog).2 with
+    | none => pre = prog
+    | some (_, t, n) => out.error.isSome ∧ ∃ post, prog = pre ++ t :: post ∧ post.length = n
 
 /-- Soundness of `runProgramWith`, with any table for the program's `_` (§20). -/
 theorem runProgramWith_sound (phase : Nat) (table : Table) (prog : Program) (has : String → Bool)
     (err : Option (Pos × String)) : ∃ W, OutcomeSound W phase table prog (runProgramWith phase table prog has err) := by
-  obtain ⟨ρ, hI, hat, hS, hL⟩ := checkItems_inv phase table prog
+  obtain ⟨ρ, hI, hat, hS, -⟩ := checkItems_inv phase table prog
+  obtain ⟨pre, hn, hl, hm⟩ := checkItems_prints phase table prog
   refine ⟨(checkItems phase table prog).1.world ρ, ⟨rfl, rfl, rfl, hI.len,
-    fun ht => (hI.live (by simpa [runProgramWith, outcome] using ht)).sat, fun hg => ?_, hS, fun he => hL (by
-    revert he; simp only [runProgramWith, outcome]; cases (checkItems phase table prog).2 <;> simp)⟩⟩
+    fun ht => (hI.live (by simpa [runProgramWith, outcome] using ht)).sat, fun hg => ?_, hS, pre, hn, hl, ?_⟩⟩
   · simp only [runProgramWith, outcome] at hg ⊢
     split at hg
     · simp only [Option.some.injEq, Bool.and_eq_true, Option.isNone_iff_eq_none] at hg
       obtain ⟨g, hg', hW⟩ := hI.proved hg.2
       exact ⟨g, hg', hat hg.1.1 hg.2 g hg', by simpa [topItems_phase] using hW _ (World.Le.refl _)⟩
     · cases hg
+  · revert hm; simp only [runProgramWith, outcome]
+    cases (checkItems phase table prog).2 <;> simp
 
 theorem OutcomeSound.error {W : World} {phase : Nat} {table : Table} {prog : Program} {out : Outcome}
     {error : Option (Pos × String)} (h : OutcomeSound W phase table prog out) (he : error.isSome = out.error.isSome) :
     OutcomeSound W phase table prog { out with error } :=
-  ⟨h.P, h.Sc, h.fns, h.len, h.sat, h.goal, h.prints, fun hn => h.allPrints (by
-    cases hx : out.error <;> simp_all)⟩
+  ⟨h.P, h.Sc, h.fns, h.len, h.sat, h.goal, h.prints, by
+    obtain ⟨pre, hn, hl, hm⟩ := h.allPrints
+    refine ⟨pre, hn, hl, ?_⟩
+    revert hm; cases (checkItems phase table prog).2 <;> simp_all⟩
 
 /-- `report` keeps the item a stop is at and the number of items after it, and gives the checking pass's error, or one
 the solver meets, not internal, solving that item from the same state, when the checking pass's was not found by
