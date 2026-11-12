@@ -50,7 +50,7 @@ theorem GlobalsOk.mono {n m phase : Nat} {gs : List Global} {fn : Option FnCtx} 
 
 theorem World.Le.extend (W : World) (ρ' : List Value) : W.Le { W with ρ := W.ρ ++ ρ' } :=
   ⟨Prog.Ext.refl _, Sigs.Sub.refl _, List.prefix_append _ _, fun _ _ _ _ _ h h' => (by
-    simp only at h'; rw [h] at h'; cases h'), id⟩
+    simp only at h'; rw [h] at h'; cases h'), id, id⟩
 
 theorem TopState.world_extend {st st' : TopState} {ρ : List Value} (ρ' : List Value)
     (hok : SigsOk ρ.length st.sc.sigs) (hs : st'.sc.sigs = st.sc.sigs) (hf : st'.fns = st.fns)
@@ -74,11 +74,12 @@ theorem TopInv.sigsClose {st : TopState} {ρ : List Value} (hI : TopInv st ρ) :
 
 /-- Top-level code in an untainted scope is checked under the main lemma's invariant, in the world of the state. -/
 theorem TopInv.inv {st : TopState} {ρ : List Value} {C : Ctx} (hI : TopInv st ρ) (ht : st.sc.taintedBy = none)
-    (hph : C.phase = st.phase) (hgl : C.globals = st.globals) (hfn : C.fn = none) :
+    (hph : C.phase = st.phase) (hgl : C.globals = st.globals) (hfn : C.fn = none)
+    (hsv : C.solving = st.solving := by rfl) :
     Inv C st.sc st.sc.Γ.length (st.world ρ) ρ (Act.top st.fns) := by
   have hL := hI.live ht
   refine ⟨hI.holes, ht, hL.sat, by simp [TopState.world, hI.len], rfl, fun ρ' hρ' => ?_, hI.sigsOk, ?_,
-    hL.names, ?_, fun f hf => by simp [hfn] at hf⟩
+    hL.names, ?_, fun f hf => by simp [hfn] at hf, hsv.trans hI.solving, hI.worldTypeHeads⟩
   · refine hI.sigsClose.of_entriesBelow (n := st.sc.Γ.length) ?_ fun sig hs => (hI.sigsOk sig hs).1
     simpa [TopState.world] using hρ'.symm
   · simp [TopState.world, Sigs.find_map_close, hI.noJunk]
@@ -123,7 +124,7 @@ theorem step {st st' : TopState} {ρ ρ' : List Value} (hI : TopInv st ρ) (hs :
       GoalHolds W' st'.phase g st'.qedFn)
     (hlive : st'.sc.taintedBy = none → st.sc.taintedBy = none →
       (∃ C n0 act, Inv C st'.sc n0 (st.world ρ) (ρ ++ ρ') act) ∧
-      EnvRel (st.world ρ).Sc st.phase st'.sc (ρ ++ ρ') st'.env) :
+      EnvRel (st.world ρ).Sc st.phase st'.sc (ρ ++ ρ') st'.env) (hsv : st'.solving = st.solving := by rfl) :
     (st.world ρ).Le (st'.world (ρ ++ ρ')) ∧ TopInv st' (ρ ++ ρ') := by
   have hw := world_eq ρ' hI hs hf hgl
   have hle : (st.world ρ).Le (st'.world (ρ ++ ρ')) := by rw [hw]; exact World.Le.extend _ ρ'
@@ -132,7 +133,8 @@ theorem step {st st' : TopState} {ρ ρ' : List Value} (hI : TopInv st ρ) (hs :
   refine ⟨hle, hlen, fun v hv => (List.mem_append.1 hv).elim (hI.noRemoved v) (hnr v), hh,
     by rw [hs]; exact hI.sigsOk.mono hn, by rw [hs]; exact hI.noJunk, by rw [hs]; exact hI.rets,
     by rw [hs, hgl]; exact hI.sigNames, by rw [hf, hgl]; exact hI.fnNames, by rw [hf, hgr]; exact hI.groups,
-    by rw [hs]; exact hI.typeSig, fun g hg => ?_, fun hp => ?_, fun ht' => ?_⟩
+    by rw [hs]; exact hI.typeSig, fun g hg => ?_, fun hp => ?_, fun ht' => ?_, hsv.trans hI.solving,
+    by rw [hs]; exact hI.typeHeads⟩
   · exact hI.goal_le hle hgoal hn (none_of htaint) g hg
   · obtain ⟨g, hg, hh⟩ := hpr hp
     exact ⟨g, hg, fun W' hW => hh W' (hle.trans hW)⟩
@@ -149,12 +151,12 @@ theorem tainted {st st' : TopState} {ρ : List Value} (hI : TopInv st ρ) (hs : 
     (hgr : st'.groups = st.groups) (hgoal : st'.goal = st.goal) (hh : st'.sc.holes = [])
     (hpre : st.sc.Γ.eraseRules <+: st'.sc.Γ.eraseRules) (ht : st'.sc.taintedBy.isSome)
     (hpr : st'.proved = true → ∃ g, st'.goal = some g ∧ ∀ W', (st.world ρ).Le W' →
-      GoalHolds W' st'.phase g st'.qedFn) :
+      GoalHolds W' st'.phase g st'.qedFn) (hsv : st'.solving = st.solving := by rfl) :
     ∃ ρ', (st.world ρ).Le (st'.world (ρ ++ ρ')) ∧ TopInv st' (ρ ++ ρ') := by
   have hn : st.sc.Γ.length ≤ st'.sc.Γ.length := by simpa [Entries.eraseRules] using hpre.length_le
   exact ⟨List.replicate (st'.sc.Γ.length - st.sc.Γ.length) (Value.junk Value.TYPE),
     step hI hs hph hgl hf hgr hgoal hh (by simp [hI.len]; omega)
-      (fun v hv => by rw [List.eq_of_mem_replicate hv]; rfl) (fun _ => ht) hpr fun ht' => by simp [ht'] at ht⟩
+      (fun v hv => by rw [List.eq_of_mem_replicate hv]; rfl) (fun _ => ht) hpr (fun ht' => by simp [ht'] at ht) hsv⟩
 
 theorem keepProved {st st' : TopState} {ρ : List Value} (hI : TopInv st ρ) (hp : st'.proved = st.proved)
     (hg : st'.goal = st.goal) (hq : st'.qedFn = st.qedFn) (hph : st'.phase = st.phase) :
@@ -169,17 +171,18 @@ theorem stepInv {st st' : TopState} {ρ ρ' : List Value} {C : Ctx} {n0 : Nat} {
     (hpr : st'.proved = true → ∃ g, st'.goal = some g ∧ ∀ W', (st.world ρ).Le W' →
       GoalHolds W' st'.phase g st'.qedFn)
     (hI' : Inv C st'.sc n0 (st.world ρ) (ρ ++ ρ') act)
-    (hE : st.sc.taintedBy = none → EnvRel (st.world ρ).Sc st.phase st'.sc (ρ ++ ρ') st'.env) :
+    (hE : st.sc.taintedBy = none → EnvRel (st.world ρ).Sc st.phase st'.sc (ρ ++ ρ') st'.env)
+    (hsv : st'.solving = st.solving := by rfl) :
     ∃ ρ', (st.world ρ).Le (st'.world (ρ ++ ρ')) ∧ TopInv st' (ρ ++ ρ') :=
   ⟨ρ', step hI hs hph hgl hf hgr hgoal hh hI'.sat.1.1 (fun v hv => hI'.sat.noRemoved v (List.mem_append_right _ hv))
-    htaint hpr fun _ ht => ⟨⟨C, n0, act, hI'⟩, hE ht⟩⟩
+    htaint hpr (fun _ ht => ⟨⟨C, n0, act, hI'⟩, hE ht⟩) hsv⟩
 
 end TopStmt
 
 /-- A top-level statement other than a `comptime` pattern `let` keeps the invariant for the valuation extended by
 ideal values of its new entries (§11, §12): in an untainted scope by `Stmt.sound`, the run giving the new
 environment; in a tainted one, by any values, nothing being run. -/
-theorem topStmt_sound {st st' : TopState} {ρ : List Value} {s : Stmt} (hI : TopInv st ρ) (hp : s.holeFree = true)
+theorem topStmt_sound {st st' : TopState} {ρ : List Value} {s : Stmt} (hI : TopInv st ρ)
     (hc : ∀ p m pat rhs, s ≠ .patlet p true m pat rhs) (h : topItem st (.stmt s) = .ok st') :
     ∃ ρ', (st.world ρ).Le (st'.world (ρ ++ ρ')) ∧ TopInv st' (ρ ++ ρ') := by
   have hst : topItem st (.stmt s) = (do
@@ -197,7 +200,7 @@ theorem topStmt_sound {st st' : TopState} {ρ : List Value} {s : Stmt} (hI : Top
   obtain ⟨env, henv, h⟩ := bind_eq_ok.1 h
   cases h
   rw [keep_ok] at henv
-  obtain ⟨hsig, hh, hpre, htnt⟩ := Stmt.shape s hp st.ctx st.sc o hI.holes ho
+  obtain ⟨hsig, hh, hpre, htnt⟩ := Stmt.shape s st.ctx st.sc o hI.solving hI.holes ho
   cases hto : o.sc.taintedBy with
   | some q =>
     rw [hto] at henv
@@ -209,8 +212,8 @@ theorem topStmt_sound {st st' : TopState} {ρ : List Value} {s : Stmt} (hI : Top
     rw [hto] at henv
     simp only [Option.isSome_none, Bool.false_eq_true, ↓reduceIte] at henv
     have ht := TopStmt.none_of htnt hto
-    obtain ⟨ρ', hI', hrun⟩ := Stmt.sound s hp _ _ _ _ _ _ _ (hI.inv (C := st.ctx) ht rfl rfl rfl) ho hto
-    obtain ⟨env', hev, hE⟩ := hrun rfl st.env (hI.live ht).env
+    obtain ⟨ρ', hI', hrun⟩ := Stmt.sound s _ _ _ _ _ _ _ (hI.inv (C := st.ctx) ht rfl rfl rfl) ho hto
+    obtain ⟨env', hev, hE⟩ := hrun rfl rfl st.env (hI.live ht).env
     cases EvalStmt.det (TopState.run_cert henv) hev
     exact TopStmt.stepInv hI hsig rfl rfl rfl rfl rfl hh htnt (TopStmt.keepProved hI rfl rfl rfl rfl) hI'
       fun _ => hE
@@ -236,7 +239,7 @@ end TopStmt
 /-- A `comptime` pattern `let` (§11) keeps the invariant: with an untainted scrutinee, the run's value, related to
 the ideal one, is headed by the pattern's value constructor, so the ideal value is too and its forcing survived. -/
 theorem comptimeLet_sound {st st' : TopState} {ρ : List Value} {p : Pos} {m : Option Mult} {pat : Pattern}
-    {rhs : Expr} (hI : TopInv st ρ) (hp : rhs.holeFree = true) (h : comptimeLet st p m pat rhs = .ok st') :
+    {rhs : Expr} (hI : TopInv st ρ) (h : comptimeLet st p m pat rhs = .ok st') :
     ∃ ρ', (st.world ρ).Le (st'.world (ρ ++ ρ')) ∧ TopInv st' (ρ ++ ρ') := by
   unfold comptimeLet at h
   simp only at h
@@ -245,12 +248,12 @@ theorem comptimeLet_sound {st st' : TopState} {ρ : List Value} {p : Pos} {m : O
   rename_i hm
   obtain ⟨-, -, h⟩ := bind_eq_ok.1 h
   obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
-  rw [closed_eq hI.holes fun o h => (Expr.shape rhs hp _ _ _ o hI.holes h).2.2.1] at ho
+  rw [closed_eq hI.holes fun o h => (Expr.shape rhs _ _ _ o hI.solving hI.holes h).2.2.1] at ho
   rw [keep_ok] at h
   obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
   obtain ⟨fs, hfs, h⟩ := bind_eq_ok.1 h
   obtain ⟨v', hv', h⟩ := bind_eq_ok.1 h
-  obtain ⟨hsig0, hnm, hh0, hpre0, htnt⟩ := Expr.shape rhs hp _ st.sc none o hI.holes ho
+  obtain ⟨hsig0, hnm, hh0, hpre0, htnt⟩ := Expr.shape rhs _ st.sc none o hI.solving hI.holes ho
   have hT : ∀ sc, patBind o.sc r rhs.pos true pat fs = .ok sc → sc.taintedBy.isSome →
       ∃ ρ', (st.world ρ).Le (({ st with sc, env := st.env, snaps := st.snaps ++ o.snaps } : TopState).world
         (ρ ++ ρ')) ∧ TopInv { st with sc, env := st.env, snaps := st.snaps ++ o.snaps } (ρ ++ ρ') := by
@@ -277,7 +280,7 @@ theorem comptimeLet_sound {st st' : TopState} {ρ : List Value} {p : Pos} {m : O
     have hrt : r.tainted = false := by simpa [reach, hto] using htb
     have ht := TopStmt.none_of htnt hto
     obtain ⟨ρ₁, vs, hI₁, hvs, hres, -, hrun⟩ :=
-      (Expr.sound rhs hp _ _ _ _ _ _ _ _ (hI.inv ht rfl rfl rfl) (fun _ h => by cases h) ho).1 hto
+      (Expr.sound rhs _ _ _ _ _ _ _ _ (hI.inv ht rfl rfl rfl) (fun _ h => by cases h) ho).1 hto
     have hor := single_ok hr
     rw [hor] at hvs hres
     obtain ⟨vi, hvi, rfl⟩ := Term.evalList_singleton.1 (by simpa using hvs)
@@ -286,7 +289,7 @@ theorem comptimeLet_sound {st st' : TopState} {ρ : List Value} {p : Pos} {m : O
     rw [hrt] at hv'
     obtain ⟨v'', rfl, hcert⟩ := TopState.eval_cert hv'
     cases hv
-    obtain ⟨us, hev, us', htk, hrel⟩ := hrun st.env (hI.live ht).env
+    obtain ⟨us, hev, us', htk, hrel⟩ := hrun rfl st.env (hI.live ht).env
     cases Eval.det hev hcert
     rw [take_of_length (by rw [hor]; rfl)] at htk
     cases htk
@@ -360,20 +363,20 @@ theorem comptimeLet_sound {st st' : TopState} {ρ : List Value} {p : Pos} {m : O
 
 /-- `print` keeps the invariant. -/
 theorem print_sound {st st' : TopState} {ρ : List Value} {p : Pos} {e : Expr} (hI : TopInv st ρ)
-    (hp : e.holeFree = true) (h : topItem st (.print p e) = .ok st') :
+    (h : topItem st (.print p e) = .ok st') :
     ∃ ρ', (st.world ρ).Le (st'.world (ρ ++ ρ')) ∧ TopInv st' (ρ ++ ρ') := by
   simp only [topItem] at h
   obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
-  rw [closed_eq hI.holes fun o h => (Expr.shape e hp _ _ _ o hI.holes h).2.2.1] at ho
+  rw [closed_eq hI.holes fun o h => (Expr.shape e _ _ _ o hI.solving hI.holes h).2.2.1] at ho
   obtain ⟨v, -, h⟩ := bind_eq_ok.1 h
   cases h
-  obtain ⟨hsig, hnm, hh, hpre, htnt⟩ := Expr.shape e hp _ st.sc none o hI.holes ho
+  obtain ⟨hsig, hnm, hh, hpre, htnt⟩ := Expr.shape e _ st.sc none o hI.solving hI.holes ho
   cases hto : o.sc.taintedBy with
   | some q =>
     exact TopStmt.tainted hI hsig rfl rfl rfl rfl rfl hh hpre (by simp [hto]) (TopStmt.keepProved hI rfl rfl rfl rfl)
   | none =>
     have ht := TopStmt.none_of htnt hto
-    obtain ⟨ρ₁, -, hI₁, -⟩ := (Expr.sound e hp _ _ _ _ _ _ _ _ (hI.inv ht rfl rfl rfl) (fun _ h => by cases h) ho).1 hto
+    obtain ⟨ρ₁, -, hI₁, -⟩ := (Expr.sound e _ _ _ _ _ _ _ _ (hI.inv ht rfl rfl rfl) (fun _ h => by cases h) ho).1 hto
     exact TopStmt.stepInv hI hsig rfl rfl rfl rfl rfl hh htnt (TopStmt.keepProved hI rfl rfl rfl rfl) hI₁
       fun ht => EnvRel.extend ρ₁ (hI.live ht).env hnm hpre hI.len
 
@@ -409,7 +412,7 @@ end TopStmt
 /-- `qed e;` against a type goal (§12): if it proves the goal, `e`'s untainted result has an ideal value of the goal's
 type, in an untainted scope, and that type has type `Type()`. -/
 theorem typeQed_sound {st st' : TopState} {ρ : List Value} {p : Pos} {e : Expr} {goal : CheckedGoal} {t : Term}
-    (hI : TopInv st ρ) (hp : e.holeFree = true) (hgoal : st.goal = some goal) (hk : goal.kind = .type t)
+    (hI : TopInv st ρ) (hgoal : st.goal = some goal) (hk : goal.kind = .type t)
     (h : (do
         let o ← closed st.sc (checkExpr st.ctx · (some goal.given) e)
         let _ ← keep o.snaps (st.eval p o.tree (o.res.any fun x => x.tainted))
@@ -418,16 +421,16 @@ theorem typeQed_sound {st st' : TopState} {ρ : List Value} {p : Pos} {e : Expr}
         CheckM TopState) = .ok st') :
     ∃ ρ', (st.world ρ).Le (st'.world (ρ ++ ρ')) ∧ TopInv st' (ρ ++ ρ') := by
   obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
-  rw [closed_eq hI.holes fun o h => (Expr.shape e hp _ _ _ o hI.holes h).2.2.1] at ho
+  rw [closed_eq hI.holes fun o h => (Expr.shape e _ _ _ o hI.solving hI.holes h).2.2.1] at ho
   obtain ⟨-, -, h⟩ := bind_eq_ok.1 h
   cases h
-  obtain ⟨hsig, hnm, hh, hpre, htnt⟩ := Expr.shape e hp _ st.sc _ o hI.holes ho
+  obtain ⟨hsig, hnm, hh, hpre, htnt⟩ := Expr.shape e _ st.sc _ o hI.solving hI.holes ho
   cases hto : o.sc.taintedBy with
   | some q =>
     exact TopStmt.tainted hI hsig rfl rfl rfl rfl rfl hh hpre (by simp [hto]) fun hpr => by simp at hpr
   | none =>
     have ht := TopStmt.none_of htnt hto
-    obtain ⟨ρ₁, vs, hI₁, -, -, hw, -⟩ := (Expr.sound e hp _ _ _ _ _ _ _ _ (hI.inv ht rfl rfl rfl)
+    obtain ⟨ρ₁, vs, hI₁, -, -, hw, -⟩ := (Expr.sound e _ _ _ _ _ _ _ _ (hI.inv ht rfl rfl rfl)
       (fun g' hg' => by cases hg'; exact TopStmt.given_ok hI ht hgoal hk) ho).1 hto
     refine TopStmt.stepInv hI hsig rfl rfl rfl rfl rfl hh htnt (fun hpr => ⟨goal, hgoal, fun W' hW => ?_⟩) hI₁
       fun ht => EnvRel.extend ρ₁ (hI.live ht).env hnm hpre hI.len
@@ -534,7 +537,7 @@ theorem qedFnGoal_spec {st st' : TopState} {ps rs : Telescope} {e : Expr} (h : q
 
 /-- A `qed` keeps the invariant, and, if it proves the goal, the goal holds in every later world (§12). -/
 theorem qed_sound {st st' : TopState} {ρ : List Value} {p : Pos} {e : Expr} (hI : TopInv st ρ)
-    (hp : e.holeFree = true) (h : topItem st (.qed p e) = .ok st') :
+    (h : topItem st (.qed p e) = .ok st') :
     ∃ ρ', (st.world ρ).Le (st'.world (ρ ++ ρ')) ∧ TopInv st' (ρ ++ ρ') := by
   simp only [topItem] at h
   split at h
@@ -561,8 +564,8 @@ theorem qed_sound {st st' : TopState} {ρ : List Value} {p : Pos} {e : Expr} (hI
       split at h
       · split at h
         · simp [failAt_eq, bind, Except.bind] at h
-        · exact typeQed_sound hI hp hgoal hk h
-      · exact typeQed_sound hI hp hgoal hk h
+        · exact typeQed_sound hI hgoal hk h
+      · exact typeQed_sound hI hgoal hk h
   · simp [failAt_eq] at h
 
 end Pledge

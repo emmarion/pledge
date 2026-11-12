@@ -1,4 +1,4 @@
-import Pledge.Sound.Rel
+import Pledge.Sound.Solution
 
 namespace Pledge
 
@@ -25,80 +25,10 @@ theorem abstracted_ok {Γ : Entries} {name : Option String} {mult : Option Mult}
   subst his
   exact ⟨u, rfl, abstractChecked_ok hu⟩
 
-mutual
-/-- A term checked in a scope with no taint is untainted. -/
-theorem checkTerm_untainted {C : Ctx} {sc : Scope} (ht : sc.taintedBy = none)
-    (hn : ∀ p ∈ sc.names, p.2.tainted = false) : ∀ (t : WTerm) {r : Res}, checkTerm C sc t = .ok r → r.tainted = false
-  | .var x, r, h => by
-    simp only [checkTerm] at h
-    split at h
-    · rename_i r' hl
-      simp only [pure, Except.pure, Except.ok.injEq] at h
-      subst h
-      simpa [ht] using hn _ (lookup_mem hl)
-    · simp [notValue, failAt_eq] at h
-  | .app hd args, r, h => by
-    obtain ⟨k, role, sig, rs, -, -, hrs, rfl⟩ : ∃ k role sig rs, sc.sig hd.pos ⟨k, hd.name⟩ = .ok sig ∧
-        arity hd.pos hd.name sig.params.length args.length = .ok () ∧
-        checkTerms C sc hd.name role sig.params [] args = .ok rs ∧
-        r = ⟨.app sig.head (rs.map (·.term)), rs.any (·.tainted) || sc.taintedBy.isSome, false⟩ := by
-      unfold checkTerm at h
-      split at h
-      · simp [failAt_eq, error_bind] at h
-      all_goals first
-        | (simp [notApplied, failAt_eq, error_bind] at h; done)
-        | (obtain ⟨k, -, h⟩ := bind_eq_ok.1 h
-           obtain ⟨sig, hsig, h⟩ := bind_eq_ok.1 h
-           obtain ⟨u, har, h⟩ := bind_eq_ok.1 h
-           obtain ⟨rs, hrs, h⟩ := bind_eq_ok.1 h
-           simp only [pure, Except.pure, Except.ok.injEq] at h
-           exact ⟨k, _, sig, rs, hsig, har, hrs, h.symm⟩)
-    simpa [ht] using checkTerms_untainted ht hn args hrs
-theorem checkTerms_untainted {C : Ctx} {sc : Scope} (ht : sc.taintedBy = none)
-    (hn : ∀ p ∈ sc.names, p.2.tainted = false) : ∀ (args : List WTerm) {owner role : String} {params : Telescope}
-      {prev rs : List Res}, checkTerms C sc owner role params prev args = .ok rs → ∀ r ∈ rs, r.tainted = false
-  | [], owner, role, params, prev, rs, h => by
-    simp only [checkTerms, pure, Except.pure, Except.ok.injEq] at h
-    subst h
-    simp
-  | a :: as, owner, role, params, prev, rs, h => by
-    cases params with
-    | nil => simp [checkTerms, internal, failAt_eq] at h
-    | cons p ps =>
-      simp only [checkTerms] at h
-      obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
-      obtain ⟨sc', -, h⟩ := bind_eq_ok.1 h
-      obtain ⟨rest, hrest, h⟩ := bind_eq_ok.1 h
-      simp only [pure, Except.pure, Except.ok.injEq] at h
-      subst h
-      intro r' hr'
-      rcases List.mem_cons.1 hr' with rfl | hr'
-      · exact checkTerm_untainted ht hn a hr
-      · exact checkTerms_untainted ht hn as hrest r' hr'
-end
-
-theorem term_eq {C : Ctx} {sc : Scope} {t : WTerm} {whole : Bool} (h : t.holed = false) :
-    term C sc t whole = checkTerm C sc t := by
-  simp [term, h]
-
-theorem annotate_untainted {C : Ctx} {sc : Scope} {ann : Ann} {ty : Term} {is : Option Term} {tainted : Bool}
-    (ht : sc.taintedBy = none) (hn : ∀ p ∈ sc.names, p.2.tainted = false) (hf : ann.term.holed = false)
-    (h : annotate C sc ann = .ok (ty, is, tainted)) : tainted = false := by
-  cases ann with
-  | is t =>
-    simp only [annotate, term_eq (show t.holed = false from hf)] at h
-    obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
-    obtain ⟨ty', -, h⟩ := bind_eq_ok.1 h
-    simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
-    obtain ⟨-, -, rfl⟩ := h
-    exact checkTerm_untainted ht hn t hr
-  | type t =>
-    simp only [annotate, term_eq (show t.holed = false from hf)] at h
-    obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
-    obtain ⟨u, -, h⟩ := bind_eq_ok.1 h
-    simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
-    obtain ⟨-, -, rfl⟩ := h
-    exact checkTerm_untainted ht hn t hr
+/-- With `solving` off, a written term is checked by `checkTerm`. -/
+theorem term_eq {C : Ctx} {sc : Scope} {t : WTerm} {whole : Bool} (hs : C.solving = false) :
+    ∃ C' : Ctx, C'.solving = false ∧ term C sc t whole = checkTerm C' sc whole t :=
+  ⟨{ C with erased := C.erased || decide (2 ≤ C.phase) }, hs, by simp [term, hs]⟩
 
 theorem opening_shape {C : Ctx} {sc : Scope} {name : Id} {ann : Ann} {mult : Option Mult} {kind : String}
     {o : Opening} (h : opening C sc name ann mult kind = .ok o) :
@@ -111,38 +41,28 @@ theorem opening_shape {C : Ctx} {sc : Scope} {name : Id} {ann : Ann} {mult : Opt
   subst h
   exact ⟨ha, rfl, _, by rw [Scope.openBinder, Scope.bind_eq]⟩
 
-theorem pushed_untainted : ∀ (ids : List Id) (rs : List Res), (∀ r ∈ rs, r.tainted = false) →
-    ∀ p ∈ pushed ids rs, p.2.tainted = false := fun ids rs hr p hp => by
-  obtain ⟨i, hi⟩ := pushed_mem hp
-  exact hr _ (List.mem_of_getElem? hi)
-
-theorem fieldRes_untainted (ids : List Nat) : ∀ r ∈ fieldRes ids, r.tainted = false := by
-  simp [fieldRes]
-
 theorem telescope_go_shape {C : Ctx} {kind : String} : ∀ (bs : List Binder) (sc : Scope) (seen : List String)
     (acc : List (Binder × Opening)) {res : Scope × List String × List (Binder × Opening)},
     telescope.go C kind sc seen acc bs = .ok res →
     ∃ new, res.2.2 = acc ++ new ∧ new.map (·.1) = bs ∧ new.map (·.2.id) = List.range' sc.Γ.length bs.length ∧
       res.1.Γ.length = sc.Γ.length + bs.length ∧ sc.Γ <+: res.1.Γ ∧
       res.1 = { sc with
-        Γ := res.1.Γ, names := pushed (bs.map (·.name)) (fieldRes (List.range' sc.Γ.length bs.length)) ++ sc.names } ∧
-      ((∀ b ∈ bs, b.ann.term.holed = false) → sc.taintedBy = none → (∀ p ∈ sc.names, p.2.tainted = false) →
-        ∀ x ∈ new, x.2.tainted = false)
+        Γ := res.1.Γ, names := pushed (bs.map (·.name)) (fieldRes (List.range' sc.Γ.length bs.length)) ++ sc.names }
   | [], sc, seen, acc, res, h => by
     simp only [telescope.go, pure, Except.pure, Except.ok.injEq] at h
     subst h
-    exact ⟨[], by simp, rfl, rfl, by simp, List.prefix_refl _, by simp [pushed, fieldRes], by simp⟩
+    exact ⟨[], by simp, rfl, rfl, by simp, List.prefix_refl _, by simp [pushed, fieldRes]⟩
   | b :: bs, sc, seen, acc, res, h => by
     simp only [telescope.go] at h
     obtain ⟨seen', -, h⟩ := bind_eq_ok.1 h
     obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
-    obtain ⟨hann, hid, mk, hsc⟩ := opening_shape ho
-    obtain ⟨new, hnew, h1, h2, h3, h4, h5, h6⟩ := telescope_go_shape bs _ _ _ h
+    obtain ⟨-, hid, mk, hsc⟩ := opening_shape ho
+    obtain ⟨new, hnew, h1, h2, h3, h4, h5⟩ := telescope_go_shape bs _ _ _ h
     obtain ⟨Δ, hΔ, hΔl, -, -⟩ := openTele_shape sc.Γ [⟨b.name.name, o.type, o.is, b.mult.getD .many⟩] [] mk
     have hoΓ : o.sc.Γ = sc.Γ ++ Δ := by rw [hsc]; exact hΔ
     have hol : o.sc.Γ.length = sc.Γ.length + 1 := by rw [hoΓ, List.length_append, hΔl]; rfl
     refine ⟨(b, o) :: new, by simp [hnew], by simp [h1], ?_, by rw [h3, hol]; simp; omega,
-      (hoΓ ▸ List.prefix_append _ _).trans h4, ?_, fun hf ht hn x hx => ?_⟩
+      (hoΓ ▸ List.prefix_append _ _).trans h4, ?_⟩
     · simp [h2, hol, hid, List.range'_succ]
     · have hp0 : pushed ([] : List Id) ([] : List Res) = [] := rfl
       rw [h5]
@@ -151,34 +71,24 @@ theorem telescope_go_shape {C : Ctx} {kind : String} : ∀ (bs : List Binder) (s
       rw [hol]
       simp only [List.map_cons, List.length_cons, List.range'_succ, fieldRes, pushed_cons, hp0, List.append_assoc,
         List.nil_append]
-    · rcases List.mem_cons.1 hx with rfl | hx
-      · exact annotate_untainted ht hn (hf b List.mem_cons_self) hann
-      · refine h6 (fun b hb => hf b (List.mem_cons_of_mem _ hb)) (by rw [hsc]; exact ht) (fun p hp => ?_) x hx
-        rw [hsc] at hp
-        rcases List.mem_append.1 hp with hp | hp
-        · exact pushed_untainted _ _ (by simp) p hp
-        · exact hn p hp
 
 /-- What a checked telescope is, independently of any valuation. -/
 theorem telescope_shape {C : Ctx} {sc : Scope} {bs : List Binder} {kind : String} {outer : List Nat} {out : Checked}
     (h : telescope C sc bs kind outer = .ok out) :
     out.tele.length = bs.length ∧ out.ids = List.range' sc.Γ.length bs.length ∧
       out.sc.Γ.length = sc.Γ.length + bs.length ∧ sc.Γ <+: out.sc.Γ ∧
-      out.sc = Scope.bind { sc with Γ := out.sc.Γ } (bs.map (·.name)) (fieldRes out.ids) ∧
-      ((∀ b ∈ bs, b.ann.term.holed = false) → sc.taintedBy = none → (∀ p ∈ sc.names, p.2.tainted = false) →
-        out.tainted = false) := by
+      out.sc = Scope.bind { sc with Γ := out.sc.Γ } (bs.map (·.name)) (fieldRes out.ids) := by
   unfold telescope at h
   obtain ⟨⟨sc', seen, opens⟩, hgo, h⟩ := bind_eq_ok.1 h
   obtain ⟨tele, htele, h⟩ := bind_eq_ok.1 h
   simp only [pure, Except.pure, Except.ok.injEq] at h
   subst h
-  obtain ⟨new, hnew, h1, h2, h3, h4, h5, h6⟩ := telescope_go_shape bs sc [] [] hgo
+  obtain ⟨new, hnew, h1, h2, h3, h4, h5⟩ := telescope_go_shape bs sc [] [] hgo
   simp only [List.nil_append] at hnew
   subst hnew
   obtain ⟨hl, -⟩ := mapM_ok htele
   have hlen : opens.length = bs.length := by rw [← h1, List.length_map]
-  exact ⟨by simp [hl, hlen], h2, h3, h4, by rw [Scope.bind_eq, h2]; exact h5,
-    fun hf hta hn => by simpa using h6 hf hta hn⟩
+  exact ⟨by simp [hl, hlen], h2, h3, h4, by rw [Scope.bind_eq, h2]; exact h5⟩
 
 mutual
 theorem Term.mapEntries_congr {f g : Nat → Term} :
@@ -279,17 +189,6 @@ theorem WantsSat.teleOk {S : Sigs} {ρ : List Value} (typed : Nat → Bool) :
     obtain ⟨A, hA, a, c, d⟩ := h1 b.type rfl
     exact ⟨⟨A, hA, a, c, fun h => d (by simpa using hty 0 h)⟩, h2,
       WantsSat.teleOk (fun k => typed (k + 1)) h3 fun k h => by simpa using hty (k + 1) h⟩
-  | [], _, _ :: _, _, h, _ | [], _, [], _ :: _, h, _ | _ :: _, _, [], _, h, _ | _ :: _, _, _ :: _, [], h, _ => h.elim
-
-/-- Typed values meeting a telescope's wants satisfy it. -/
-theorem WantsSat.teleSat {S : Sigs} {ρ : List Value} :
-    ∀ {tele : Telescope} {env : List Value} {ts : List Bool} {vs : List Value},
-      WantsSat S ρ (tele.map Want.of) env ts vs → (∀ t ∈ ts, t = true) → TeleSat S ρ tele env vs
-  | [], _, [], [], _, _ => .nil
-  | b :: tele, env, t :: ts, v :: vs, ⟨⟨h1, h2⟩, h3⟩, hty => by
-    obtain ⟨A, hA, -, -, d⟩ := h1 b.type rfl
-    exact .cons hA (d (hty t List.mem_cons_self)) h2
-      (WantsSat.teleSat h3 fun t' h => hty t' (List.mem_cons_of_mem _ h))
   | [], _, _ :: _, _, h, _ | [], _, [], _ :: _, h, _ | _ :: _, _, [], _, h, _ | _ :: _, _, _ :: _, [], h, _ => h.elim
 
 /-- Values satisfying a telescope meet its wants, typed. -/
@@ -393,60 +292,67 @@ theorem Inv.termInv {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Val
   ⟨hI.sat, hI.length, hI.sigs ρ hI.agree, hI.sigsOk, hI.noJunk, fun n r hn =>
     let ⟨v, hv, h⟩ := hI.names n r hn; ⟨v, hv, h.2.1, h.2.2⟩⟩
 
-mutual
-/-- A checked skeleton term has a value when every name has one. -/
-theorem checkTerm_eval {C : Ctx} {sc : Scope} {ρ : List Value}
-    (hn : ∀ n r, sc.lookup n = some r → ∃ v, r.term.eval ρ [] = some v) :
-    ∀ (t : WTerm) {r : Res}, checkTerm C sc t = .ok r → ∃ v, r.term.eval ρ [] = some v
-  | .var x, r, h => by
-    simp only [checkTerm] at h
-    split at h
-    · rename_i r' hl
-      simp only [pure, Except.pure, Except.ok.injEq] at h
-      subst h
-      obtain ⟨v, hv⟩ := hn _ _ hl
-      exact ⟨v, hv⟩
-    · simp [notValue, failAt_eq] at h
-  | .app hd args, r, h => by
-    obtain ⟨k, role, sig, rs, -, -, hrs, rfl⟩ : ∃ k role sig rs, sc.sig hd.pos ⟨k, hd.name⟩ = .ok sig ∧
-        arity hd.pos hd.name sig.params.length args.length = .ok () ∧
-        checkTerms C sc hd.name role sig.params [] args = .ok rs ∧
-        r = ⟨.app sig.head (rs.map (·.term)), rs.any (·.tainted) || sc.taintedBy.isSome, false⟩ := by
-      unfold checkTerm at h
-      split at h
-      · simp [failAt_eq, error_bind] at h
-      all_goals first
-        | (simp [notApplied, failAt_eq, error_bind] at h; done)
-        | (obtain ⟨k, -, h⟩ := bind_eq_ok.1 h
-           obtain ⟨sig, hsig, h⟩ := bind_eq_ok.1 h
-           obtain ⟨u, har, h⟩ := bind_eq_ok.1 h
-           obtain ⟨rs, hrs, h⟩ := bind_eq_ok.1 h
-           simp only [pure, Except.pure, Except.ok.injEq] at h
-           exact ⟨k, _, sig, rs, hsig, har, hrs, h.symm⟩)
-    obtain ⟨vs, hvs⟩ := checkTerms_eval hn args hrs
-    exact ⟨_, Term.eval_app.2 ⟨vs, hvs, rfl⟩⟩
-theorem checkTerms_eval {C : Ctx} {sc : Scope} {ρ : List Value}
-    (hn : ∀ n r, sc.lookup n = some r → ∃ v, r.term.eval ρ [] = some v) :
-    ∀ (args : List WTerm) {owner role : String} {params : Telescope} {prev rs : List Res},
-      checkTerms C sc owner role params prev args = .ok rs → ∃ vs, Term.evalList ρ [] (rs.map (·.term)) = some vs
-  | [], owner, role, params, prev, rs, h => by
-    simp only [checkTerms, pure, Except.pure, Except.ok.injEq] at h
-    subst h
-    exact ⟨[], rfl⟩
-  | a :: as, owner, role, params, prev, rs, h => by
-    cases params with
-    | nil => simp [checkTerms, internal, failAt_eq] at h
-    | cons p ps =>
-      simp only [checkTerms] at h
-      obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
-      obtain ⟨sc', -, h⟩ := bind_eq_ok.1 h
-      obtain ⟨rest, hrest, h⟩ := bind_eq_ok.1 h
-      simp only [pure, Except.pure, Except.ok.injEq] at h
-      subst h
-      obtain ⟨v, hv⟩ := checkTerm_eval hn a hr
-      obtain ⟨vs, hvs⟩ := checkTerms_eval hn as hrest
-      exact ⟨v :: vs, Term.evalList_cons_eq_some.2 ⟨v, vs, hv, hvs, rfl⟩⟩
-end
+theorem checkTerm_app {C : Ctx} {sc : Scope} {whole : Bool} {hd : Name} {args : List WTerm} {r : Res}
+    (h : checkTerm C sc whole (.app hd args) = .ok r) :
+    ∃ (C' : Ctx) (k : HeadKind) (role : String) (er : Bool) (sig : Sig) (rs : List Res), C'.solving = C.solving ∧
+      sc.sig hd.pos ⟨k, hd.name⟩ = .ok sig ∧ sig.params.length = args.length ∧
+      checkTerms C' sc hd.name role er sig.params [] args = .ok rs ∧
+      r = ⟨.app sig.head (rs.map (·.term)), rs.any (·.tainted) || sc.taintedBy.isSome, false⟩ := by
+  unfold checkTerm at h
+  split at h
+  · simp [failAt_eq, error_bind] at h
+  all_goals first
+    | (simp [notApplied, failAt_eq, error_bind] at h; done)
+    | (obtain ⟨k, -, h⟩ := bind_eq_ok.1 h
+       obtain ⟨sig, hsig, h⟩ := bind_eq_ok.1 h
+       obtain ⟨u, har, h⟩ := bind_eq_ok.1 h
+       obtain ⟨rs, hrs, h⟩ := bind_eq_ok.1 h
+       simp only [pure, Except.pure, Except.ok.injEq] at h
+       exact ⟨{ C with inType := C.inType || k == .type }, k, _, _, sig, rs, rfl, hsig, arity_ok har, hrs, h.symm⟩)
+
+theorem checkTerm_var {C : Ctx} {sc : Scope} {whole : Bool} {x : Name} {r : Res}
+    (h : checkTerm C sc whole (.var x) = .ok r) : ∃ r', sc.lookup x.name = some r' ∧
+      r = { r' with tainted := r'.tainted || sc.taintedBy.isSome } := by
+  simp only [checkTerm] at h
+  split at h
+  · rename_i r' hl
+    simp only [pure, Except.pure, Except.ok.injEq] at h
+    exact ⟨r', hl, h.symm⟩
+  · simp [notValue, failAt_eq] at h
+
+theorem checkTerm_hole {C : Ctx} {sc : Scope} {whole : Bool} {p : Pos} {r : Res} (hs : C.solving = false)
+    (h : checkTerm C sc whole (.hole p) = .ok r) : ∃ ts, sc.solution C ts p .TYPE none C.erased = .ok r := by
+  unfold checkTerm at h
+  split at h
+  · obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
+    obtain ⟨-, -, -, ts, r', hr', hres⟩ := Scope.hole_spec hs ho
+    rw [hres] at h
+    obtain rfl : r' = r := by simpa using single_ok h
+    exact ⟨ts, hr'⟩
+  · simp [failAt_eq] at h
+
+theorem checkTerms_cons {C : Ctx} {sc : Scope} {owner role : String} {er : Bool} {params : Telescope}
+    {prev : List Res} {a : WTerm} {as : List WTerm} {rs : List Res}
+    (h : checkTerms C sc owner role er params prev (a :: as) = .ok rs) :
+    ∃ p ps r rest, params = p :: ps ∧ rs = r :: rest ∧ checkTerms C sc owner role er ps (prev ++ [r]) as = .ok rest ∧
+      ((∃ pos o, holeArg C sc (argGiven p prev role owner er) p prev pos = .ok o ∧ o.res = [r]) ∨
+        (checkTerm C sc false a = .ok r ∧
+          ∃ sc', against { sc with holes := [] } (argGiven p prev role owner er) a.pos [r] = .ok sc')) := by
+  cases params with
+  | nil => simp [checkTerms, internal, failAt_eq] at h
+  | cons p ps =>
+    cases a <;> simp only [checkTerms] at h <;> first
+      | (obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
+         obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
+         obtain ⟨rest, hrest, h⟩ := bind_eq_ok.1 h
+         simp only [pure, Except.pure, Except.ok.injEq] at h
+         exact ⟨p, ps, r, rest, rfl, h.symm, hrest, .inl ⟨_, o, ho, single_ok hr⟩⟩)
+      | (obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
+         obtain ⟨sc', hag, h⟩ := bind_eq_ok.1 h
+         simp only [pure, Except.pure, ok_bind] at h
+         obtain ⟨rest, hrest, h⟩ := bind_eq_ok.1 h
+         simp only [pure, Except.pure, Except.ok.injEq] at h
+         exact ⟨p, ps, _, rest, rfl, h.symm, hrest, .inr ⟨hr, sc', hag⟩⟩)
 
 namespace TermFill
 
@@ -467,54 +373,25 @@ theorem evalList_noRemoved {ρ env : List Value} (hρ : ∀ v ∈ ρ, v.noRemove
     simp [Value.noRemovedList, eval_noRemoved hρ he a hv, evalList_noRemoved hρ he as hvs]
 end
 
-theorem checkTerms_length {C : Ctx} {sc : Scope} : ∀ (args : List WTerm) {owner role : String} {params : Telescope}
-    {prev rs : List Res}, checkTerms C sc owner role params prev args = .ok rs → rs.length = args.length
-  | [], _, _, _, _, rs, h => by
-    simp only [checkTerms, pure, Except.pure, Except.ok.injEq] at h; subst h; rfl
-  | a :: as, _, _, params, _, rs, h => by
-    cases params with
-    | nil => simp [checkTerms, internal, failAt_eq] at h
-    | cons p ps =>
-      simp only [checkTerms] at h
-      obtain ⟨r, -, h⟩ := bind_eq_ok.1 h
-      obtain ⟨-, -, h⟩ := bind_eq_ok.1 h
-      obtain ⟨rest, hrest, h⟩ := bind_eq_ok.1 h
-      simp only [pure, Except.pure, Except.ok.injEq] at h
-      subst h
-      simp [checkTerms_length as hrest]
-
+mutual
 /-- A checked skeleton term has a value with a type by its head. -/
-theorem checkTerm_wtype {C : Ctx} {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List Value} (hT : WTermInv sc n0 Sc ρ) :
-    ∀ (t : WTerm) {r : Res}, checkTerm C sc t = .ok r → ∃ v, r.term.eval ρ [] = some v ∧ ∃ A, WType Sc v A
-  | .var x, r, h => by
-    simp only [checkTerm] at h
-    split at h
-    · rename_i r' hl
-      simp only [pure, Except.pure, Except.ok.injEq] at h
-      subst h
-      exact hT.names _ r' hl
-    · simp [notValue, failAt_eq] at h
-  | .app hd args, r, h => by
-    obtain ⟨k, role, sig, rs, hsig, har, hrs, rfl⟩ : ∃ k role sig rs, sc.sig hd.pos ⟨k, hd.name⟩ = .ok sig ∧
-        arity hd.pos hd.name sig.params.length args.length = .ok () ∧
-        checkTerms C sc hd.name role sig.params [] args = .ok rs ∧
-        r = ⟨.app sig.head (rs.map (·.term)), rs.any (·.tainted) || sc.taintedBy.isSome, false⟩ := by
-      unfold checkTerm at h
-      split at h
-      · simp [failAt_eq, error_bind] at h
-      all_goals first
-        | (simp [notApplied, failAt_eq, error_bind] at h; done)
-        | (obtain ⟨k, -, h⟩ := bind_eq_ok.1 h
-           obtain ⟨sig, hsig, h⟩ := bind_eq_ok.1 h
-           obtain ⟨u, har, h⟩ := bind_eq_ok.1 h
-           obtain ⟨rs, hrs, h⟩ := bind_eq_ok.1 h
-           simp only [pure, Except.pure, Except.ok.injEq] at h
-           exact ⟨k, _, sig, rs, hsig, har, hrs, h.symm⟩)
+theorem checkTerm_wtype {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List Value} (hT : WTermInv sc n0 Sc ρ) :
+    ∀ {C : Ctx} (t : WTerm) {whole : Bool} {r : Res}, C.solving = false → checkTerm C sc whole t = .ok r →
+      ∃ v, r.term.eval ρ [] = some v ∧ ∃ A, WType Sc v A
+  | C, .hole p, whole, r, hs, h => by
+    obtain ⟨ts, hr⟩ := checkTerm_hole hs h
+    obtain ⟨v, A, hv, -, -, hw, -⟩ := Scope.solution_sound hT.sat hT.sigs hT.noJunk hT.sigsOk hT.n0_le hr
+    exact ⟨v, hv, A, hw⟩
+  | C, .var x, whole, r, hs, h => by
+    obtain ⟨r', hl, rfl⟩ := checkTerm_var h
+    exact hT.names _ r' hl
+  | C, .app hd args, whole, r, hs, h => by
+    obtain ⟨C', k, role, er, sig, rs, hs', hsig, har, hrs, rfl⟩ := checkTerm_app h
     have hfind := Scope.sig_ok hsig
     obtain ⟨hbelow, hbounds⟩ := hT.sigsOk sig (List.mem_of_find?_eq_some hfind)
-    obtain ⟨vs, hvs⟩ := checkTerms_eval (fun n r hn => let ⟨v, hv, _⟩ := hT.names n r hn; ⟨v, hv⟩) args hrs
+    obtain ⟨vs, hvs, hrl⟩ := checkTerms_weval hT args (hs'.trans hs) hrs
     have hl : vs.length = sig.params.length := by
-      rw [Term.length_evalList hvs, List.length_map, checkTerms_length args hrs, arity_ok har]
+      rw [Term.length_evalList hvs, List.length_map, hrl, har]
     obtain ⟨A, hA⟩ : ∃ A, sig.ret.eval ρ vs = some A := by
       refine Term.eval_isSome _ ?_ (by rw [hl]; exact hbounds)
       simp only [Sig.entriesBelow, Bool.and_eq_true] at hbelow
@@ -525,75 +402,98 @@ theorem checkTerm_wtype {C : Ctx} {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List
     refine ⟨_, Term.eval_app.2 ⟨vs, hvs, rfl⟩, A, ?_⟩
     simp only [WType, hne, ↓reduceIte]
     exact ⟨sig', hc, by rw [hT.sigs.ret_eval hfind hc]; exact hA⟩
+theorem checkTerms_weval {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List Value} (hT : WTermInv sc n0 Sc ρ) :
+    ∀ {C : Ctx} (args : List WTerm) {owner role : String} {er : Bool} {params : Telescope} {prev rs : List Res},
+      C.solving = false → checkTerms C sc owner role er params prev args = .ok rs →
+      ∃ vs, Term.evalList ρ [] (rs.map (·.term)) = some vs ∧ rs.length = args.length
+  | C, [], owner, role, er, params, prev, rs, _, h => by
+    simp only [checkTerms, pure, Except.pure, Except.ok.injEq] at h
+    subst h
+    exact ⟨[], rfl, rfl⟩
+  | C, a :: as, owner, role, er, params, prev, rs, hs, h => by
+    obtain ⟨p, ps, r, rest, rfl, rfl, hrest, hr⟩ := checkTerms_cons h
+    obtain ⟨v, hv⟩ : ∃ v, r.term.eval ρ [] = some v := by
+      rcases hr with ⟨pos, o, ho, hres⟩ | ⟨hr, -⟩
+      · obtain ⟨-, -, -, -, ts, r', hr', hres'⟩ := holeArg_spec hs ho
+        rw [hres] at hres'
+        obtain rfl : r = r' := by simpa using hres'
+        obtain ⟨v, -, hv, -⟩ := Scope.solution_sound hT.sat hT.sigs hT.noJunk hT.sigsOk hT.n0_le hr'
+        exact ⟨v, hv⟩
+      · obtain ⟨v, hv, -⟩ := checkTerm_wtype hT a hs hr
+        exact ⟨v, hv⟩
+    obtain ⟨vs, hvs, hl⟩ := checkTerms_weval hT as hs hrest
+    exact ⟨v :: vs, Term.evalList_cons_eq_some.2 ⟨v, vs, hv, hvs, rfl⟩, by simp [hl]⟩
+end
 
-/-- A checked annotation's type has a value, and its `is` term a value with that type by its head. -/
-theorem annotate_weval {C : Ctx} {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List Value} {ann : Ann} {ty : Term}
-    {is : Option Term} {tainted : Bool} (hT : WTermInv sc n0 Sc ρ) (hf : ann.term.holed = false)
-    (h : annotate C sc ann = .ok (ty, is, tainted)) :
-    ∃ A, ty.eval ρ [] = some A ∧ ∀ e, is = some e → ∃ v, e.eval ρ [] = some v ∧ WType Sc v A := by
+theorem annotate_spec {C : Ctx} {sc : Scope} {ann : Ann} {ty : Term} {is : Option Term} {tainted : Bool}
+    (hs : C.solving = false) (h : annotate C sc ann = .ok (ty, is, tainted)) :
+    ∃ (C' : Ctx) (r : Res), C'.solving = false ∧ checkTerm C' sc (ann matches .type _) ann.term = .ok r ∧
+      tainted = r.tainted ∧ match ann with
+        | .is _ => is = some r.term ∧ sc.typeOf ann.term.pos r.term = .ok ty
+        | .type _ => is = none ∧ ty = r.term ∧ isType sc ann.term.pos r.term = .ok () := by
   cases ann with
   | is t =>
-    simp only [annotate, term_eq (show t.holed = false from hf)] at h
+    obtain ⟨C', hs', heq⟩ := term_eq (sc := sc) (t := t) (whole := false) hs
+    simp only [annotate, heq] at h
     obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
     obtain ⟨ty', hty, h⟩ := bind_eq_ok.1 h
     simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, rfl, -⟩ := h
-    obtain ⟨v, hv, A, hA⟩ := checkTerm_wtype hT t hr
+    obtain ⟨rfl, rfl, rfl⟩ := h
+    exact ⟨C', r, hs', hr, rfl, rfl, hty⟩
+  | type t =>
+    obtain ⟨C', hs', heq⟩ := term_eq (sc := sc) (t := t) (whole := true) hs
+    simp only [annotate, heq] at h
+    obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
+    obtain ⟨u, hu, h⟩ := bind_eq_ok.1 h
+    simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl, rfl⟩ := h
+    exact ⟨C', r, hs', hr, rfl, rfl, rfl, hu⟩
+
+/-- A checked annotation's type has a value, and its `is` term a value with that type by its head. -/
+theorem annotate_weval {C : Ctx} {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List Value} {ann : Ann} {ty : Term}
+    {is : Option Term} {tainted : Bool} (hT : WTermInv sc n0 Sc ρ) (hs : C.solving = false)
+    (h : annotate C sc ann = .ok (ty, is, tainted)) :
+    ∃ A, ty.eval ρ [] = some A ∧ ∀ e, is = some e → ∃ v, e.eval ρ [] = some v ∧ WType Sc v A := by
+  obtain ⟨C', r, hs', hr, -, h⟩ := annotate_spec hs h
+  obtain ⟨v, hv, A, hA⟩ := checkTerm_wtype hT _ hs' hr
+  cases ann with
+  | is t =>
+    obtain ⟨rfl, hty⟩ := h
     exact ⟨A, typeOf_eval hT.sat hT.sigs hT.noJunk hv hA (Scope.typeOf_ok hty),
       fun e he => by cases he; exact ⟨v, hv, hA⟩⟩
   | type t =>
-    simp only [annotate, term_eq (show t.holed = false from hf)] at h
-    obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
-    obtain ⟨u, -, h⟩ := bind_eq_ok.1 h
-    simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, -⟩ := h
-    obtain ⟨v, hv, -⟩ := checkTerm_wtype hT t hr
     exact ⟨v, hv, fun e he => by cases he⟩
 
 end TermFill
 
 /-- A checked annotation's type and `is` term have values (§6). -/
 theorem annotate_eval {C : Ctx} {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List Value} {ann : Ann} {ty : Term}
-    {is : Option Term} {tainted : Bool} (hT : WTermInv sc n0 Sc ρ) (hf : ann.term.holed = false)
+    {is : Option Term} {tainted : Bool} (hT : WTermInv sc n0 Sc ρ) (hs : C.solving = false)
     (h : annotate C sc ann = .ok (ty, is, tainted)) :
     (∃ A, ty.eval ρ [] = some A) ∧ ∀ e, is = some e → ∃ v, e.eval ρ [] = some v :=
-  let ⟨A, hA, his⟩ := TermFill.annotate_weval hT hf h
+  let ⟨A, hA, his⟩ := TermFill.annotate_weval hT hs h
   ⟨⟨A, hA⟩, fun e he => let ⟨v, hv, _⟩ := his e he; ⟨v, hv⟩⟩
 
 mutual
 /-- A checked skeleton term's value meets `ResOk`: an untainted one has a type. -/
-theorem checkTerm_resOk {C : Ctx} {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List Value} (hT : TermInv sc n0 Sc ρ) :
-    ∀ (t : WTerm) {r : Res}, checkTerm C sc t = .ok r → ∃ v, r.term.eval ρ [] = some v ∧ ResOk Sc r v
-  | .var x, r, h => by
-    simp only [checkTerm] at h
-    split at h
-    · rename_i r' hl
-      simp only [pure, Except.pure, Except.ok.injEq] at h
-      subst h
-      obtain ⟨v, hv, hw, hty⟩ := hT.names _ r' hl
-      exact ⟨v, hv, TermFill.eval_noRemoved hT.sat.noRemoved (by simp) _ hv, hw,
-        fun ht => hty (by simp_all)⟩
-    · simp [notValue, failAt_eq] at h
-  | .app hd args, r, h => by
-    obtain ⟨v, hv, hw⟩ := TermFill.checkTerm_wtype hT.weak _ h
+theorem checkTerm_resOk {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List Value} (hT : TermInv sc n0 Sc ρ) :
+    ∀ {C : Ctx} (t : WTerm) {whole : Bool} {r : Res}, C.solving = false → checkTerm C sc whole t = .ok r →
+      ∃ v, r.term.eval ρ [] = some v ∧ ResOk Sc r v
+  | C, .hole p, whole, r, hs, h => by
+    obtain ⟨ts, hr⟩ := checkTerm_hole hs h
+    obtain ⟨v, A, hv, -, hnr, hw, hty, -⟩ := Scope.solution_sound hT.sat.1 hT.sigs hT.noJunk hT.sigsOk hT.n0_le hr
+    exact ⟨v, hv, hnr, ⟨A, hw⟩, fun ht => ⟨A, hty hT.sat ht⟩⟩
+  | C, .var x, whole, r, hs, h => by
+    obtain ⟨r', hl, rfl⟩ := checkTerm_var h
+    obtain ⟨v, hv, hw, hty⟩ := hT.names _ r' hl
+    exact ⟨v, hv, TermFill.eval_noRemoved hT.sat.noRemoved (by simp) _ hv, hw, fun ht => hty (by simp_all)⟩
+  | C, .app hd args, whole, r, hs, h => by
+    obtain ⟨v, hv, hw⟩ := TermFill.checkTerm_wtype hT.weak _ hs h
     refine ⟨v, hv, TermFill.eval_noRemoved hT.sat.noRemoved (by simp) _ hv, hw, fun ht => ?_⟩
-    obtain ⟨k, role, sig, rs, hsig, har, hrs, rfl⟩ : ∃ k role sig rs, sc.sig hd.pos ⟨k, hd.name⟩ = .ok sig ∧
-        arity hd.pos hd.name sig.params.length args.length = .ok () ∧
-        checkTerms C sc hd.name role sig.params [] args = .ok rs ∧
-        r = ⟨.app sig.head (rs.map (·.term)), rs.any (·.tainted) || sc.taintedBy.isSome, false⟩ := by
-      unfold checkTerm at h
-      split at h
-      · simp [failAt_eq, error_bind] at h
-      all_goals first
-        | (simp [notApplied, failAt_eq, error_bind] at h; done)
-        | (obtain ⟨k, -, h⟩ := bind_eq_ok.1 h
-           obtain ⟨sig, hsig, h⟩ := bind_eq_ok.1 h
-           obtain ⟨u, har, h⟩ := bind_eq_ok.1 h
-           obtain ⟨rs, hrs, h⟩ := bind_eq_ok.1 h
-           simp only [pure, Except.pure, Except.ok.injEq] at h
-           exact ⟨k, _, sig, rs, hsig, har, hrs, h.symm⟩)
+    obtain ⟨C', k, role, er, sig, rs, hs', hsig, har, hrs, rfl⟩ := checkTerm_app h
     have hfind := Scope.sig_ok hsig
-    obtain ⟨vs, hvs, -, hws⟩ := checkTerms_resOk hT args (prevv := []) hrs rfl (arity_ok har)
+    obtain ⟨vs, hvs, -, hws⟩ := checkTerms_resOk hT args (prevv := []) (hs'.trans hs) hrs rfl har
     obtain ⟨vs', hvs', rfl⟩ := Term.eval_app.1 hv
     rw [hvs] at hvs'
     cases hvs'
@@ -609,47 +509,47 @@ theorem checkTerm_resOk {C : Ctx} {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List
     simp only [Bool.or_eq_false_iff, List.any_eq_false] at ht
     obtain ⟨r, hr, rfl⟩ := List.mem_map.1 hb
     simpa using ht.1 r hr
-theorem checkTerms_resOk {C : Ctx} {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List Value} (hT : TermInv sc n0 Sc ρ) :
-    ∀ (args : List WTerm) {owner role : String} {params : Telescope} {prev rs : List Res} {prevv : List Value},
-      checkTerms C sc owner role params prev args = .ok rs → Term.evalList ρ [] (prev.map (·.term)) = some prevv →
+theorem checkTerms_resOk {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List Value} (hT : TermInv sc n0 Sc ρ) :
+    ∀ {C : Ctx} (args : List WTerm) {owner role : String} {er : Bool} {params : Telescope} {prev rs : List Res}
+      {prevv : List Value}, C.solving = false → checkTerms C sc owner role er params prev args = .ok rs →
+      Term.evalList ρ [] (prev.map (·.term)) = some prevv →
       params.length = args.length → ∃ vs, Term.evalList ρ [] (rs.map (·.term)) = some vs ∧ ResOks Sc rs vs ∧
         WantsSat Sc ρ (params.map Want.of) prevv (rs.map (!·.tainted)) vs
-  | [], owner, role, params, prev, rs, prevv, h, _, hl => by
+  | C, [], owner, role, er, params, prev, rs, prevv, _, h, _, hl => by
     simp only [checkTerms, pure, Except.pure, Except.ok.injEq] at h
     subst h
     rw [List.length_eq_zero_iff.1 hl]
     exact ⟨[], rfl, trivial, trivial⟩
-  | a :: as, owner, role, params, prev, rs, prevv, h, hprev, hl => by
-    cases params with
-    | nil => simp at hl
-    | cons p ps =>
-      simp only [checkTerms] at h
-      obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
-      obtain ⟨sc', hag, h⟩ := bind_eq_ok.1 h
-      obtain ⟨rest, hrest, h⟩ := bind_eq_ok.1 h
-      simp only [pure, Except.pure, Except.ok.injEq] at h
-      subst h
-      obtain ⟨v, hv, hok⟩ := checkTerm_resOk hT a hr
-      obtain ⟨-, -, hw⟩ := against_sound (sc := { sc with holes := [] }) (rs := [r]) (vs := [v]) hT.sat.1 hT.sigs
-        hT.noJunk rfl        (Term.evalList_singleton.2 ⟨v, hv, rfl⟩) ⟨hok, trivial⟩ hprev hag
-      obtain ⟨vs, hvs, hoks, hws⟩ := checkTerms_resOk hT as hrest
-        (by simpa using Term.evalList_append hprev (Term.evalList_singleton.2 ⟨v, hv, rfl⟩)) (by simpa using hl)
-      exact ⟨v :: vs, Term.evalList_cons_eq_some.2 ⟨v, vs, hv, hvs, rfl⟩, ⟨hok, hoks⟩, hw.1, hws⟩
+  | C, a :: as, owner, role, er, params, prev, rs, prevv, hs, h, hprev, hl => by
+    obtain ⟨p, ps, r, rest, rfl, rfl, hrest, hr⟩ := checkTerms_cons h
+    obtain ⟨v, hv, hok, hw⟩ : ∃ v, r.term.eval ρ [] = some v ∧ ResOk Sc r v ∧
+        WantSat Sc ρ (Want.of p) prevv (!r.tainted) v := by
+      rcases hr with ⟨pos, o, ho, hres⟩ | ⟨hr, sc', hag⟩
+      · obtain ⟨r', v, A, hres', hv, hA, hnr, hw, hty, his⟩ := holeArg_value hs hT.sat.1 hT.sigs hT.noJunk hT.sigsOk
+          hT.n0_le hprev ho
+        rw [hres] at hres'
+        obtain rfl : r = r' := by simpa using hres'
+        refine ⟨v, hv, ⟨hnr, ⟨A, hw⟩, fun ht => ⟨A, hty hT.sat ht⟩⟩, fun T hT' => ?_, his⟩
+        cases hT'
+        exact ⟨A, hA, hnr, hw, fun ht => hty hT.sat (by simpa using ht)⟩
+      · obtain ⟨v, hv, hok⟩ := checkTerm_resOk hT a hs hr
+        obtain ⟨-, -, hw⟩ := against_sound (sc := { sc with holes := [] }) (rs := [r]) (vs := [v]) hT.sat.1 hT.sigs
+          hT.noJunk rfl (Term.evalList_singleton.2 ⟨v, hv, rfl⟩) ⟨hok, trivial⟩ (by simpa [argGiven] using hprev) hag
+        exact ⟨v, hv, hok, hw.1⟩
+    obtain ⟨vs, hvs, hoks, hws⟩ := checkTerms_resOk hT as hs hrest
+      (by simpa using Term.evalList_append hprev (Term.evalList_singleton.2 ⟨v, hv, rfl⟩)) (by simpa using hl)
+    exact ⟨v :: vs, Term.evalList_cons_eq_some.2 ⟨v, vs, hv, hvs, rfl⟩, ⟨hok, hoks⟩, hw, hws⟩
 end
 
 /-- A checked type annotation, if untainted, has a value of type `Type()` (§3). -/
 theorem annotate_type_typed {C : Ctx} {sc : Scope} {n0 : Nat} {Sc : Sigs} {ρ : List Value} {t : WTerm} {ty : Term}
-    {is : Option Term} {tainted : Bool} (hT : TermInv sc n0 Sc ρ) (hf : t.holed = false)
+    {is : Option Term} {tainted : Bool} (hT : TermInv sc n0 Sc ρ) (hs : C.solving = false)
     (h : annotate C sc (.type t) = .ok (ty, is, tainted))
     (ht : tainted = false) : ∃ V, ty.eval ρ [] = some V ∧ HasType Sc V Value.TYPE := by
-  simp only [annotate, term_eq hf] at h
-  obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
-  obtain ⟨u, hu, h⟩ := bind_eq_ok.1 h
-  simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
-  obtain ⟨rfl, -, rfl⟩ := h
-  obtain ⟨V, hV, -, -, hty⟩ := checkTerm_resOk hT t hr
+  obtain ⟨C', r, hs', hr, rfl, -, rfl, hu⟩ := TermFill.annotate_spec hs h
+  obtain ⟨V, hV, -, -, hty⟩ := checkTerm_resOk hT t hs' hr
   obtain ⟨A, hA⟩ := hty ht
-  simp only [isType, bind, Except.bind] at hu
+  simp only [isType, bind, Except.bind, Ann.term] at hu
   cases hT' : sc.typeOf t.pos r.term with
   | error => simp [hT'] at hu
   | ok T =>
@@ -759,7 +659,7 @@ theorem topen {C : Ctx} {sc : Scope} {name : Id} {ann : Ann} {mult : Option Mult
 inductive Chain (C : Ctx) (kind : String) (fin : Scope) : Scope → List Opening → Prop
   | nil : Chain C kind fin fin []
   | cons {sc : Scope} {name : Id} {ann : Ann} {mult : Option Mult} {o : Opening} {os : List Opening} :
-      ann.term.holed = false → opening C sc name ann mult kind = .ok o → Chain C kind fin o.sc os →
+      opening C sc name ann mult kind = .ok o → Chain C kind fin o.sc os →
         Chain C kind fin sc (o :: os)
 
 theorem chain_shape {C : Ctx} {kind : String} {fin : Scope} {sc : Scope} {os : List Opening}
@@ -767,7 +667,7 @@ theorem chain_shape {C : Ctx} {kind : String} {fin : Scope} {sc : Scope} {os : L
       os.map (·.id) = List.range' sc.Γ.length os.length := by
   induction hc with
   | nil => exact ⟨List.prefix_refl _, by simp, rfl⟩
-  | cons _ ho _ ih =>
+  | cons ho _ ih =>
     obtain ⟨-, hid, en, hΓ, -⟩ := opening_entry ho
     rw [hΓ] at ih
     obtain ⟨h1, h2, h3⟩ := ih
@@ -913,13 +813,13 @@ theorem want_open {C : Ctx} {kind : String} {sc0 scm fin : Scope} {name : Id} {a
     {o : Opening} {w : Want} {n0 N : Nat} {Sc : Sigs} {ρ prev outerv : List Value} {outer : List Nat}
     (h0 : WSat Sc sc0.Γ ρ) (hp0 : sc0.Γ <+: fin.Γ) (hl : fin.Γ.length = sc0.Γ.length + N)
     (houter : Term.evalList ρ [] (outer.map .entry) = some outerv) (hT : WTermInv scm n0 Sc (ρ ++ prev))
-    (hpm : scm.Γ <+: fin.Γ) (hf : ann.term.holed = false) (h : opening C scm name ann mult kind = .ok o)
+    (hpm : scm.Γ <+: fin.Γ) (hs : C.solving = false) (h : opening C scm name ann mult kind = .ok o)
     (hw : WantAbs fin.Γ (outer ++ List.range' sc0.Γ.length N) o w) :
     ((∀ T, w.type = some T → ∃ A, T.eval ρ (outerv ++ prev) = some A ∧ A.noRemoved = true) ∧
       (∀ e, w.is = some e → ∃ v, e.eval ρ (outerv ++ prev) = some v ∧ v.noRemoved = true ∧
         ∀ T A, w.type = some T → T.eval ρ (outerv ++ prev) = some A → WType Sc v A)) ∧
     ∀ t v, WantSat Sc ρ w (outerv ++ prev) t v → OpenOk Sc (ρ ++ prev) o t v := by
-  obtain ⟨A, hA, his⟩ := annotate_weval hT hf (opening_entry h).1
+  obtain ⟨A, hA, his⟩ := annotate_weval hT hs (opening_entry h).1
   obtain ⟨T, hT', hab, hisb, hisf⟩ := hw
   have key := fun {u w : Term} {x : Value} => @abs_eval Sc _ _ _ ρ prev outerv outer N u w x h0 hp0 hl houter hT.sat hpm
   have hTA := key hab hA
@@ -942,8 +842,9 @@ theorem want_open {C : Ctx} {kind : String} {sc0 scm fin : Scope} {name : Id} {a
 /-- The binders of a chain of openings, as wants, can be opened (`WantsCons`). -/
 theorem chain_cons {C : Ctx} {kind : String} {sc0 fin : Scope} {n0 N : Nat} {Sc : Sigs} {ρ outerv : List Value}
     {outer : List Nat} (h0 : WSat Sc sc0.Γ ρ) (hp0 : sc0.Γ <+: fin.Γ) (hl : fin.Γ.length = sc0.Γ.length + N)
-    (houter : Term.evalList ρ [] (outer.map .entry) = some outerv) {scm : Scope} {os : List Opening}
-    (hc : Chain C kind fin scm os) : ∀ {ws : List Want} {prev : List Value}, WTermInv scm n0 Sc (ρ ++ prev) →
+    (houter : Term.evalList ρ [] (outer.map .entry) = some outerv) (hs : C.solving = false) {scm : Scope}
+    {os : List Opening} (hc : Chain C kind fin scm os) :
+    ∀ {ws : List Want} {prev : List Value}, WTermInv scm n0 Sc (ρ ++ prev) →
       Pairs (WantAbs fin.Γ (outer ++ List.range' sc0.Γ.length N)) os ws → WantsCons Sc ρ ws (outerv ++ prev) := by
   induction hc with
   | nil =>
@@ -951,13 +852,13 @@ theorem chain_cons {C : Ctx} {kind : String} {sc0 fin : Scope} {n0 N : Nat} {Sc 
     cases ws with
     | nil => trivial
     | cons => exact (hp : False).elim
-  | cons hf ho hc ih =>
+  | cons ho hc ih =>
     intro ws prev hT hp
     cases ws with
     | nil => exact (hp : False).elim
     | cons w ws =>
       obtain ⟨hw, hws⟩ := hp
-      obtain ⟨hhead, htr⟩ := want_open h0 hp0 hl houter hT (chain_shape (.cons hf ho hc)).1 hf ho hw
+      obtain ⟨hhead, htr⟩ := want_open h0 hp0 hl houter hT (chain_shape (.cons ho hc)).1 hs ho hw
       refine ⟨hhead.1, hhead.2, fun v hv => ?_⟩
       have := ih (prev := prev ++ [v]) (by simpa using wopen hT ho (htr false v hv)) hws
       simpa using this
@@ -969,8 +870,8 @@ theorem chain_sat {C : Ctx} {kind : String} {sc0 fin : Scope} {n0 N : Nat} {Sc :
       {ρ' : List Value} {v : Value} {t : Bool}, opening C s name ann mult kind = .ok o → P s ρ' → Q t →
       OpenOk Sc ρ' o t v → P o.sc (ρ' ++ [v]))
     (h0 : WSat Sc sc0.Γ ρ) (hp0 : sc0.Γ <+: fin.Γ) (hl : fin.Γ.length = sc0.Γ.length + N)
-    (houter : Term.evalList ρ [] (outer.map .entry) = some outerv) {scm : Scope} {os : List Opening}
-    (hc : Chain C kind fin scm os) : ∀ {ws : List Want} {prev vs : List Value} {ts : List Bool},
+    (houter : Term.evalList ρ [] (outer.map .entry) = some outerv) (hsolv : C.solving = false) {scm : Scope}
+    {os : List Opening} (hc : Chain C kind fin scm os) : ∀ {ws : List Want} {prev vs : List Value} {ts : List Bool},
       P scm (ρ ++ prev) → Pairs (WantAbs fin.Γ (outer ++ List.range' sc0.Γ.length N)) os ws → (∀ t ∈ ts, Q t) →
       WantsSat Sc ρ ws (outerv ++ prev) ts vs → P fin (ρ ++ prev ++ vs) := by
   induction hc with
@@ -985,7 +886,7 @@ theorem chain_sat {C : Ctx} {kind : String} {sc0 fin : Scope} {n0 N : Nat} {Sc :
         cases vs with
         | cons => exact (hs : False).elim
         | nil => simpa using hP
-  | cons hf ho hc ih =>
+  | cons ho hc ih =>
     intro ws prev vs ts hP hp hQ hs
     cases ws with
     | nil => exact (hp : False).elim
@@ -998,7 +899,7 @@ theorem chain_sat {C : Ctx} {kind : String} {sc0 fin : Scope} {n0 N : Nat} {Sc :
         | cons v vs =>
           obtain ⟨hw, hws⟩ := hp
           obtain ⟨hv, hvs⟩ := hs
-          obtain ⟨-, htr⟩ := want_open h0 hp0 hl houter (hPW _ _ hP) (chain_shape (.cons hf ho hc)).1 hf ho hw
+          obtain ⟨-, htr⟩ := want_open h0 hp0 hl houter (hPW _ _ hP) (chain_shape (.cons ho hc)).1 hsolv ho hw
           have hP' := step ho hP (hQ t List.mem_cons_self) (htr t v hv)
           have := ih (prev := prev ++ [v]) (vs := vs) (by simpa using hP') hws
             (fun t' h => hQ t' (List.mem_cons_of_mem _ h)) (by simpa using hvs)
@@ -1006,22 +907,22 @@ theorem chain_sat {C : Ctx} {kind : String} {sc0 fin : Scope} {n0 N : Nat} {Sc :
 
 theorem telescope_go_chain {C : Ctx} {kind : String} : ∀ (bs : List Binder) (sc : Scope) (seen : List String)
     (acc : List (Binder × Opening)) {res : Scope × List String × List (Binder × Opening)},
-    (∀ b ∈ bs, b.ann.term.holed = false) → telescope.go C kind sc seen acc bs = .ok res →
+    telescope.go C kind sc seen acc bs = .ok res →
     ∃ new, res.2.2 = acc ++ new ∧ new.map (·.1) = bs ∧ Chain C kind res.1 sc (new.map (·.2))
-  | [], sc, seen, acc, res, _, h => by
+  | [], sc, seen, acc, res, h => by
     simp only [telescope.go, pure, Except.pure, Except.ok.injEq] at h
     subst h
     exact ⟨[], by simp, rfl, .nil⟩
-  | b :: bs, sc, seen, acc, res, hf, h => by
+  | b :: bs, sc, seen, acc, res, h => by
     simp only [telescope.go] at h
     obtain ⟨seen', -, h⟩ := bind_eq_ok.1 h
     obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
-    obtain ⟨new, h1, h2, h3⟩ := telescope_go_chain bs _ _ _ (fun b hb => hf b (List.mem_cons_of_mem _ hb)) h
-    exact ⟨(b, o) :: new, by simp [h1], by simp [h2], .cons (hf b List.mem_cons_self) ho h3⟩
+    obtain ⟨new, h1, h2, h3⟩ := telescope_go_chain bs _ _ _ h
+    exact ⟨(b, o) :: new, by simp [h1], by simp [h2], .cons ho h3⟩
 
 /-- A checked telescope is a chain of openings, whose binders, as wants, are the openings abstracted. -/
 theorem telescope_chain {C : Ctx} {sc : Scope} {bs : List Binder} {kind : String} {outer : List Nat}
-    {out : Checked} (hf : ∀ b ∈ bs, b.ann.term.holed = false) (h : telescope C sc bs kind outer = .ok out) :
+    {out : Checked} (h : telescope C sc bs kind outer = .ok out) :
     ∃ os, Chain C kind out.sc sc os ∧
       Pairs (WantAbs out.sc.Γ (outer ++ List.range' sc.Γ.length bs.length)) os (out.tele.map Want.of) := by
   have hsh := telescope_shape h
@@ -1030,7 +931,7 @@ theorem telescope_chain {C : Ctx} {sc : Scope} {bs : List Binder} {kind : String
   obtain ⟨tele, htele, h⟩ := bind_eq_ok.1 h
   simp only [pure, Except.pure, Except.ok.injEq] at h
   subst h
-  obtain ⟨new, hnew, h1, hc⟩ := telescope_go_chain bs sc [] [] hf hgo
+  obtain ⟨new, hnew, h1, hc⟩ := telescope_go_chain bs sc [] [] hgo
   simp only [List.nil_append] at hnew
   subst hnew
   obtain ⟨hl, hi⟩ := mapM_ok htele
@@ -1049,27 +950,27 @@ end TermFill
 abstracted over first, satisfies the scope it was checked in, extended by those values. -/
 theorem telescope_sound {C : Ctx} {sc : Scope} {bs : List Binder} {kind : String} {outer : List Nat} {out : Checked}
     {n0 : Nat} {Sc : Sigs} {ρ outerv vs : List Value} (hT : TermInv sc n0 Sc ρ)
-    (hf : ∀ b ∈ bs, b.ann.term.holed = false) (h : telescope C sc bs kind outer = .ok out)
+    (hs : C.solving = false) (h : telescope C sc bs kind outer = .ok out)
     (houter : Term.evalList ρ [] (outer.map .entry) = some outerv)
     (hvs : TeleSat Sc ρ out.tele outerv vs) : TermInv out.sc n0 Sc (ρ ++ vs) := by
-  obtain ⟨os, hc, hp⟩ := TermFill.telescope_chain hf h
+  obtain ⟨os, hc, hp⟩ := TermFill.telescope_chain h
   obtain ⟨-, -, hl, hp0, -⟩ := telescope_shape h
   have := TermFill.chain_sat (n0 := n0) (TermInv · n0 Sc ·) (fun _ _ h => h.weak) (· = true)
-    (fun ho hP ht hv => by subst ht; exact TermFill.topen hP ho hv) hT.sat.1 hp0 hl houter hc (prev := [])
+    (fun ho hP ht hv => by subst ht; exact TermFill.topen hP ho hv) hT.sat.1 hp0 hl houter hs hc (prev := [])
     (ts := out.tele.map fun _ => true) (by simpa using hT) hp (by simp) (by simpa using TeleSat.wantsSat hT.noJunk hvs)
   simpa using this
 
 /-- `telescope_sound` for values that only meet the telescope by their heads, as a tainted call's arguments may. -/
 theorem telescope_wsound {C : Ctx} {sc : Scope} {bs : List Binder} {kind : String} {outer : List Nat} {out : Checked}
     {n0 : Nat} {Sc : Sigs} {ρ outerv vs : List Value} (hT : WTermInv sc n0 Sc ρ)
-    (hf : ∀ b ∈ bs, b.ann.term.holed = false) (h : telescope C sc bs kind outer = .ok out)
+    (hs : C.solving = false) (h : telescope C sc bs kind outer = .ok out)
     (houter : Term.evalList ρ [] (outer.map .entry) = some outerv)
     (hvs : WantsSat Sc ρ (out.tele.map Want.of) outerv (out.tele.map fun _ => false) vs) :
     WTermInv out.sc n0 Sc (ρ ++ vs) := by
-  obtain ⟨os, hc, hp⟩ := TermFill.telescope_chain hf h
+  obtain ⟨os, hc, hp⟩ := TermFill.telescope_chain h
   obtain ⟨-, -, hl, hp0, -⟩ := telescope_shape h
   have := TermFill.chain_sat (n0 := n0) (WTermInv · n0 Sc ·) (fun _ _ h => h) (fun _ => True)
-    (fun ho hP _ hv => TermFill.wopen hP ho hv) hT.sat hp0 hl houter hc (prev := [])
+    (fun ho hP _ hv => TermFill.wopen hP ho hv) hT.sat hp0 hl houter hs hc (prev := [])
     (by simpa using hT) hp (by simp) (by simpa using hvs)
   simpa using this
 
@@ -1077,12 +978,12 @@ theorem telescope_wsound {C : Ctx} {sc : Scope} {bs : List Binder} {kind : Strin
 values the other binders take, by their types' heads, an `is` binder's value has its type by its head. -/
 theorem telescope_cons {C : Ctx} {sc : Scope} {bs : List Binder} {kind : String} {outer : List Nat} {out : Checked}
     {n0 : Nat} {Sc : Sigs} {ρ outerv : List Value} (hT : WTermInv sc n0 Sc ρ)
-    (hf : ∀ b ∈ bs, b.ann.term.holed = false) (h : telescope C sc bs kind outer = .ok out)
+    (hs : C.solving = false) (h : telescope C sc bs kind outer = .ok out)
     (houter : Term.evalList ρ [] (outer.map .entry) = some outerv) :
     WantsCons Sc ρ (out.tele.map Want.of) outerv := by
-  obtain ⟨os, hc, hp⟩ := TermFill.telescope_chain hf h
+  obtain ⟨os, hc, hp⟩ := TermFill.telescope_chain h
   obtain ⟨-, -, hl, hp0, -⟩ := telescope_shape h
-  simpa using TermFill.chain_cons hT.sat hp0 hl houter hc (prev := []) (by simpa using hT) hp
+  simpa using TermFill.chain_cons hT.sat hp0 hl houter hs hc (prev := []) (by simpa using hT) hp
 
 namespace TermFill
 
@@ -1105,7 +1006,7 @@ theorem letWants_go_chain {C : Ctx} : ∀ (bs : List LetBinder) (sc : Scope) (un
       obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
       obtain ⟨new, h1, h2, h3⟩ := letWants_go_chain bs _ _ _ h hall.2 hf.2
       have hfa : ann.term.holed = false := by simpa [hann] using hf.1
-      exact ⟨o :: new, by simp [h1], by simp [h2], .cons hfa (by simpa using ho) h3⟩
+      exact ⟨o :: new, by simp [h1], by simp [h2], .cons (by simpa using ho) h3⟩
     · rename_i hn
       simp [hn] at hall
 
@@ -1148,12 +1049,13 @@ end TermFill
 
 /-- What a tuple `let` whose binders are all annotated gives its right-hand side can be opened. -/
 theorem letWants_cons {C : Ctx} {sc sc' : Scope} {bs : List LetBinder} {ws : List Want} {n0 : Nat} {Sc : Sigs}
-    {ρ : List Value} (hT : WTermInv sc n0 Sc ρ) (h : letWants C sc bs = .ok (ws, sc'))
+    {ρ : List Value} (hT : WTermInv sc n0 Sc ρ) (hs : C.solving = false) (h : letWants C sc bs = .ok (ws, sc'))
     (hall : bs.all (·.ann.isSome) = true) (hf : bs.any (·.ann.any (·.term.holed)) = false) :
     WantsCons Sc ρ ws [] := by
   obtain ⟨fin, os, hc, hp⟩ := TermFill.letWants_chain h hall hf
   obtain ⟨hp0, hl, -⟩ := TermFill.chain_shape hc
-  simpa using TermFill.chain_cons (outer := []) (outerv := []) hT.sat hp0 hl rfl hc (prev := []) (by simpa using hT) hp
+  simpa using TermFill.chain_cons (outer := []) (outerv := []) hT.sat hp0 hl rfl hs hc (prev := [])
+    (by simpa using hT) hp
 
 /-- What a `match` annotation or `sorry`'s telescope stands for: written, it is a telescope checked in the scope,
 over no outer entries; `_`, it is the whole telescope given at the position, with its environment (§10, §12). -/
@@ -1206,10 +1108,10 @@ theorem annotation_shape {C : Ctx} {sc : Scope} {g : Option Given} {ann : Tele} 
 opened. -/
 theorem annotation_cons {C : Ctx} {sc : Scope} {g : Option Given} {ann : Tele} {tele : Telescope} {env : List Term}
     {n0 : Nat} {Sc : Sigs} {ρ : List Value} (hT : WTermInv sc n0 Sc ρ) (hg : ∀ g', g = some g' → g'.Ok Sc ρ)
-    (hf : ∀ bs, ann = .binders bs → ∀ b ∈ bs, b.ann.term.holed = false) (h : annotation C sc g ann = .ok (tele, env)) :
+    (hs : C.solving = false) (h : annotation C sc g ann = .ok (tele, env)) :
     ∃ envv, Term.evalList ρ [] env = some envv ∧ WantsCons Sc ρ (tele.map Want.of) envv := by
   rcases annotation_shape h with ⟨bs, out, rfl, hout, rfl, rfl, -⟩ | ⟨p, g', rfl, rfl, hw, hte, rfl⟩
-  · exact ⟨[], rfl, telescope_cons (outer := []) hT (hf bs rfl) hout rfl⟩
+  · exact ⟨[], rfl, telescope_cons (outer := []) hT hs hout rfl⟩
   · obtain ⟨envv, henv⟩ := (hg g' rfl).env
     exact ⟨envv, henv, hte ▸ (hg g' rfl).cons hw envv henv⟩
 

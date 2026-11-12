@@ -100,4 +100,19 @@ def erasedΓ : Entries := [{ type := .TYPE, erased := true }, { type := .app ⟨
 #guard !(Term.entry 0).erasedUse [] erasedΓ 2 && (Term.entry 1).erasedUse [] erasedΓ 2
 #guard !(Term.app ⟨.type, "Vec"⟩ [.entry 0, .entry 1]).erasedUse [] erasedΓ 2
 
+/-- A table term numbers only real entries, so a `_` solved after a restart, inside another `_`'s boundary or a tuple
+`let` whose binders have `_`, reads it by counting them. -/
+def numbering : String :=
+  "fn f(erased n : Nat(), m : Nat(), v : Vec(Nat(), n)) -> (r : Vec(Nat(), n)) { v }
+  fn g(m : Nat(), erased a : Nat(), e : EqE(Nat(), a, m)) -> (r : Nat()) { m }
+  "
+
+#guard accepts (numbering ++ "fn t() -> (r : Vec(Nat(), Zero())) { f(_, g(mkn(), _, ReflE(_, _)), VNil(Nat())) }")
+#guard accepts (numbering ++
+  "let (n : Nat(), v : Vec(Nat(), _), k : Nat()) = (mkn(), VNil(Nat()), g(mkn(), _, ReflE(_, _)));")
+#guard accepts (numbering ++ "fn t() -> (r : Nat()) {
+  let (v : Vec(Nat(), _), n : Nat(), k : Nat()) = (VNil(Nat()), mkn(), { let q = mkn(); g(q, _, ReflE(_, _)) });
+  k
+}")
+
 end Pledge.SolveTest

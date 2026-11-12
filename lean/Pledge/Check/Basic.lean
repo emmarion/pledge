@@ -482,37 +482,6 @@ def notApplied (sc : Scope) (h : Name) : CheckM α := failAt h.pos fun _ => if (
   then s!"{code h.name} is a value, and only functions, type constructors and value constructors are applied (§4)"
   else s!"{code h.name} is not in scope"
 
-mutual
-  /-- A skeleton term (§3) without `_`. -/
-  def checkTerm (C : Ctx) (sc : Scope) : WTerm → CheckM Res
-    | .hole p => failAt p fun _ => "`_` stands only for a whole argument or inside a type (§16)"
-    | .var x => match sc.lookup x.name with
-      | some r => pure { r with tainted := r.tainted || sc.taintedBy.isSome }
-      | none => notValue C sc x
-    | .app h args => do
-      let kind ← match C.global h.name with
-        | some (.fn ..) => failAt h.pos fun _ =>
-          s!"{code h.name} is a function, and a type contains no function call (§3)"
-        | some (.type ..) => pure HeadKind.type
-        | some (.ctor _) => pure .ctor
-        | none => notApplied sc h
-      let sig ← sc.sig h.pos ⟨kind, h.name⟩
-      arity h.pos h.name sig.params.length args.length
-      let rs ← checkTerms C sc h.name (if kind = .type then "parameter" else "field") sig.params [] args
-      pure ⟨.app sig.head (rs.map (·.term)), rs.any (·.tainted) || sc.taintedBy.isSome, false⟩
-  def checkTerms (C : Ctx) (sc : Scope) (owner role : String) (params : Telescope) (prev : List Res) :
-      List WTerm → CheckM (List Res)
-    | [] => pure []
-    | a :: as => match params with
-      | p :: ps => do
-        let r ← checkTerm C sc a
-        let i := prev.length
-        let label := some fun _ => labelled role p.name i owner
-        let _ ← against { sc with holes := [] } { wants := [Want.of p], env := prev.map (·.term), label } a.pos [r]
-        return r :: (← checkTerms C sc owner role ps (prev ++ [r]) as)
-      | [] => internal a.pos "an argument has no parameter"
-end
-
 def Ann.term : Ann → WTerm
   | .type t | .is t => t
 
@@ -548,9 +517,17 @@ def Scope.solution (C : Ctx) (sc : Scope) (ts : List Term) (pos : Pos) (type : T
   | some t => pure ⟨t, sc.taintedBy.isSome || t.entries.any fun x => (sc.Γ[x]?).any (·.tainted), erased⟩
   | none => failAt pos ((ts.head?.bind wrong).getD fun _ => "this `_` has no solution")
 
+/-- The table's terms number only real entries (`settle`); while solving, the scope also has entries that are not, so
+each number is read as the real entry it counts. -/
+def Scope.fromTable (sc : Scope) (solving : Bool) (ts : List Term) : List Term :=
+  if solving then
+    let real := (List.range sc.Γ.length).filter fun i => (sc.Γ[i]?).any Entry.real
+    ts.map (·.mapEntries fun k => .entry (real.getD k (sc.Γ.length + k)))
+  else ts
+
 def Scope.hole (C : Ctx) (sc : Scope) (pos : Pos) (type : Term) (is : Option Term) (erased : Bool) : CheckM Out :=
   match C.table.lookup pos, C.solving with
-  | some ts, _ => do pure ⟨sc, [← sc.solution C ts pos type is erased], .removed, []⟩
+  | some ts, s => do pure ⟨sc, [← sc.solution C (sc.fromTable s ts) pos type is erased], .removed, []⟩
   | none, true => do
     let (sc, id) := sc.addHole type is pos erased
     let sc ← match is with
@@ -606,6 +583,44 @@ mutual
       | [] => internal a.pos "an argument has no parameter"
 end
 
+mutual
+  /-- A skeleton term (§3), each `_` (§16) taking a term the table gives; a whole `_` stands for a type when
+  `whole`. -/
+  def checkTerm (C : Ctx) (sc : Scope) (whole : Bool) : WTerm → CheckM Res
+    | .hole p =>
+      if whole then do single p (← sc.hole C p .TYPE none C.erased).res
+      else failAt p fun _ => "`_` stands only for a whole argument or inside a type (§16)"
+    | .var x => match sc.lookup x.name with
+      | some r => pure { r with tainted := r.tainted || sc.taintedBy.isSome }
+      | none => notValue C sc x
+    | .app h args => do
+      let kind ← match C.global h.name with
+        | some (.fn ..) => failAt h.pos fun _ =>
+          s!"{code h.name} is a function, and a type contains no function call (§3)"
+        | some (.type ..) => pure HeadKind.type
+        | some (.ctor _) => pure .ctor
+        | none => notApplied sc h
+      let sig ← sc.sig h.pos ⟨kind, h.name⟩
+      arity h.pos h.name sig.params.length args.length
+      let rs ← checkTerms { C with inType := C.inType || kind == .type } sc h.name
+        (if kind = .type then "parameter" else "field") (kind = .type && C.phase ≥ 2) sig.params [] args
+      pure ⟨.app sig.head (rs.map (·.term)), rs.any (·.tainted) || sc.taintedBy.isSome, false⟩
+  def checkTerms (C : Ctx) (sc : Scope) (owner role : String) (erased : Bool) (params : Telescope) (prev : List Res) :
+      List WTerm → CheckM (List Res)
+    | [] => pure []
+    | a :: as => match params with
+      | p :: ps => do
+        let g := argGiven p prev role owner erased
+        let r ← match a with
+          | .hole pos => do single pos (← holeArg C sc g p prev pos).res
+          | a => do
+            let r ← checkTerm C sc false a
+            let _ ← against { sc with holes := [] } g a.pos [r]
+            pure r
+        return r :: (← checkTerms C sc owner role erased ps (prev ++ [r]) as)
+      | [] => internal a.pos "an argument has no parameter"
+end
+
 /-- A written term with `_` (§16), in a position that is erased from phase 2 on (§3); a whole `_` stands for a
 type when `whole`. Its `_` stay holes of the scope. -/
 def written (C : Ctx) (sc : Scope) (whole : Bool) (t : WTerm) : CheckM Out :=
@@ -614,13 +629,13 @@ def written (C : Ctx) (sc : Scope) (whole : Bool) (t : WTerm) : CheckM Out :=
   | .hole p, true => sc.hole C p .TYPE none C.erased
   | t, _ => checkSkel C sc none t
 
-/-- A written term (§3), a whole `_` standing for a type when `whole`; its `_` (§16) are solved by the term alone,
-and its term mentions only entries of `sc`. -/
+/-- A written term (§3), a whole `_` standing for a type when `whole`; while solving, its `_` (§16) are solved by the
+term alone, and its term mentions only entries of `sc`. -/
 def term (C : Ctx) (sc : Scope) (t : WTerm) (whole : Bool) : CheckM Res :=
-  if t.holed then do
+  if C.solving && t.holed then do
     let o ← written C { sc with holes := [] } whole t >>= (close · 0)
     single t.pos o.res
-  else checkTerm C sc t
+  else checkTerm { C with erased := C.erased || C.phase ≥ 2 } sc whole t
 
 def isType (sc : Scope) (pos : Pos) (t : Term) : CheckM Unit := do
   let ty ← sc.typeOf pos t

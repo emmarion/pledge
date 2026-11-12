@@ -180,6 +180,7 @@ theorem checkExpr_match {C : Ctx} {sc : Scope} {g : Option Given} {p : Pos} {m :
     {ann : Tele} {bs : List Branch} {o : Out} (hm : m ≠ some .erased)
     (h : checkExpr C sc g (.match p m s ann bs) = .ok o) :
     ∃ C₂ so r tele env fs gb bo o', C₂.phase = C.phase ∧ C₂.globals = C.globals ∧ C₂.fn = C.fn ∧
+      C₂.solving = C.solving ∧ C₂.inType = C.inType ∧
       C₂.erased = (C.erased || g.any (·.allErased)) ∧ closed sc (checkExpr C₂ · none s) = .ok so ∧
       single s.pos so.res = .ok r ∧
       annotation (C.enter (C.erased || g.any (·.allErased))) so.sc
@@ -232,7 +233,7 @@ theorem checkExpr_match {C : Ctx} {sc : Scope} {g : Option Given} {p : Pos} {m :
     rw [htrees] at ho''
     exact ⟨{ C.enter (C.erased || g.any (·.allErased)) with
         place := "the scrutinee of a `many` match" }, so, r,
-      tele, env, fs, _, bo, o'', rfl, rfl, rfl, rfl, hso, hr, hann, hfs, hmiss, ensure_ok hens,
+      tele, env, fs, _, bo, o'', rfl, rfl, rfl, rfl, rfl, rfl, hso, hr, hann, hfs, hmiss, ensure_ok hens,
       rfl, rfl, rfl, hbo, ho'', hf⟩
 
 theorem produced_length {sc : Scope} {g : Given} {pos : Pos} {rs : List Res} {tree : Expr} {o : Out}
@@ -400,20 +401,20 @@ theorem given_erased {S : Sigs} {ρ : List Value} {C : Ctx} {g : Option Given}
 has an ideal value, and, outside an erased position, it runs to one value related to it when it is untainted. -/
 theorem scrut {s : Expr} (ihs : ExprSound s) (ihss : ExprShape s) {C C₂ : Ctx} {sc : Scope} {n0 : Nat} {W : World}
     {ρ : List Value} {act : Act} {so : Out} {pos : Pos} {r : Res} (hI : Inv C sc n0 W ρ act)
-    (hph : C₂.phase = C.phase) (hgl : C₂.globals = C.globals) (hfn : C₂.fn = C.fn)
+    (hph : C₂.phase = C.phase) (hgl : C₂.globals = C.globals) (hfn : C₂.fn = C.fn) (hsv : C₂.solving = C.solving)
     (h : checkExpr C₂ sc none s = .ok so) (hr : single pos so.res = .ok r) (hu : so.sc.taintedBy = none) :
     ∃ ρ₁ v, Inv C so.sc n0 W (ρ ++ ρ₁) act ∧ r.term.eval (ρ ++ ρ₁) [] = some v ∧ ResOk W.Sc r v ∧
       ∀ env, EnvRel W.Sc C.phase sc ρ env → EnvRel W.Sc C.phase so.sc (ρ ++ ρ₁) env ∧
-        (C₂.erased = false → ∃ us a, Eval W.P env so.tree us ∧ one us = .ok a ∧
+        (C₂.erased = false → C₂.inType = false → ∃ us a, Eval W.P env so.tree us ∧ one us = .ok a ∧
           (r.tainted = false → Rel W.Sc C.phase a v)) := by
-  obtain ⟨-, hnames, -, hpre, -⟩ := ihss C₂ sc none so hI.holes h
-  obtain ⟨hpost, -⟩ := ihs C₂ sc none n0 W ρ act so (hI.congr_ctx hph hgl hfn) (by simp) h
+  obtain ⟨-, hnames, -, hpre, -⟩ := ihss C₂ sc none so (hsv.trans hI.solving) hI.holes h
+  obtain ⟨hpost, -⟩ := ihs C₂ sc none n0 W ρ act so (hI.congr_ctx hph hgl hfn hsv) (by simp) h
   obtain ⟨ρ₁, vs, hI₁, hvs, hok, -, hrun⟩ := hpost hu
   rw [single_ok hr] at hvs hok hrun
   obtain ⟨v, hv, rfl⟩ := Term.evalList_singleton.1 (by simpa using hvs)
-  refine ⟨ρ₁, v, hI₁.congr_ctx hph.symm hgl.symm hfn.symm, hv, hok 0 r v rfl rfl, fun env hE =>
-    ⟨hE.extend ρ₁ hnames hpre hI.sat.1.1, fun her => ?_⟩⟩
-  obtain ⟨us, hev, us', htake, hrel⟩ := hrun env (hph ▸ hE)
+  refine ⟨ρ₁, v, hI₁.congr_ctx hph.symm hgl.symm hfn.symm hsv.symm, hv, hok 0 r v rfl rfl, fun env hE =>
+    ⟨hE.extend ρ₁ hnames hpre hI.sat.1.1, fun her hit => ?_⟩⟩
+  obtain ⟨us, hev, us', htake, hrel⟩ := hrun hit env (hph ▸ hE)
   obtain ⟨a, hone, rfl⟩ := one_of_take htake
   refine ⟨us, a, hev, hone, fun ht => ?_⟩
   have := hrel 0 r a v rfl rfl rfl ht
@@ -513,15 +514,15 @@ theorem resRel_whole {S : Sigs} {phase : Nat} {C : Ctx} {g : Option Given} {rs :
 /-- `matchMany_sound`: a match's results take the ideal values of the branch for the value constructor heading
 the scrutinee's ideal value, or, when every result is tainted, values meeting the annotation by their heads. -/
 theorem sound {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Branch}
-    (hm : m ≠ some .erased) (hta : ∀ bs', ann = .binders bs' → ∀ b ∈ bs', b.ann.term.holed = false)
-    (ihs : ExprSound s) (ihss : ExprShape s) (ihb : ∀ b ∈ bs, ExprSound b.body)
+    (hm : m ≠ some .erased) (ihs : ExprSound s) (ihss : ExprShape s) (ihb : ∀ b ∈ bs, ExprSound b.body)
     (ihbs : ∀ b ∈ bs, ExprShape b.body) : ExprSound (.match p m s ann bs) := by
   intro C sc g n0 W ρ act o hI hg hc
-  obtain ⟨C₂, so, r, tele, env, fs, gb, bo, o', hph, hgl, hfn, her, hso, hr, hann, hfs, hmiss, hens, hgbw, hgbe,
-    -, hbo, ho', hf⟩ := checkExpr_match hm hc
-  rw [closed_eq hI.holes fun o h => (ihss C₂ sc none o hI.holes h).2.2.1] at hso
+  obtain ⟨C₂, so, r, tele, env, fs, gb, bo, o', hph, hgl, hfn, hsv, hit, her, hso, hr, hann, hfs, hmiss, hens, hgbw,
+    hgbe, -, hbo, ho', hf⟩ := checkExpr_match hm hc
+  have hsv₂ : C₂.solving = false := hsv.trans hI.solving
+  rw [closed_eq hI.holes fun o h => (ihss C₂ sc none o hsv₂ hI.holes h).2.2.1] at hso
   obtain ⟨-, hosc, -, hores, hotree, herr⟩ := finish_spec hf
-  obtain ⟨-, -, hholes₁, -, -⟩ := ihss C₂ sc none so hI.holes hso
+  obtain ⟨-, -, hholes₁, -, -⟩ := ihss C₂ sc none so hsv₂ hI.holes hso
   obtain rfl := produced_eq (by exact hholes₁) ho'
   simp only at hosc hores hotree herr
   generalize htaint : (fun (i : Nat) =>
@@ -535,10 +536,10 @@ theorem sound {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Bra
     exact ⟨fun h => absurd (by rw [hosc] at h; exact h) hu, fun h => absurd (by rw [hosc] at h; exact h) hu⟩
   have hu' : (opened so.sc tele env "match" p taint).1.taintedBy = none := hu
   have hores' : o.res = rs := by rw [hores, hu']; rfl
-  obtain ⟨ρ₁, v, hI₁, hv, hokv, hrun₁⟩ := scrut ihs ihss hI hph hgl hfn hso hr hu
+  obtain ⟨ρ₁, v, hI₁, hv, hokv, hrun₁⟩ := scrut ihs ihss hI hph hgl hfn hsv hso hr hu
   have hg₁ := given_erased (C := C) hg
   obtain ⟨envv, henv, hcons⟩ :=
-    annotation_cons hI₁.termInv.weak (fun g' h => givenOk_frame (hg₁ g' h).1 ρ₁) hta hann
+    annotation_cons hI₁.termInv.weak (fun g' h => givenOk_frame (hg₁ g' h).1 ρ₁) (by exact hI₁.solving) hann
   have hens' : tele.all (·.entriesBelow so.sc.Γ.length) = true := by
     simp only [Bool.and_eq_true] at hens; exact hens.1
   have hlenρ : (ρ ++ ρ₁).length = so.sc.Γ.length := hI₁.sat.1.1
@@ -550,7 +551,8 @@ theorem sound {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Bra
     cases h'
     exact ⟨rfl, fun he => ⟨b, hb, by simpa using he⟩⟩
   have fin : ∀ vs, TeleOk W.Sc (ρ ++ ρ₁) (fun k => !taint k) tele envv vs →
-      ((C.erased || g.any (·.allErased) || rs.all (·.tainted)) = false → ∀ env, EnvRel W.Sc C.phase sc ρ env →
+      ((C.erased || g.any (·.allErased) || rs.all (·.tainted)) = false → C.inType = false →
+        ∀ env, EnvRel W.Sc C.phase sc ρ env →
         ∃ us, Eval W.P env (.match p m so.tree ann bo.trees) us ∧ ResRel W.Sc C.phase (C.posMult g) rs vs us) →
       ExprPost C sc g n0 W ρ act o := by
     unfold ExprPost
@@ -570,7 +572,7 @@ theorem sound {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Bra
     have hlen : ∀ g', g = some g' → rs.length = g'.wants.length := fun g' h => by
       obtain ⟨envv', he⟩ := (hg g' h).env
       exact (hwo' g' h envv' (by simpa using Term.evalList_frame_ρ (ρ₁ ++ vs) he)).1
-    refine ⟨ρ₁ ++ vs, vs, ?_, ?_, ?_, fun g' h envv' he => ?_, fun env hE => ?_⟩
+    refine ⟨ρ₁ ++ vs, vs, ?_, ?_, ?_, fun g' h envv' he => ?_, fun hit env hE => ?_⟩
     · rw [hosc, ← List.append_assoc]; exact hI₁.extend hsat' rfl rfl hholes₁ hu
     · rw [hores', ← List.append_assoc]; exact hvs'
     · rw [hores']; exact hok
@@ -580,14 +582,14 @@ theorem sound {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Bra
       split
       · exact ⟨_, .removed, resRel_whole (by assumption) hlen⟩
       · rename_i hnr
-        exact hrunv (by rwa [Bool.not_eq_true] at hnr) env hE
+        exact hrunv (by rwa [Bool.not_eq_true] at hnr) hit env hE
   have hall : (∀ k < tele.length, taint k = true) → ∀ r' ∈ rs, r'.tainted = true := fun hJ r' hr' => by
     obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hr'
     rw [(hrs' i _ (List.getElem?_eq_getElem hi)).1]
     exact hJ i (by rw [← hrsl]; exact hi)
   by_cases hJ : ∀ k < tele.length, taint k = true
   · obtain ⟨vs, hvs⟩ := WantsCons.open hcons
-    refine ⟨fin vs (teleOk_of_wantsSat hvs (by simp) map_want fun k hk h => ?_) fun hnr => ?_,
+    refine ⟨fin vs (teleOk_of_wantsSat hvs (by simp) map_want fun k hk h => ?_) fun hnr _ => ?_,
       fun _ _ r' hr' => hall hJ r' (hores' ▸ hr')⟩
     · simp [hJ k hk] at h
     · simp [List.all_eq_true.2 (hall hJ)] at hnr
@@ -654,7 +656,8 @@ theorem sound {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Bra
       Option.some.injEq] at h1 h2
     subst h1 h2
     exact ⟨rfl, rfl⟩
-  rw [closed_eq (by rw [Scope.bind_eq]) fun o h => (ihbs b hbmem _ _ _ o (by rw [Scope.bind_eq]) h).2.2.1]
+  rw [closed_eq (by rw [Scope.bind_eq]) fun o h =>
+    (ihbs b hbmem _ _ _ o (by exact hI.solving) (by rw [Scope.bind_eq]) h).2.2.1]
     at hcheck
   obtain ⟨hpostb, -⟩ := ihb b hbmem _ _ (some gb) n0 W (ρ ++ ρ₁ ++ ws) act ob hIb hgb hcheck
   have hobl : ob.res.length = tele.length := by rw [checkExpr_length _ hcheck, hgbw, List.length_mapIdx]
@@ -680,18 +683,18 @@ theorem sound {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Bra
     · rw [hgbw] at h1; exact mapIdx_want i w b' h1 h2
     · obtain ⟨r'', hr''⟩ : ∃ r'', ob.res[k]? = some r'' := ⟨_, List.getElem?_eq_getElem (by omega)⟩
       simp [hr'', hobt k r'' (by simpa using h) hr'']
-  refine ⟨fin vsb htele fun hnr env hE => ?_, fun _ habs => ?_⟩
+  refine ⟨fin vsb htele fun hnr hit' env hE => ?_, fun _ habs => ?_⟩
   · have hw : (C.erased || g.any (·.allErased)) = false := by
       simp only [Bool.or_eq_false_iff] at hnr ⊢; exact hnr.1
     have hCe : C.erased = false := by simp only [Bool.or_eq_false_iff] at hw; exact hw.1
     obtain ⟨hE₁, hrun⟩ := hrun₁ env hE
-    obtain ⟨us₁, a, hev₁, hone, hrel⟩ := hrun (by rw [her, hw])
+    obtain ⟨us₁, a, hev₁, hone, hrel⟩ := hrun (by rw [her, hw]) (by rw [hit, hit'])
     obtain ⟨as, rfl⟩ : ∃ as, a = .app ⟨.ctor, b.pat.ctor.name⟩ as := by
       cases hrel hrt with
       | type h => cases h
       | app => exact ⟨_, rfl⟩
     obtain ⟨env', hbind, hE'⟩ := hEb env m _ hm hE₁ (hrel hrt)
-    obtain ⟨usb, hevb, usb', htakeb, hrelb⟩ := hrunb env' hE'
+    obtain ⟨usb, hevb, usb', htakeb, hrelb⟩ := hrunb hit' env' hE'
     obtain ⟨us, hannt, htake⟩ := annotation_annTake hann (show take tele.length usb = .ok usb' by
       rw [← hobl]; exact htakeb)
     refine ⟨us, .match hev₁ hone (hpick as) hbind hevb hannt, usb', by rw [hrsl]; exact htake,
@@ -741,7 +744,7 @@ theorem patletSound {p : Pos} {ct : Bool} {m : Option Mult} {pat : Pattern} {rhs
   obtain ⟨u', -, h⟩ := bind_eq_ok.1 h
   obtain ⟨o', ho', h⟩ := bind_eq_ok.1 h
   rw [keep_ok] at h
-  rw [closed_eq hI.holes fun o h => (ihs _ sc none o hI.holes h).2.2.1] at ho'
+  rw [closed_eq hI.holes fun o h => (ihs _ sc none o (by exact hI.solving) hI.holes h).2.2.1] at ho'
   obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
   obtain ⟨fs, hfs, h⟩ := bind_eq_ok.1 h
   obtain ⟨sc', hsc', h⟩ := bind_eq_ok.1 h
@@ -752,7 +755,7 @@ theorem patletSound {p : Pos} {ct : Bool} {m : Option Mult} {pat : Pattern} {rhs
   have hreach : reach o'.sc r rhs.pos = none := by rw [Scope.bind_eq] at hu; exact hu
   obtain ⟨hu₁, hrt⟩ := reach_eq_none hreach
   obtain ⟨ρ₁, v, hI₁, hv, hokv, hrun₁⟩ :=
-    scrut (C₂ := { C with place := "the right-hand side of a `many` pattern `let`" }) ih ihs hI rfl rfl rfl ho' hr
+    scrut (C₂ := { C with place := "the right-hand side of a `many` pattern `let`" }) ih ihs hI rfl rfl rfl rfl ho' hr
       hu₁
   obtain ⟨V, hV⟩ := hokv.2.2 hrt
   obtain ⟨c, ws, sig, Γ', ids', pat', rfl, hfc, hsig, hws, hsat, hpre, -, hids, -, hent⟩ :=
@@ -767,9 +770,9 @@ theorem patletSound {p : Pos} {ct : Bool} {m : Option Mult} {pat : Pattern} {rhs
   obtain ⟨hIb, hEb⟩ := branch hI₁ hsig hws hsat hpre hids hfl hent
   simp only
   rw [hreach, with_holes hI₁.holes]
-  refine ⟨ρ₁ ++ ws, by rw [← List.append_assoc]; exact hIb, fun hCe env hE => ?_⟩
+  refine ⟨ρ₁ ++ ws, by rw [← List.append_assoc]; exact hIb, fun hCe hit env hE => ?_⟩
   obtain ⟨hE₁, hrun⟩ := hrun₁ env hE
-  obtain ⟨us, a, hev, hone', hrel⟩ := hrun (by simp [hCe])
+  obtain ⟨us, a, hev, hone', hrel⟩ := hrun (by simp [hCe]) hit
   obtain ⟨env', hbind, hE'⟩ := hEb env m a hm hE₁ (hrel hrt)
   exact ⟨env', .patlet hev hone' hbind, by rw [← List.append_assoc]; exact hE'⟩
 

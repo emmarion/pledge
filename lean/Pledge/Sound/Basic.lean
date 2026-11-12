@@ -13,10 +13,11 @@ theorem Sigs.Sub.trans {S₁ S₂ S₃ : Sigs} (h₁ : S₁.Sub S₂) (h₂ : S�
   fun h sig hs => h₂ h sig (h₁ h sig hs)
 
 theorem World.Le.refl (W : World) : W.Le W :=
-  ⟨Prog.Ext.refl _, Sigs.Sub.refl _, List.prefix_refl _, fun _ _ _ _ _ h h' => (by rw [h] at h'; cases h'), id⟩
+  ⟨Prog.Ext.refl _, Sigs.Sub.refl _, List.prefix_refl _, fun _ _ _ _ _ h h' => (by rw [h] at h'; cases h'), id, id⟩
 
 theorem World.Le.trans {W₁ W₂ W₃ : World} (h₁ : W₁.Le W₂) (h₂ : W₂.Le W₃) : W₁.Le W₃ := by
-  refine ⟨h₁.prog.trans h₂.prog, h₁.sigs.trans h₂.sigs, h₁.val.trans h₂.val, ?_, fun h => h₂.noJunk (h₁.noJunk h)⟩
+  refine ⟨h₁.prog.trans h₂.prog, h₁.sigs.trans h₂.sigs, h₁.val.trans h₂.val, ?_, fun h => h₂.noJunk (h₁.noJunk h),
+    fun h => h₂.typeHeads (h₁.typeHeads h)⟩
   intro h sig' ws hd us hn hs hr
   cases hm : W₂.Sc.find h with
   | none =>
@@ -600,7 +601,8 @@ theorem Inv.extend {C : Ctx} {sc sc' : Scope} {n0 : Nat} {W : World} {ρ ρ' : L
     Inv C sc' n0 W (ρ ++ ρ') act := by
   have hl := hI.length
   refine ⟨hh, ht, hsat, hI.n0_world, by rw [List.take_append_of_le_length hl]; exact hI.agree,
-    hsigs ▸ hI.sigs, hsigs ▸ hI.sigsOk, hI.noJunk, fun n r h => ?_, hsigs ▸ hI.globals, fun f hf => ?_⟩
+    hsigs ▸ hI.sigs, hsigs ▸ hI.sigsOk, hI.noJunk, fun n r h => ?_, hsigs ▸ hI.globals, fun f hf => ?_, hI.solving,
+    hI.typeHeads⟩
   · have h' : sc.lookup n = some r := by simpa [Scope.lookup, hnames] using h
     obtain ⟨v, h1, h2⟩ := hI.names n r h'
     exact ⟨v, Term.eval_frame_ρ ρ' h1, h2⟩
@@ -616,7 +618,7 @@ theorem Inv.bind {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value}
     Inv C (sc.bind ids rs) n0 W ρ act := by
   rw [Scope.bind_eq]
   refine ⟨hI.holes, hI.untainted, hI.sat, hI.n0_world, hI.agree, hI.sigs, hI.sigsOk, hI.noJunk, ?_, hI.globals,
-    hI.act⟩
+    hI.act, hI.solving, hI.typeHeads⟩
   intro n r h
   simp only [Scope.lookup, lookup_append] at h
   cases hp : (pushed ids rs).lookup n with
@@ -1082,12 +1084,12 @@ theorem Complete.mono {W W' : World} {T : String} {cs : List String} (hW : W.Le 
 theorem FnSpec.callSpec {W : World} {phase : Nat} {d : FnDef} {sig : FnSig} (h : FnSpec W phase d sig) (act : Act) :
     CallSpec W phase d sig act := fun vs hvs _ => h vs hvs
 
-/-- The invariant depends on the context only through its phase, globals and enclosing function. -/
+/-- The invariant depends on the context only through its phase, globals, enclosing function and `solving`. -/
 theorem Inv.congr_ctx {C C' : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {act : Act}
-    (hI : Inv C sc n0 W ρ act) (hph : C'.phase = C.phase) (hgl : C'.globals = C.globals) (hfn : C'.fn = C.fn) :
-    Inv C' sc n0 W ρ act :=
+    (hI : Inv C sc n0 W ρ act) (hph : C'.phase = C.phase) (hgl : C'.globals = C.globals) (hfn : C'.fn = C.fn)
+    (hsv : C'.solving = C.solving := by rfl) : Inv C' sc n0 W ρ act :=
   ⟨hI.holes, hI.untainted, hI.sat, hI.n0_world, hI.agree, hI.sigs, hI.sigsOk, hI.noJunk, hI.names,
-    hph ▸ hgl ▸ hfn ▸ hI.globals, hfn ▸ hI.act⟩
+    hph ▸ hgl ▸ hfn ▸ hI.globals, hfn ▸ hI.act, hsv ▸ hI.solving, hI.typeHeads⟩
 
 theorem arity_ok {pos : Pos} {name : String} {params args : Nat} {u : Unit} (h : arity pos name params args = .ok u) :
     params = args := by
@@ -1100,5 +1102,26 @@ theorem WantSat.binderSat {S : Sigs} {ρ env : List Value} {b : TBinder} {m : Mu
     (h : WantSat S ρ { Want.of b with mult := m } env true v) : BinderSat S ρ b env v := by
   obtain ⟨A, hA, -, -, hv⟩ := h.1 b.type rfl
   exact ⟨A, hA, hv rfl, h.2⟩
+
+/-- Signatures returning applications, `Type` only for type constructors, closed, return `Type()` only for type
+constructors. -/
+theorem typeHeads_close {S : Sigs} {ρ : List Value}
+    (h : ∀ sig ∈ S, ∃ hd args, sig.ret = .app hd args ∧ (hd = Head.Type → sig.head.kind = .type)) :
+    TypeHeads (S.map (Sig.close ρ)) := by
+  intro hh sig vs hf hr
+  simp only [Sigs.find_map_close, Option.map_eq_some_iff] at hf
+  obtain ⟨s, hs, rfl⟩ := hf
+  obtain ⟨hd, args, hret, hk⟩ := h s (List.mem_of_find?_eq_some hs)
+  simp only [Sig.close, hret, Term.close, Term.eval_app] at hr
+  obtain ⟨ws, -, he⟩ := hr
+  simp only [Value.TYPE, Value.app.injEq] at he
+  rw [← Sigs.find_head hs]
+  exact hk he.1.symm
+
+/-- The closed signatures of a top-level state return `Type()` only for type constructors. -/
+theorem TopInv.worldTypeHeads {st : TopState} {ρ : List Value} (hI : TopInv st ρ) : TypeHeads (st.world ρ).Sc :=
+  typeHeads_close fun sig hs =>
+    let ⟨hd, args, hret, _⟩ := hI.rets sig hs
+    ⟨hd, args, hret, fun e => hI.typeHeads sig hs ⟨args, e ▸ hret⟩⟩
 
 end Pledge

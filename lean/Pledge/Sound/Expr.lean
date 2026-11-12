@@ -26,18 +26,18 @@ untainted arguments, the measure decreases and the callee's specification gives 
 runs on the arguments' run-time values; otherwise every result is tainted, opened to `junk` or its `is` clause's
 value (`FnOk.cons`), and the tree is removed. -/
 theorem call_sound {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSound a.expr)
-    (ihs : ∀ a ∈ args, ExprShape a.expr) (hh : ∀ a ∈ args, a.expr.holeFree = true) {C : Ctx} {sc : Scope}
+    (ihs : ∀ a ∈ args, ExprShape a.expr) {C : Ctx} {sc : Scope}
     {g : Option Given} {n0 : Nat} {W : World} {ρ : List Value} {act : Act} {o : Out} {m : String} {sig : FnSig}
     (hI : Inv C sc n0 W ρ act) (hg : ∀ g', g = some g' → g'.Ok W.Sc ρ)
     (hgl : C.global h.name = some (.fn m (some sig))) (h : checkExpr C sc g (.app h args) = .ok o) :
     ExprPost C sc g n0 W ρ act o := by
-  exact Call.sound ih ihs hh hI hg hgl h
+  exact Call.sound ih ihs hI hg hgl h
 
 /-- An application of a type constructor or value constructor (§8): its arguments' ideal values satisfy the
 telescope, the untainted application is typed, and it runs to the head applied to the arguments' run-time values,
 an erased argument (§16) only approximating. -/
 theorem ctorApp_sound {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSound a.expr)
-    (ihs : ∀ a ∈ args, ExprShape a.expr) (hh : ∀ a ∈ args, a.expr.holeFree = true) {C : Ctx} {sc : Scope}
+    (ihs : ∀ a ∈ args, ExprShape a.expr) {C : Ctx} {sc : Scope}
     {g : Option Given} {n0 : Nat} {W : World} {ρ : List Value} {act : Act} {o : Out}
     (hI : Inv C sc n0 W ρ act) (hg : ∀ g', g = some g' → g'.Ok W.Sc ρ)
     (hgl : (C.global h.name).any (fun gl => gl matches .type .. || gl matches .ctor _) = true)
@@ -54,7 +54,7 @@ theorem ctorApp_sound {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSou
     obtain ⟨u₂, har, h₀⟩ := bind_eq_ok.1 h₀
     obtain ⟨a, ha, h₀⟩ := bind_eq_ok.1 h₀
     simp only [↓reduceIte, reduceCtorEq] at h₀
-    exact Simple.ctorApp_post ih ihs hh hI hg (hI.globals.type hT).1 rfl (Scope.sig_ok hsig) (arity_ok har) ha h₀ hf
+    exact Simple.ctorApp_post ih ihs rfl hI hg (hI.globals.type hT).1 rfl (Scope.sig_ok hsig) (arity_ok har) ha h₀ hf
   · rename_i c hT
     simp only [hT] at h₀
     obtain ⟨u, -, h₀⟩ := bind_eq_ok.1 h₀
@@ -62,11 +62,11 @@ theorem ctorApp_sound {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSou
     obtain ⟨u₂, har, h₀⟩ := bind_eq_ok.1 h₀
     obtain ⟨a, ha, h₀⟩ := bind_eq_ok.1 h₀
     simp only [↓reduceIte, reduceCtorEq] at h₀
-    exact Simple.ctorApp_post ih ihs hh hI hg (hI.globals.ctor hT) rfl (Scope.sig_ok hsig) (arity_ok har) ha h₀ hf
+    exact Simple.ctorApp_post ih ihs rfl hI hg (hI.globals.ctor hT) rfl (Scope.sig_ok hsig) (arity_ok har) ha h₀ hf
   · simp [notApplied, failAt_eq] at h₀
 
 theorem app_sound {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSound a.expr)
-    (ihs : ∀ a ∈ args, ExprShape a.expr) (hh : ∀ a ∈ args, a.expr.holeFree = true) : ExprSound (.app h args) := by
+    (ihs : ∀ a ∈ args, ExprShape a.expr) : ExprSound (.app h args) := by
   intro C sc g n0 W ρ act o hI hg hc
   refine ⟨?_, fun _ ha => by simp [Expr.absurd] at ha⟩
   cases hgl : C.global h.name with
@@ -82,9 +82,9 @@ theorem app_sound {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSound a
         obtain ⟨o₀, h₀, -⟩ := bind_eq_ok.1 (show checkExpr C sc g (.app h args) = .ok o from hc)
         simp only [Ctx.global] at hgl h₀
         simp [hgl, failAt_eq] at h₀
-      | some sig => exact call_sound ih ihs hh hI hg hgl hc
-    | type => exact ctorApp_sound ih ihs hh hI hg (by simp [hgl]) hc
-    | ctor => exact ctorApp_sound ih ihs hh hI hg (by simp [hgl]) hc
+      | some sig => exact call_sound ih ihs hI hg hgl hc
+    | type => exact ctorApp_sound ih ihs hI hg (by simp [hgl]) hc
+    | ctor => exact ctorApp_sound ih ihs hI hg (by simp [hgl]) hc
 
 /-- A tuple (§8): its elements' results, in order. -/
 theorem tuple_sound (p : Pos) {es : List Expr} (ih : ∀ e ∈ es, ExprSound e) (ihs : ∀ e ∈ es, ExprShape e) :
@@ -128,53 +128,57 @@ theorem block_sound {ss : List Stmt} {f : Expr} (ihs : ∀ s ∈ ss, StmtSound s
 whose forcing survived, so the match has a branch for it, whose results are the match's; at run time the
 scrutinee's tag picks that branch. With no branch, it is absurd: its results are tainted, or it is not reached. -/
 theorem matchMany_sound {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Branch}
-    (hm : m ≠ some .erased) (hta : ∀ bs', ann = .binders bs' → ∀ b ∈ bs', b.ann.term.holed = false)
+    (hm : m ≠ some .erased)
     (ihs : ExprSound s) (ihss : ExprShape s) (ihb : ∀ b ∈ bs, ExprSound b.body)
     (ihbs : ∀ b ∈ bs, ExprShape b.body) : ExprSound (.match p m s ann bs) :=
-  MatchMany.sound hm hta ihs ihss ihb ihbs
+  MatchMany.sound hm ihs ihss ihb ihbs
 
 /-- An erased `match` (§16): the scrutinee is not run; when a result is untainted and the match is not wholly
 erased, an annotation entry is `many`, so at most one branch is not absurd, and the branch for the value
 constructor heading the scrutinee's ideal value is not absurd (its results would be tainted, `ExprSound`'s second
 part), so the evaluator's only branch is the right one, its fields bound to `removed`. -/
 theorem matchErased_sound {p : Pos} {s : Expr} {ann : Tele} {bs : List Branch}
-    (hta : ∀ bs', ann = .binders bs' → ∀ b ∈ bs', b.ann.term.holed = false)
     (ihs : ExprSound s) (ihss : ExprShape s) (ihb : ∀ b ∈ bs, ExprSound b.body) (ihbs : ∀ b ∈ bs, ExprShape b.body) :
     ExprSound (.match p (some .erased) s ann bs) :=
-  Erased.match hta ihs ihss ihb ihbs
+  Erased.match ihs ihss ihb ihbs
 
 theorem match_sound {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Branch}
-    (hta : ∀ bs', ann = .binders bs' → ∀ b ∈ bs', b.ann.term.holed = false)
     (ihs : ExprSound s) (ihss : ExprShape s) (ihb : ∀ b ∈ bs, ExprSound b.body) (ihbs : ∀ b ∈ bs, ExprShape b.body) :
     ExprSound (.match p m s ann bs) := by
   by_cases hm : m = some .erased
-  · subst hm; exact matchErased_sound hta ihs ihss ihb ihbs
-  · exact matchMany_sound hm hta ihs ihss ihb ihbs
+  · subst hm; exact matchErased_sound ihs ihss ihb ihbs
+  · exact matchMany_sound hm ihs ihss ihb ihbs
 
 /-- `sorry` (§12): every result is tainted, opened to `junk` or its `is` clause's value (`annotation_cons`), and the
 tree is removed. -/
-theorem sorry_sound (p : Pos) {t : Tele} (hta : ∀ bs, t = .binders bs → ∀ b ∈ bs, b.ann.term.holed = false) :
-    ExprSound (.sorry p t) := by
+theorem sorry_sound (p : Pos) (t : Tele) : ExprSound (.sorry p t) := by
   intro C sc g n0 W ρ act o hI hg h
   refine ⟨?_, fun _ ha => by simp [Expr.absurd] at ha⟩
   unfold checkExpr at h
   obtain ⟨o₀, h₀, hf⟩ := bind_eq_ok.1 h
   obtain ⟨⟨tele, env⟩, ha, h₀⟩ := bind_eq_ok.1 h₀
-  exact Simple.sorry_post hI hg hta ha h₀ hf
+  exact Simple.sorry_post hI hg (by exact hI.solving) ha h₀ hf
 
 theorem removed_sound : ExprSound .removed := by
   intro C sc g n0 W ρ act o _ _ h
   simp [checkExpr, internal, failAt_eq, bind, Except.bind] at h
 
 /-- A tuple `let` (§8): its binders name the right-hand side's results. -/
-theorem let_sound {p : Pos} {bs : List LetBinder} {rhs : Expr} (hf : bs.any (·.ann.any (·.term.holed)) = false)
-    (ih : ExprSound rhs) (ihs : ExprShape rhs) : StmtSound (.let p bs rhs) := by
+theorem let_sound {p : Pos} {bs : List LetBinder} {rhs : Expr} (ih : ExprSound rhs) (ihs : ExprShape rhs) :
+    StmtSound (.let p bs rhs) := by
   intro C sc n0 W ρ act o hI h
-  obtain ⟨o', ws, hws, ho', h⟩ := let_steps hf h
-  obtain ⟨-, -, hh', -⟩ := ihs C sc _ o' hI.holes ho'
-  simp only [close_nil hh', keep, ok_bind, pure, Except.pure, Except.ok.injEq] at h
-  subst h
-  exact Simple.let_post ih ihs hI hf hws ho'
+  obtain ⟨o', ws, ho', hwl, hwm, hcase, rfl⟩ := let_steps hI.solving h
+  refine Simple.let_post ih ihs hI ?_ hwl hwm ho'
+  rintro g' ⟨⟩
+  refine ⟨⟨[], rfl⟩, fun hall envv henv => ?_⟩
+  cases henv
+  rcases hcase with ⟨hf, hws⟩ | hf
+  · refine letWants_cons hI.termInv.weak hI.solving hws (List.all_eq_true.2 fun b hb => ?_) hf
+    have := List.all_eq_true.1 hall b hb
+    cases h : b.ann <;> simp_all
+  · obtain ⟨b, hb, hbh⟩ := List.any_eq_true.1 hf
+    have := List.all_eq_true.1 hall b hb
+    cases h : b.ann <;> simp_all
 
 /-- A pattern `let` that is not erased (§10): as a `match` with one branch, the rest of the body; a tainted
 scrutinee taints the scope after it (§12). -/
@@ -197,33 +201,19 @@ theorem inspect_sound (p : Pos) : StmtSound (.inspect p) := by
   intro C sc n0 W ρ act o hI h _
   simp only [checkStmt, pure, Except.pure, Except.ok.injEq] at h
   subst h
-  exact ⟨[], by simpa using hI, fun _ env hE => ⟨env, .inspect, by simpa using hE⟩⟩
+  exact ⟨[], by simpa using hI, fun _ _ env hE => ⟨env, .inspect, by simpa using hE⟩⟩
 
 mutual
-/-- The main lemma for every expression without `_` (§16). -/
-theorem Expr.sound : (e : Expr) → e.holeFree = true → ExprSound e
-  | .var x, _ => var_sound x
-  | .app h args, hp => by
-    simp only [Expr.holeFree] at hp
-    have hargs := Arg.holeFreeList_iff.1 hp
-    have hh : ∀ a ∈ args, a.expr.holeFree = true := fun a ha => by rw [← Arg.holeFree_expr]; exact hargs a ha
-    exact app_sound (fun a ha => Expr.sound a.expr (hh a ha)) (fun a ha => Expr.shape a.expr (hh a ha)) hh
-  | .tuple p es, hp => by
-    simp only [Expr.holeFree] at hp
-    exact tuple_sound p (fun e he => Expr.sound e (Expr.holeFreeList_iff.1 hp e he))
-      (fun e he => Expr.shape e (Expr.holeFreeList_iff.1 hp e he))
-  | .block ss f, hp => by
-    simp only [Expr.holeFree, Bool.and_eq_true] at hp
-    exact block_sound (fun s hs => Stmt.sound s (Stmt.holeFreeList_iff.1 hp.1 s hs))
-      (fun s hs => Stmt.shape s (Stmt.holeFreeList_iff.1 hp.1 s hs)) (Expr.sound f hp.2) (Expr.shape f hp.2)
-  | .match p m s ann bs, hp => by
-    simp only [Expr.holeFree, Bool.and_eq_true] at hp
-    have hb : ∀ b ∈ bs, b.body.holeFree = true := fun b hb => by
-      rw [← Branch.holeFree_body]; exact Branch.holeFreeList_iff.1 hp.2 b hb
-    exact match_sound (Tele.holeFree_binders hp.1.2) (Expr.sound s hp.1.1) (Expr.shape s hp.1.1)
-      (fun b h' => Expr.sound b.body (hb b h')) (fun b h' => Expr.shape b.body (hb b h'))
-  | .sorry p t, hp => sorry_sound p (Tele.holeFree_binders hp)
-  | .removed, _ => removed_sound
+/-- The main lemma for every expression. -/
+theorem Expr.sound : (e : Expr) → ExprSound e
+  | .var x => var_sound x
+  | .app h args => app_sound (fun a _ => Expr.sound a.expr) (fun a _ => Expr.shape a.expr)
+  | .tuple p es => tuple_sound p (fun e _ => Expr.sound e) (fun e _ => Expr.shape e)
+  | .block ss f => block_sound (fun s _ => Stmt.sound s) (fun s _ => Stmt.shape s) (Expr.sound f) (Expr.shape f)
+  | .match p m s ann bs => match_sound (Expr.sound s) (Expr.shape s) (fun b _ => Expr.sound b.body)
+      (fun b _ => Expr.shape b.body)
+  | .sorry p t => sorry_sound p t
+  | .removed => removed_sound
 termination_by e => sizeOf e
 decreasing_by
   all_goals first
@@ -233,12 +223,10 @@ decreasing_by
     | (simp only [Expr.block.sizeOf_spec]; omega)
     | (simp only [Expr.match.sizeOf_spec]; omega)
     | (have := Branch.sizeOf_body_lt' ‹_›; simp only [Expr.match.sizeOf_spec]; omega)
-theorem Stmt.sound : (s : Stmt) → s.holeFree = true → StmtSound s
-  | .let p bs rhs, hp => by
-    simp only [Stmt.holeFree, Bool.and_eq_true] at hp
-    exact let_sound (LetBinder.holeFree_any hp.1) (Expr.sound rhs hp.2) (Expr.shape rhs hp.2)
-  | .patlet p ct m pat rhs, hp => patlet_sound (Expr.sound rhs hp) (Expr.shape rhs hp)
-  | .inspect p, _ => inspect_sound p
+theorem Stmt.sound : (s : Stmt) → StmtSound s
+  | .let p bs rhs => let_sound (Expr.sound rhs) (Expr.shape rhs)
+  | .patlet p ct m pat rhs => patlet_sound (Expr.sound rhs) (Expr.shape rhs)
+  | .inspect p => inspect_sound p
 termination_by s => sizeOf s
 decreasing_by all_goals (simp only [Stmt.let.sizeOf_spec, Stmt.patlet.sizeOf_spec]; omega)
 end

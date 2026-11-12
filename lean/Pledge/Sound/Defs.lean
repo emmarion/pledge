@@ -1,8 +1,13 @@
-import Pledge.Sound.HoleFree
+import Pledge.Check.Top
 import Pledge.Sound.Measure
 import Pledge.UnifySound
 
 namespace Pledge
+
+/-- Only a type constructor's signature returns `Type()`, so every value of type `Type()` is headed by a type
+constructor. -/
+def TypeHeads (S : Sigs) : Prop :=
+  ∀ h sig vs, S.find h = some sig → sig.ret.eval [] vs = some Value.TYPE → h.kind = .type
 
 /-- A world, meant to stand for the program as it is at some top-level item or later: the evaluator's view of
 the program, closed signatures typing values, and the ideal values of the top-level entries. -/
@@ -21,6 +26,7 @@ structure World.Le (W W' : World) : Prop where
   fresh : ∀ h sig' ws hd us, W.Sc.find h = none → W'.Sc.find h = some sig' →
     sig'.ret.eval [] ws = some (.app hd us) → hd.kind = .type ∧ (hd = Head.Type ∨ W.Sc.find hd = none)
   noJunk : W.Sc.find junkHead = none → W'.Sc.find junkHead = none
+  typeHeads : TypeHeads W.Sc → TypeHeads W'.Sc
 
 /-- The value `v` meets the entry `w` of what a position is given, `env` holding the values of its bound
 variables: it has the wanted type by its head, and, if `typed`, has it; an entry with no type imposes nothing but
@@ -142,6 +148,8 @@ structure Inv (C : Ctx) (sc : Scope) (n0 : Nat) (W : World) (ρ : List Value) (a
   names : ∀ n r, sc.lookup n = some r → ∃ v, r.term.eval ρ [] = some v ∧ ResOk W.Sc r v
   globals : GlobalsOk n0 C.phase C.globals C.fn sc.sigs W act
   act : ActOk C.fn ρ act
+  solving : C.solving = false
+  typeHeads : TypeHeads W.Sc
 
 /-- The multiplicity a name bound to `r` has in `sc`, as `checkExpr` reads it at a variable. -/
 def Scope.multOf (sc : Scope) (r : Res) : Mult := if r.erased || sc.erasedEntry r.term then .erased else .many
@@ -164,8 +172,8 @@ def ResRel (S : Sigs) (phase : Nat) (mult : Nat → Mult) (rs : List Res) (ideal
 
 /-- What checking an expression in an untainted scope is meant to guarantee (§12, §16): if the scope after it is
 untainted, its results have ideal values under an extension of the valuation satisfying that scope (`ResOk`: the
-untainted ones typed), all meeting what the position is given; and, for every run-time environment related to the ideal
-valuation, its tree evaluates to run-time values related to the ideal values of its untainted results. -/
+untainted ones typed), all meeting what the position is given; and, outside a type constructor's argument, which is
+never evaluated, for every run-time environment related to the ideal valuation, its tree evaluates to run-time values related to the ideal values of its untainted results. -/
 def ExprPost (C : Ctx) (sc : Scope) (g : Option Given) (n0 : Nat) (W : World) (ρ : List Value) (act : Act)
     (o : Out) : Prop :=
   o.sc.taintedBy = none → ∃ ρ' vs, Inv C o.sc n0 W (ρ ++ ρ') act ∧
@@ -173,7 +181,8 @@ def ExprPost (C : Ctx) (sc : Scope) (g : Option Given) (n0 : Nat) (W : World) (�
     (∀ (i : Nat) (r : Res) (v : Value), o.res[i]? = some r → vs[i]? = some v → ResOk W.Sc r v) ∧
     (∀ g', g = some g' → ∀ envv, Term.evalList ρ [] g'.env = some envv →
       WantsSat W.Sc (ρ ++ ρ') g'.wants envv (o.res.map (!·.tainted)) vs) ∧
-    ∀ env, EnvRel W.Sc C.phase sc ρ env → ∃ us, Eval W.P env o.tree us ∧ ResRel W.Sc C.phase (C.posMult g) o.res vs us
+    (C.inType = false → ∀ env, EnvRel W.Sc C.phase sc ρ env → ∃ us, Eval W.P env o.tree us ∧
+      ResRel W.Sc C.phase (C.posMult g) o.res vs us)
 
 /-- `ExprPost`, and: an absurd expression (§16) checked in an untainted scope that stays untainted has only tainted
 results, since no value constructor can head its scrutinee's ideal value. -/
@@ -183,10 +192,11 @@ def ExprSound (e : Expr) : Prop :=
     ExprPost C sc g n0 W ρ act o ∧ (o.sc.taintedBy = none → e.absurd = true → ∀ r ∈ o.res, r.tainted = true)
 
 /-- What checking a statement in an untainted scope is meant to guarantee: if the scope after it is untainted, an
-extension of the valuation satisfies it, and, outside an erased position, the statement runs from every run-time
+extension of the valuation satisfies it, and, outside an erased position or a type constructor's argument, the
+statement runs from every run-time
 environment related to the ideal valuation to one related to the extended valuation. -/
 def StmtPost (C : Ctx) (sc : Scope) (n0 : Nat) (W : World) (ρ : List Value) (act : Act) (o : StmtOut) : Prop :=
-  o.sc.taintedBy = none → ∃ ρ', Inv C o.sc n0 W (ρ ++ ρ') act ∧ (C.erased = false →
+  o.sc.taintedBy = none → ∃ ρ', Inv C o.sc n0 W (ρ ++ ρ') act ∧ (C.erased = false → C.inType = false →
     ∀ env, EnvRel W.Sc C.phase sc ρ env → ∃ env', EvalStmt W.P env o.tree env' ∧
       EnvRel W.Sc C.phase o.sc (ρ ++ ρ') env')
 
@@ -244,5 +254,7 @@ structure TopInv (st : TopState) (ρ : List Value) : Prop where
       ∀ W', (st.world ρ).Le W' → GoalTyped W' g)
   proved : st.proved = true → ∃ g, st.goal = some g ∧ ∀ W', (st.world ρ).Le W' → GoalHolds W' st.phase g st.qedFn
   live : st.sc.taintedBy = none → TopLive st ρ
+  solving : st.solving = false
+  typeHeads : ∀ sig ∈ st.sc.sigs, (∃ args, sig.ret = .app Head.Type args) → sig.head.kind = .type
 
 end Pledge

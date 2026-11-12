@@ -2,7 +2,7 @@
 
 A second implementation of Pledge's checker and evaluator, in Lean 4
 with no library beyond Lean's core, together with soundness theorems
-that Lean checks for programs without `_` (§16), under any phase,
+that Lean checks for every program, under any phase, `_` (§20),
 `sorry` and erasure included. Claude sessions
 wrote it, and this file is a Claude session's description of it. As
 for the TypeScript implementation, DESIGN.md is the specification, and
@@ -68,10 +68,11 @@ requests that touch `lean/` or `src/`.
   `Outcome`.
 - `Main.lean`: the command line.
 - `Pledge/CoreLemmas.lean`, `UnifySound.lean`, `Pledge/Sound/`: the
-  proofs. `Sound/HoleFree.lean` defines `Program.holeFree`;
-  `Sound/Defs.lean` worlds, the invariants, the function
+  proofs. `Sound/Defs.lean` worlds, the invariants, the function
   specifications and `GoalHolds`; `Sound/Measure.lean` the measure of
   SOUNDNESS.md part 6 that the totality proof inducts on;
+  `Sound/Solution.lean` that a term `coreType` accepts, as the term a
+  `_` takes, has a value of its type (`coreType_sound`);
   `Sound/Expr.lean` the main lemma, `Expr.sound` and `Stmt.sound`, by
   one lemma per construct, whose proofs are mostly in
   `Sound/Simple.lean`, `Call.lean`, `Match.lean` and `Erased.lean`;
@@ -88,7 +89,9 @@ requests that touch `lean/` or `src/`.
 Checking is split in two. `solveFrom` finds, by unification, a table
 from the position of each `_` for an argument or inside a type (§20)
 to the terms it may stand for; `runProgramWith` then checks the program
-with no unification for `_`: at each `_` it takes the first term of the
+with no unification for `_` (`Ctx.solving` is false, so no entry is
+made for a `_` and every written term, `_` in it or not, is checked by
+`checkTerm`): at each `_` it takes the first term of the
 table that is a well-formed term of the scope there (`coreType`), of
 the `_`'s type, meeting its parameter's `is` clause and §16's rule on
 erased names, and it computes the `_`'s taint from that term. A `_`
@@ -164,13 +167,7 @@ halves of a specification.
 
 ## What Lean checks
 
-A program is **hole-free** (`Program.holeFree`, `Sound/HoleFree.lean`)
-when no expression in it is `_` and no written term in it contains `_`
-(§16): neither an argument `_` nor a `_` in a binder's annotation, a
-`let` binder's annotation, a value constructor's return or a goal.
-`sorry`, `_` in place of a telescope, as in `sorry(_)`, and
-multiplicities are allowed.
-For a hole-free program `prog`, any phase, any `has` (whether the
+For any program `prog`, any phase, any `has` (whether the
 source is taken to contain a keyword, an argument of `runProgram` with
 no default, which `run` reads off the tokens) and any syntax error
 `err`, writing `out` for
@@ -194,7 +191,7 @@ no default, which `run` reads off the tokens) and any syntax error
   tied to a valuation satisfying the scope as it stood when the goal
   was proved, whatever later items do to the scope.
   `runProgramWith_sound` states the same of `runProgramWith` with any
-  table, and `outcome_sound` of any report whose error is set whenever
+  table (nothing about `solveFrom` is used), and `outcome_sound` of any report whose error is set whenever
   `runProgramWith`'s is.
 - `type_goal_inhabited`: if the goal is proved and is the type `t`,
   there is a valuation `ρ` with one value per entry of `out.entries`,
@@ -213,12 +210,12 @@ no default, which `run` reads off the tokens) and any syntax error
   constructors and its `goal` is an application of it, the goal is not
   reported proved.
 - `run_sound` and `run_no_empty_goal`: `runProgram_sound` and
-  `no_empty_goal` for `run source phase`, given that the program
-  `parse source phase` gives is hole-free.
+  `no_empty_goal` for `run source phase`.
 - `reached_eval_ok` and `reached_run_ok`: at any state the checker
-  reaches on a hole-free program, while its scope is untainted, an
+  reaches, while its scope is untainted, an
   expression checked there at the top level, outside an erased
-  position, with an untainted result, and given nothing or closed types
+  position, with `solving` off and outside a type constructor's
+  argument (as `TopState.ctx` has it), with an untainted result, and given nothing or closed types
   of multiplicity `many` with no `is` clause, as `print`, `qed` against
   a type goal and a `comptime` pattern `let` check theirs, has an
   evaluation by the relation (`Eval`) to one run-time value, related
@@ -236,17 +233,15 @@ returns comes with a derivation of the relation, which
 determinism (`Eval.det`) that is the result the theorems describe.
 
 `tests/Audit.lean` prints the axioms these use. `Sound/Top.lean` has
-`#guard`s showing that the goal clause is reached by small hole-free
+`#guard`s showing that the goal clause is reached by small
 programs: phase 1 programs with a recursive function and a `match`,
 against a type goal and against a function goal; a program with
 `sorry` whose goal is proved without relying on it; and a phase 2
 program with `sorry` and erased fields. Its `#guard`s also show that,
 in phases 1 and 2, a goal tainted through its type, a goal after a
 top-level pattern `let` on `sorry`, and an empty type's goal met by
-`qed sorry(_);` are not proved. Of the 401 programs of the
-differential corpus, 312 are hole-free, and 30 of these report their
-goal proved: 25 phase 1 programs without `sorry`, 3 phase 1 programs
-with `sorry` and 2 phase 2 programs.
+`qed sorry(_);` are not proved. Of the 411 programs of the
+differential corpus, 44 report their goal proved.
 
 ## What has to be trusted
 
@@ -255,7 +250,7 @@ with `sorry` and 2 phase 2 programs.
 - The definitions the theorems are stated with: `Value`, `Term.eval`,
   `HasType`, `TeleSat`, `WType`, `WSat`, `Sat`, `junkHead`, `Approx`,
   `Sigs.erasedArg`, `Rel`, `MultRel`, `MultsRel`, `Sig.close`,
-  `GoalHolds`, `GoalBelow`, `ProvedAt`, `World`, `Program.holeFree`,
+  `GoalHolds`, `GoalBelow`, `ProvedAt`, `World`,
   the evaluation relation `Eval` and its companions, `CallRel` among
   them, and the meaning of `runProgram`, `run`, `topItems` and
   `Outcome`'s fields. That `HasType` captures
@@ -267,9 +262,9 @@ with `sorry` and 2 phase 2 programs.
   implementations agree on whether there is an error, the printed
   values, `qed`, `goalProved` and `containsSorry` for every program of
   the corpus.
-- The parser: no theorem is about it. The `run_` theorems assume that
-  the parsed program is hole-free and say nothing about whether it is
-  the program the source text means.
+- The parser: no theorem is about it. The `run_` theorems say nothing
+  about whether the parsed program is the program the source text
+  means.
 - Nothing is proved about the TypeScript implementation.
 
 ## How it differs from the TypeScript implementation
@@ -315,11 +310,11 @@ items 69 to 75.
 
 ## What is not proved
 
-- Programs with `_` (§16): every theorem assumes a hole-free program,
-  so `runProgramWith`'s checking of the terms a table gives for `_`,
-  of written terms that contain `_`, of a tuple `let` right-hand side
-  first, and taint through a `_` (§12) are not covered. Nothing is
-  proved about `solveFrom`, and no theorem is meant to need it.
+- Anything about `solveFrom`: that it finds a term for every `_`
+  DESIGN.md means to be solved, or the terms DESIGN.md means. The
+  theorems hold for `runProgramWith` with any table, so a wrong table
+  is believed to cost only completeness (a program rejected), not
+  soundness.
 - That the internal checks are unreachable on programs DESIGN.md
   accepts.
 - Anything about the executable evaluator beyond its results'

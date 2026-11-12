@@ -1,4 +1,4 @@
-import Pledge.Sound.Match
+import Pledge.Sound.Call
 
 namespace Pledge.Simple
 
@@ -128,7 +128,7 @@ theorem var_post {C : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : World
     (fun g' h => (given_ok hg g' h).env) h₀
   obtain ⟨hsc, hres, -, -⟩ := finish_untainted hf hI.untainted
   refine ⟨[], [v], by rw [hsc]; simpa using hI, by rw [hres]; simpa using hvs, fun i r₁ v₁ hr hv₁ => ?_,
-    fun g' hg' envv henv => ?_, fun env hE => ?_⟩
+    fun g' hg' envv henv => ?_, fun _ env hE => ?_⟩
   · rw [hres] at hr
     cases i with
     | zero => cases hr; cases hv₁; exact hok
@@ -172,14 +172,14 @@ theorem wantsSat_resOk {S : Sigs} {ρ : List Value} :
 
 theorem sorry_post {C C' : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : World} {ρ : List Value} {act : Act}
     {o₀ o : Out} {p : Pos} {t : Tele} {tele : Telescope} {tenv : List Term} (hI : Inv C sc n0 W ρ act)
-    (hg : ∀ g', g = some g' → g'.Ok W.Sc ρ) (hta : ∀ bs, t = .binders bs → ∀ b ∈ bs, b.ann.term.holed = false)
+    (hg : ∀ g', g = some g' → g'.Ok W.Sc ρ) (hsv : C'.solving = false)
     (ha : annotation C' sc (given C g) t = .ok (tele, tenv))
     (h₀ : produced (opened sc tele tenv "sorry" p fun _ => true).1 (given C g) p
       (opened sc tele tenv "sorry" p fun _ => true).2 (.sorry p t) = .ok o₀)
     (hf : finish (C.enter (whole C g)) (whole C g) (given C g) (.sorry p t) o₀ = .ok o) :
     ExprPost C sc g n0 W ρ act o := by
   intro _
-  obtain ⟨envv, henv, hcons⟩ := annotation_cons hI.termInv.weak (given_ok hg) hta ha
+  obtain ⟨envv, henv, hcons⟩ := annotation_cons hI.termInv.weak (given_ok hg) hsv ha
   obtain ⟨vs, hvs⟩ := WantsCons.open hcons
   obtain ⟨hsat, hev⟩ := opened_sound (taint := fun _ => true) (kind := "sorry") (pos := p) hI.sat henv
     (WantsSat.teleOk _ hvs fun k hk => by simp at hk)
@@ -205,7 +205,7 @@ theorem sorry_post {C C' : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : 
     fun g' hg' envv' henv' => by
       rw [hres]
       exact given_wants (fun g'' h'' envv₁ henv₁ => (hw g'' h'' envv₁ (Term.evalList_frame_ρ vs henv₁)).2) g' hg'
-        envv' henv', fun env hE => ?_⟩
+        envv' henv', fun _ env hE => ?_⟩
   refine finish_run hf hI.untainted (given_length hg fun g'' h'' envv₁ henv₁ =>
     (hw g'' h'' envv₁ (Term.evalList_frame_ρ vs henv₁)).1) fun _ hall _ => ?_
   obtain ⟨r, hr, hrt⟩ : ∃ r ∈ (opened sc tele tenv "sorry" p fun _ => true).2, r.tainted = false := by simpa using hall
@@ -225,22 +225,16 @@ theorem zip_map_term {bs : List LetBinder} {rs : List Res} (h : bs.length = rs.l
 
 theorem let_post {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {act : Act} {p : Pos}
     {bs : List LetBinder} {rhs : Expr} {ws : List Want} {o : Out} (ih : ExprSound rhs) (ihs : ExprShape rhs)
-    (hI : Inv C sc n0 W ρ act) (hf : bs.any (·.ann.any (·.term.holed)) = false) (hws : letWants C sc bs = .ok (ws, sc))
+    (hI : Inv C sc n0 W ρ act) (hgok : ∀ g', some (letGiven bs ws) = some g' → g'.Ok W.Sc ρ)
+    (hwl : ws.length = bs.length)
+    (hwm : ∀ (i : Nat) (w : Want) (b : LetBinder), ws[i]? = some w → bs[i]? = some b → w.mult = b.mult.getD .many)
     (ho : checkExpr C sc (some (letGiven bs ws)) rhs = .ok o) :
     StmtPost C sc n0 W ρ act ⟨o.sc.bind (bs.map (·.name))
       ((bs.zip o.res).map fun (b, r) => { r with erased := b.mult == some .erased }), .let p bs o.tree, o.snaps⟩ := by
   intro ht
   rw [Scope.bind_eq] at ht
-  obtain ⟨hsigs, hnames, -, hpre, -⟩ := ihs C sc _ o hI.holes ho
-  have hgok : ∀ g', some (letGiven bs ws) = some g' → g'.Ok W.Sc ρ := by
-    rintro g' ⟨⟩
-    refine ⟨⟨[], rfl⟩, fun hall envv henv => ?_⟩
-    cases henv
-    refine letWants_cons hI.termInv.weak hws (List.all_eq_true.2 fun b hb => ?_) hf
-    have := List.all_eq_true.1 hall b hb
-    cases h : b.ann <;> simp_all
+  obtain ⟨hsigs, hnames, -, hpre, -⟩ := ihs C sc _ o hI.solving hI.holes ho
   obtain ⟨ρ', vs, hI', hvs, hok, hw, hrun⟩ := (ih C sc _ n0 W ρ act o hI hgok ho).1 ht
-  obtain ⟨-, hwl, hwm⟩ := letWants_spec hws hf
   have hvl : vs.length = bs.length := by rw [(WantsSat.lengths (hw _ rfl [] rfl)).1]; exact hwl
   have hrl : bs.length = o.res.length := by rw [← hvl, Term.length_evalList hvs, List.length_map]
   have hget : ∀ (i : Nat) (r : Res), ((bs.zip o.res).map fun (b, r) =>
@@ -250,10 +244,10 @@ theorem let_post {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value}
       simp only [List.getElem?_map, Option.map_eq_some_iff, List.getElem?_zip_eq_some] at hr
       obtain ⟨⟨b, r₀⟩, ⟨hb, hr₀⟩, rfl⟩ := hr
       exact ⟨b, r₀, hb, hr₀, rfl⟩
-  refine ⟨ρ', Inv.bind hI' (by rw [zip_map_term hrl]; exact hvs) fun i r v hr hv => ?_, fun hC env hE => ?_⟩
+  refine ⟨ρ', Inv.bind hI' (by rw [zip_map_term hrl]; exact hvs) fun i r v hr hv => ?_, fun hC hit env hE => ?_⟩
   · obtain ⟨b, r₀, -, hr₀, rfl⟩ := hget i r hr
     exact hok i r₀ v hr₀ hv
-  obtain ⟨us, hev, us', htk, hm⟩ := hrun env hE
+  obtain ⟨us, hev, us', htk, hm⟩ := hrun hit env hE
   have hul : us'.length = bs.length := by rw [(take_ok htk).1, hrl]
   have hb := bindIds_of_length (env := env) (ids := bs.map (·.name)) (vs := us') (by simp [hul])
   refine ⟨_, .let hev (by rw [hrl]; exact htk) hb, EnvRel.bind (EnvRel.extend ρ' hE hnames hpre hI.sat.1.1)
@@ -284,18 +278,18 @@ theorem let_post {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value}
     · cases hp
 
 theorem checkElems_shape {es : List Expr} (ihs : ∀ e ∈ es, ExprShape e) :
-    ∀ {C : Ctx} {sc : Scope} {g : Option Given} {prev : List Res} {o : ElemsOut}, sc.holes = [] →
+    ∀ {C : Ctx} {sc : Scope} {g : Option Given} {prev : List Res} {o : ElemsOut}, C.solving = false → sc.holes = [] →
       checkElems C sc g prev es = .ok o →
       o.sc.sigs = sc.sigs ∧ o.sc.names = sc.names ∧ o.sc.holes = [] ∧ sc.Γ.eraseRules <+: o.sc.Γ.eraseRules ∧
         (sc.taintedBy.isSome → o.sc.taintedBy.isSome) ∧ o.res.length = es.length := by
   induction es with
   | nil =>
-    intro C sc g prev o hh h
+    intro C sc g prev o hsv hh h
     simp only [checkElems, pure, Except.pure, Except.ok.injEq] at h
     subst h
     exact ⟨rfl, rfl, hh, List.prefix_refl _, id, rfl⟩
   | cons e es ih =>
-    intro C sc g prev o hh h
+    intro C sc g prev o hsv hh h
     simp only [checkElems] at h
     obtain ⟨o₁, ho₁, h⟩ := bind_eq_ok.1 h
     obtain ⟨r, -, h⟩ := bind_eq_ok.1 h
@@ -303,8 +297,8 @@ theorem checkElems_shape {es : List Expr} (ihs : ∀ e ∈ es, ExprShape e) :
     simp only [pure, Except.pure, Except.ok.injEq] at h
     subst h
     rw [keep_ok] at hrest
-    obtain ⟨h1, h2, h3, h4, h5⟩ := ihs e List.mem_cons_self C sc _ o₁ hh ho₁
-    obtain ⟨k1, k2, k3, k4, k5, k6⟩ := ih (fun e he => ihs e (List.mem_cons_of_mem _ he)) h3 hrest
+    obtain ⟨h1, h2, h3, h4, h5⟩ := ihs e List.mem_cons_self C sc _ o₁ hsv hh ho₁
+    obtain ⟨k1, k2, k3, k4, k5, k6⟩ := ih (fun e he => ihs e (List.mem_cons_of_mem _ he)) hsv h3 hrest
     exact ⟨k1.trans h1, k2.trans h2, k3, h4.trans k4, k5 ∘ h5, by simp [k6]⟩
 
 theorem posMult_elem (C : Ctx) (g : Option Given) (prev : List Res) :
@@ -325,15 +319,15 @@ theorem checkElems_sound {es : List Expr} (ih : ∀ e ∈ es, ExprSound e) (ihs 
         (∀ (i : Nat) (r : Res) (v : Value), o.res[i]? = some r → vs[i]? = some v → ResOk W.Sc r v) ∧
         (∀ g', g = some g' → ∀ envv, Term.evalList ρ [] g'.env = some envv →
           WantsSat W.Sc (ρ ++ ρ') (g'.wants.drop prev.length) (envv ++ prevv) (o.res.map (!·.tainted)) vs) ∧
-        ∀ env, EnvRel W.Sc C.phase sc ρ env → ∃ us, EvalList W.P env o.trees us ∧ us.length = vs.length ∧
-          ∀ (i : Nat) (r : Res) (a v : Value), o.res[i]? = some r → us[i]? = some a → vs[i]? = some v →
-            r.tainted = false → MultRel W.Sc C.phase (C.posMult g (prev.length + i)) a v := by
+        (C.inType = false → ∀ env, EnvRel W.Sc C.phase sc ρ env → ∃ us, EvalList W.P env o.trees us ∧
+          us.length = vs.length ∧ ∀ (i : Nat) (r : Res) (a v : Value), o.res[i]? = some r → us[i]? = some a →
+            vs[i]? = some v → r.tainted = false → MultRel W.Sc C.phase (C.posMult g (prev.length + i)) a v) := by
   induction es with
   | nil =>
     intro C sc g prev o n0 W ρ act prevv hI hg _ h _
     simp only [checkElems, pure, Except.pure, Except.ok.injEq] at h
     subst h
-    refine ⟨[], [], by simpa using hI, rfl, by simp, fun g' hg' envv _ => ?_, fun env _ => ⟨[], .nil, rfl, by simp⟩⟩
+    refine ⟨[], [], by simpa using hI, rfl, by simp, fun g' hg' envv _ => ?_, fun _ env _ => ⟨[], .nil, rfl, by simp⟩⟩
     have : g'.wants.drop prev.length = [] := by simp [(hg g' hg').2]
     rw [this]; trivial
   | cons e es ihes =>
@@ -345,12 +339,13 @@ theorem checkElems_sound {es : List Expr} (ih : ∀ e ∈ es, ExprSound e) (ihs 
     simp only [pure, Except.pure, Except.ok.injEq] at h
     subst h
     rw [keep_ok] at hr hrest
-    obtain ⟨-, hnames₁, hh₁, hpre₁, -⟩ := ihs e List.mem_cons_self C sc _ o₁ hI.holes ho₁
+    obtain ⟨-, hnames₁, hh₁, hpre₁, -⟩ := ihs e List.mem_cons_self C sc _ o₁ hI.solving hI.holes ho₁
     have ht₁ : o₁.sc.taintedBy = none := by
       cases h₁ : o₁.sc.taintedBy with
       | none => rfl
       | some _ =>
-        have := (checkElems_shape (fun e he => ihs e (List.mem_cons_of_mem _ he)) hh₁ hrest).2.2.2.2.1 (by simp [h₁])
+        have := (checkElems_shape (fun e he => ihs e (List.mem_cons_of_mem _ he)) hI.solving hh₁
+          hrest).2.2.2.2.1 (by simp [h₁])
         simp [show rest.sc.taintedBy = none from ht] at this
     have hgok : ∀ g', elemGiven g prev = some g' → g'.Ok W.Sc ρ := by
       intro g' hg'
@@ -371,7 +366,7 @@ theorem checkElems_sound {es : List Expr} (ih : ∀ e ∈ es, ExprSound e) (ihs 
         exact Term.evalList_append (Term.evalList_frame_ρ ρ₁ hprev) (Term.evalList_singleton.2 ⟨v, hv, rfl⟩))
       hrest ht
     refine ⟨ρ₁ ++ ρ₂, v :: vs₂, by simpa using hI₂, ?_, fun i r' v' hr' hv' => ?_, fun g' hg' envv henv => ?_,
-      fun env hE => ?_⟩
+      fun hit env hE => ?_⟩
     · simp only [List.map_cons]
       rw [← List.append_assoc]
       exact Term.evalList_cons_eq_some.2 ⟨v, vs₂, Term.eval_frame_ρ ρ₂ hv, hvs₂, rfl⟩
@@ -389,9 +384,9 @@ theorem checkElems_sound {es : List Expr} (ih : ∀ e ∈ es, ExprSound e) (ihs 
       · have := h1.1.frame ρ₂
         simpa [List.getElem?_eq_some_iff.1 hw |>.2] using this
       · simpa [List.length_append] using h2
-    · obtain ⟨us₁, hev₁, us₁', htk₁, hm₁⟩ := hrun₁ env hE
+    · obtain ⟨us₁, hev₁, us₁', htk₁, hm₁⟩ := hrun₁ hit env hE
       obtain ⟨a, ho, rfl⟩ := one_of_take htk₁
-      obtain ⟨us₂, hev₂, hl₂, hm₂⟩ := hrun₂ env (EnvRel.extend ρ₁ hE hnames₁ hpre₁ hI.sat.1.1)
+      obtain ⟨us₂, hev₂, hl₂, hm₂⟩ := hrun₂ hit env (EnvRel.extend ρ₁ hE hnames₁ hpre₁ hI.sat.1.1)
       refine ⟨a :: us₂, .cons hev₁ ho hev₂, by simp [hl₂], fun i r' a' v' hr' ha' hv' hrt => ?_⟩
       cases i with
       | zero =>
@@ -411,7 +406,7 @@ theorem tuple_post {C : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : Wor
       ⟨oe.sc, oe.res, .tuple p oe.trees, oe.snaps⟩ = .ok o) :
     ExprPost C sc g n0 W ρ act o := by
   intro ht
-  obtain ⟨-, -, -, -, -, hrl⟩ := checkElems_shape ihs hI.holes hoe
+  obtain ⟨-, -, -, -, -, hrl⟩ := checkElems_shape ihs (by exact hI.solving) hI.holes hoe
   obtain ⟨hsc, hres, -, -⟩ := finish_untainted hf (by
     obtain ⟨-, hsc, -⟩ := finish_spec hf
     rw [← ht, hsc])
@@ -419,44 +414,44 @@ theorem tuple_post {C : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : Wor
   obtain ⟨ρ', vs, hI', hvs, hok, hw, hrun⟩ := checkElems_sound ih ihs (prev := []) (prevv := [])
     (inv_ctx.2 hI) (fun g' h => ⟨(given_ok hg g' h).env, by simp [hlen g' h]⟩) rfl hoe ht
   refine ⟨ρ', vs, by rw [hsc]; exact inv_ctx.1 hI', by rw [hres]; exact hvs, fun i r v hr hv => ?_,
-    fun g' hg' envv henv => ?_, fun env hE => ?_⟩
+    fun g' hg' envv henv => ?_, fun hit env hE => ?_⟩
   · rw [hres] at hr; exact hok i r v hr hv
   · rw [hres]
     exact given_wants (fun g'' h'' envv' henv' => by simpa using hw g'' h'' envv' henv') g' hg' envv henv
   · refine finish_run hf (by exact ht) (given_length hg fun g'' h'' _ _ => by rw [hlen g'' h'', hrl])
       fun hwh _ _ => ?_
     rw [given_whole hwh, ctx_whole hwh] at hrun
-    obtain ⟨us, hev, hul, hm⟩ := hrun env hE
+    obtain ⟨us, hev, hul, hm⟩ := hrun hit env hE
     refine ⟨us, .tuple hev, us, take_of_length (by rw [hul, Term.length_evalList hvs, List.length_map]),
       fun i r a v hr ha hv hrt => ?_⟩
     simpa using hm i r a v hr ha hv hrt
 
 theorem checkStmts_shape {ss : List Stmt} (ihss : ∀ s ∈ ss, StmtShape s) :
-    ∀ {C : Ctx} {sc : Scope} {o : StmtsOut}, sc.holes = [] → checkStmts C sc ss = .ok o →
+    ∀ {C : Ctx} {sc : Scope} {o : StmtsOut}, C.solving = false → sc.holes = [] → checkStmts C sc ss = .ok o →
       o.sc.sigs = sc.sigs ∧ o.sc.holes = [] ∧ sc.Γ.eraseRules <+: o.sc.Γ.eraseRules ∧
         (sc.taintedBy.isSome → o.sc.taintedBy.isSome) := by
   induction ss with
   | nil =>
-    intro C sc o hh h
+    intro C sc o hsv hh h
     simp only [checkStmts, pure, Except.pure, Except.ok.injEq] at h
     subst h
     exact ⟨rfl, hh, List.prefix_refl _, id⟩
   | cons s ss ih =>
-    intro C sc o hh h
+    intro C sc o hsv hh h
     simp only [checkStmts] at h
     obtain ⟨o₁, ho₁, h⟩ := bind_eq_ok.1 h
     obtain ⟨rest, hrest, h⟩ := bind_eq_ok.1 h
     simp only [pure, Except.pure, Except.ok.injEq] at h
     subst h
     rw [keep_ok] at hrest
-    obtain ⟨h1, h2, h3, h4⟩ := ihss s List.mem_cons_self C sc o₁ hh ho₁
-    obtain ⟨k1, k2, k3, k4⟩ := ih (fun s hs => ihss s (List.mem_cons_of_mem _ hs)) h2 hrest
+    obtain ⟨h1, h2, h3, h4⟩ := ihss s List.mem_cons_self C sc o₁ hsv hh ho₁
+    obtain ⟨k1, k2, k3, k4⟩ := ih (fun s hs => ihss s (List.mem_cons_of_mem _ hs)) hsv h2 hrest
     exact ⟨k1.trans h1, k2, h3.trans k3, k4 ∘ h4⟩
 
 theorem checkStmts_sound {ss : List Stmt} (ihs : ∀ s ∈ ss, StmtSound s) (ihss : ∀ s ∈ ss, StmtShape s) :
     ∀ {C : Ctx} {sc : Scope} {o : StmtsOut} {n0 : Nat} {W : World} {ρ : List Value} {act : Act},
       Inv C sc n0 W ρ act → checkStmts C sc ss = .ok o → o.sc.taintedBy = none →
-      ∃ ρ', Inv C o.sc n0 W (ρ ++ ρ') act ∧ (C.erased = false → ∀ env, EnvRel W.Sc C.phase sc ρ env →
+      ∃ ρ', Inv C o.sc n0 W (ρ ++ ρ') act ∧ (C.erased = false → C.inType = false → ∀ env, EnvRel W.Sc C.phase sc ρ env →
         ∃ env', (∀ f vs, Eval W.P env' f vs → EvalBlock W.P env o.trees f vs) ∧
           EnvRel W.Sc C.phase o.sc (ρ ++ ρ') env') := by
   induction ss with
@@ -464,7 +459,7 @@ theorem checkStmts_sound {ss : List Stmt} (ihs : ∀ s ∈ ss, StmtSound s) (ihs
     intro C sc o n0 W ρ act hI h _
     simp only [checkStmts, pure, Except.pure, Except.ok.injEq] at h
     subst h
-    exact ⟨[], by simpa using hI, fun _ env hE => ⟨env, fun _ _ h => .nil h, by simpa using hE⟩⟩
+    exact ⟨[], by simpa using hI, fun _ _ env hE => ⟨env, fun _ _ h => .nil h, by simpa using hE⟩⟩
   | cons s ss ih =>
     intro C sc o n0 W ρ act hI h ht
     simp only [checkStmts] at h
@@ -474,19 +469,20 @@ theorem checkStmts_sound {ss : List Stmt} (ihs : ∀ s ∈ ss, StmtSound s) (ihs
     subst h
     rw [keep_ok] at hrest
     have ht' : rest.sc.taintedBy = none := ht
-    obtain ⟨-, hh₁, -, -⟩ := ihss s List.mem_cons_self C sc o₁ hI.holes ho₁
+    obtain ⟨-, hh₁, -, -⟩ := ihss s List.mem_cons_self C sc o₁ hI.solving hI.holes ho₁
     have ht₁ : o₁.sc.taintedBy = none := by
       cases h₁ : o₁.sc.taintedBy with
       | none => rfl
       | some _ =>
-        have := (checkStmts_shape (fun s hs => ihss s (List.mem_cons_of_mem _ hs)) hh₁ hrest).2.2.2 (by simp [h₁])
+        have := (checkStmts_shape (fun s hs => ihss s (List.mem_cons_of_mem _ hs)) hI.solving hh₁ hrest).2.2.2
+          (by simp [h₁])
         simp [ht'] at this
     obtain ⟨ρ₁, hI₁, hrun₁⟩ := ihs s List.mem_cons_self C sc n0 W ρ act o₁ hI ho₁ ht₁
     obtain ⟨ρ₂, hI₂, hrun₂⟩ := ih (fun s hs => ihs s (List.mem_cons_of_mem _ hs))
       (fun s hs => ihss s (List.mem_cons_of_mem _ hs)) hI₁ hrest ht'
-    refine ⟨ρ₁ ++ ρ₂, by simpa using hI₂, fun hC env hE => ?_⟩
-    obtain ⟨env₁, hev₁, hE₁⟩ := hrun₁ hC env hE
-    obtain ⟨env₂, hb, hE₂⟩ := hrun₂ hC env₁ hE₁
+    refine ⟨ρ₁ ++ ρ₂, by simpa using hI₂, fun hC hit env hE => ?_⟩
+    obtain ⟨env₁, hev₁, hE₁⟩ := hrun₁ hC hit env hE
+    obtain ⟨env₂, hb, hE₂⟩ := hrun₂ hC hit env₁ hE₁
     exact ⟨env₂, fun f vs h => .cons hev₁ (hb f vs h), by simpa using hE₂⟩
 
 theorem givenOk_frame {S : Sigs} {ρ : List Value} (ρ' : List Value) {g : Given} (h : g.Ok S ρ) : g.Ok S (ρ ++ ρ') := by
@@ -502,7 +498,7 @@ theorem inv_restore {C : Ctx} {sc sc' : Scope} {n0 : Nat} {W : World} {ρ ρ' : 
     Inv C { sc' with names := sc.names } n0 W (ρ ++ ρ') act :=
   ⟨hI'.holes, hI'.untainted, hI'.sat, hI'.n0_world, hI'.agree, hI'.sigs, hI'.sigsOk, hI'.noJunk, fun n r h => by
     obtain ⟨v, h1, h2⟩ := hI.names n r h
-    exact ⟨v, Term.eval_frame_ρ ρ' h1, h2⟩, hI'.globals, hI'.act⟩
+    exact ⟨v, Term.eval_frame_ρ ρ' h1, h2⟩, hI'.globals, hI'.act, hI'.solving, hI'.typeHeads⟩
 
 theorem scope_holes {sc : Scope} {hs : List Hole} (h : sc.holes = hs) : ({ sc with holes := hs } : Scope) = sc := by
   cases sc; simp_all
@@ -518,11 +514,11 @@ theorem block_post {C : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : Wor
     ExprPost C sc g n0 W ρ act o ∧ (o.sc.taintedBy = none → (Expr.block ss f).absurd = true →
       ∀ r ∈ o.res, r.tainted = true) := by
   rw [scope_holes hI.holes] at hs
-  obtain ⟨-, hhs, -, -⟩ := checkStmts_shape ihss hI.holes hs
+  obtain ⟨-, hhs, -, -⟩ := checkStmts_shape ihss (by exact hI.solving) hI.holes hs
   rw [hI.holes, scope_holes hhs] at hof
   obtain ⟨-, hsc₀, -⟩ := finish_spec hf
   have key : o.sc.taintedBy = none → of.sc.taintedBy = none ∧ ∃ ρ₁, Inv C s.sc n0 W (ρ ++ ρ₁) act ∧
-      (whole C g = false → ∀ env, EnvRel W.Sc C.phase sc ρ env →
+      (whole C g = false → C.inType = false → ∀ env, EnvRel W.Sc C.phase sc ρ env →
         ∃ env', (∀ f vs, Eval W.P env' f vs → EvalBlock W.P env s.trees f vs) ∧
           EnvRel W.Sc C.phase s.sc (ρ ++ ρ₁) env') := fun ht => by
     have ht' : of.sc.taintedBy = none := by rw [hsc₀] at ht; exact ht
@@ -530,10 +526,10 @@ theorem block_post {C : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : Wor
       cases h₁ : s.sc.taintedBy with
       | none => rfl
       | some _ =>
-        have := (ihfs _ _ _ of hhs hof).2.2.2.2 (by simp [h₁])
+        have := (ihfs _ _ _ of (by exact hI.solving) hhs hof).2.2.2.2 (by simp [h₁])
         simp [ht'] at this
     obtain ⟨ρ₁, hI₁, hrun⟩ := checkStmts_sound ihs ihss (inv_ctx.2 hI) hs hts
-    exact ⟨ht', ρ₁, inv_ctx.1 hI₁, fun hw env hE => hrun hw env hE⟩
+    exact ⟨ht', ρ₁, inv_ctx.1 hI₁, fun hw hit env hE => hrun hw hit env hE⟩
   have hg₁ : ∀ ρ₁, ∀ g', given C g = some g' → g'.Ok W.Sc (ρ ++ ρ₁) :=
     fun ρ₁ g' h => givenOk_frame ρ₁ (given_ok hg g' h)
   refine ⟨fun ht => ?_, fun ht ha r hr => ?_⟩
@@ -545,144 +541,18 @@ theorem block_post {C : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : Wor
       simpa using hw g' h envv (Term.evalList_frame_ρ ρ₁ henv)
     refine ⟨ρ₁ ++ ρ₂, vs, by rw [hsc]; exact inv_restore hI (by simpa using inv_ctx.1 hI₂),
       by rw [hres]; simpa using hvs, fun i r v hr hv => by rw [hres] at hr; exact hok i r v hr hv,
-      fun g' hg' envv henv => by rw [hres]; exact given_wants hwf g' hg' envv henv, fun env hE => ?_⟩
+      fun g' hg' envv henv => by rw [hres]; exact given_wants hwf g' hg' envv henv, fun hit env hE => ?_⟩
     refine finish_run hf (by exact ht') (given_length (C := C) hg fun g'' h'' envv henv => ?_) fun hwh _ _ => ?_
     · rw [← List.length_map (f := fun r : Res => r.term), ← Term.length_evalList hvs]
       exact (WantsSat.lengths (hwf g'' h'' envv henv)).1
-    · obtain ⟨env₁, hb, hE₁⟩ := hrun₁ hwh env hE
-      obtain ⟨us, hev, hrr⟩ := hrun₂ env₁ hE₁
+    · obtain ⟨env₁, hb, hE₁⟩ := hrun₁ hwh hit env hE
+      obtain ⟨us, hev, hrr⟩ := hrun₂ hit env₁ hE₁
       rw [given_whole hwh, ctx_whole hwh] at hrr
       exact ⟨us, .block (hb _ _ hev), hrr⟩
   · obtain ⟨ht', ρ₁, hI₁, -⟩ := key ht
     obtain ⟨-, hres, -, -⟩ := finish_untainted hf (by exact ht')
     rw [hres] at hr
     exact (ihf _ _ _ n0 W (ρ ++ ρ₁) act of (inv_ctx.2 hI₁) (hg₁ ρ₁) hof).2 ht' (by simpa [Expr.absurd] using ha) r hr
-
-theorem isHole_false {e : Expr} (h : e.holeFree = true) : isHole e = false := by
-  unfold isHole
-  split
-  · simp [Expr.holeFree] at h
-  · rfl
-
-theorem checkArgs_shape {args : List Arg} (ihs : ∀ a ∈ args, ExprShape a.expr)
-    (hh : ∀ a ∈ args, a.expr.holeFree = true) :
-    ∀ {C : Ctx} {sc : Scope} {owner role : String} {er : Bool} {params : Telescope} {prev : List Res}
-      {a : ArgsOut}, sc.holes = [] → checkArgs C sc owner role er params prev args = .ok a →
-      a.sc.sigs = sc.sigs ∧ a.sc.names = sc.names ∧ a.sc.holes = [] ∧ sc.Γ.eraseRules <+: a.sc.Γ.eraseRules ∧
-        (sc.taintedBy.isSome → a.sc.taintedBy.isSome) := by
-  induction args with
-  | nil =>
-    intro C sc owner role er params prev a hh' h
-    simp only [checkArgs, pure, Except.pure, Except.ok.injEq] at h
-    subst h
-    exact ⟨rfl, rfl, hh', List.prefix_refl _, id⟩
-  | cons arg args ih =>
-    intro C sc owner role er params prev a hh' h
-    obtain ⟨m, e⟩ := arg
-    cases params with
-    | nil => simp [checkArgs, internal, failAt_eq] at h
-    | cons p ps =>
-      simp only [checkArgs, isHole_false (e := e) (hh _ List.mem_cons_self), Bool.false_eq_true,
-        ↓reduceIte] at h
-      obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
-      obtain ⟨r, -, h⟩ := bind_eq_ok.1 h
-      obtain ⟨rest, hrest, h⟩ := bind_eq_ok.1 h
-      simp only [pure, Except.pure, Except.ok.injEq] at h
-      subst h
-      rw [keep_ok] at hrest
-      obtain ⟨h1, h2, h3, h4, h5⟩ := ihs _ List.mem_cons_self C sc _ o hh' ho
-      obtain ⟨k1, k2, k3, k4, k5⟩ := ih (fun a ha => ihs a (List.mem_cons_of_mem _ ha))
-        (fun a ha => hh a (List.mem_cons_of_mem _ ha)) h3 hrest
-      exact ⟨k1.trans h1, k2.trans h2, k3, h4.trans k4, k5 ∘ h5⟩
-
-theorem posMult_arg (C : Ctx) (p : TBinder) (prev : List Res) (role owner : String) (er : Bool) :
-    C.posMult (some (argGiven p prev role owner er)) 0 =
-      if C.erased || er || p.mult == .erased then .erased else .many := by
-  cases er <;> simp [Ctx.posMult, argGiven, Given.erasedAt]
-
-/-- The arguments of an application (§8): their ideal values meet the telescope, untainted ones typed, and they
-run to values related to them, each by its parameter's multiplicity. -/
-theorem checkArgs_sound {args : List Arg} (ih : ∀ a ∈ args, ExprSound a.expr) (ihs : ∀ a ∈ args, ExprShape a.expr)
-    (hh : ∀ a ∈ args, a.expr.holeFree = true) :
-    ∀ {C : Ctx} {sc : Scope} {owner role : String} {er : Bool} {params : Telescope} {prev : List Res}
-      {a : ArgsOut} {n0 : Nat} {W : World} {ρ : List Value} {act : Act} {prevv : List Value},
-      Inv C sc n0 W ρ act → params.length = args.length → Term.evalList ρ [] (prev.map (·.term)) = some prevv →
-      checkArgs C sc owner role er params prev args = .ok a → a.sc.taintedBy = none →
-      ∃ ρ' vs, Inv C a.sc n0 W (ρ ++ ρ') act ∧ Term.evalList (ρ ++ ρ') [] (a.res.map (·.term)) = some vs ∧
-        (∀ (i : Nat) (r : Res) (v : Value), a.res[i]? = some r → vs[i]? = some v → ResOk W.Sc r v) ∧
-        WantsSat W.Sc (ρ ++ ρ') (params.map Want.of) prevv (a.res.map (!·.tainted)) vs ∧
-        ∀ env, EnvRel W.Sc C.phase sc ρ env → ∃ us, EvalList W.P env (a.trees.map Arg.expr) us ∧
-          us.length = vs.length ∧ ∀ (i : Nat) (r : Res) (p : TBinder) (u v : Value), a.res[i]? = some r →
-            params[i]? = some p → us[i]? = some u → vs[i]? = some v → r.tainted = false →
-            MultRel W.Sc C.phase (if C.erased || er || p.mult == .erased then .erased else .many) u v := by
-  induction args with
-  | nil =>
-    intro C sc owner role er params prev a n0 W ρ act prevv hI hl _ h _
-    cases params with
-    | cons => simp at hl
-    | nil =>
-      simp only [checkArgs, pure, Except.pure, Except.ok.injEq] at h
-      subst h
-      exact ⟨[], [], by simpa using hI, rfl, by simp, trivial, fun env _ => ⟨[], .nil, rfl, by simp⟩⟩
-  | cons arg args ihas =>
-    intro C sc owner role er params prev a n0 W ρ act prevv hI hl hprev h ht
-    obtain ⟨m, e⟩ := arg
-    cases params with
-    | nil => simp at hl
-    | cons p ps =>
-      simp only [checkArgs, isHole_false (e := e) (hh _ List.mem_cons_self), Bool.false_eq_true,
-        ↓reduceIte] at h
-      obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
-      obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
-      obtain ⟨rest, hrest, h⟩ := bind_eq_ok.1 h
-      simp only [pure, Except.pure, Except.ok.injEq] at h
-      subst h
-      rw [keep_ok] at hr hrest
-      have ht' : rest.sc.taintedBy = none := ht
-      have ih' := fun a ha => ih a (List.mem_cons_of_mem _ ha)
-      have ihs' := fun a ha => ihs a (List.mem_cons_of_mem _ ha)
-      have hh' := fun a ha => hh a (List.mem_cons_of_mem _ ha)
-      obtain ⟨-, hnames₁, hh₁, hpre₁, -⟩ := ihs _ List.mem_cons_self C sc _ o hI.holes ho
-      have ht₁ : o.sc.taintedBy = none := by
-        cases h₁ : o.sc.taintedBy with
-        | none => rfl
-        | some _ =>
-          have := (checkArgs_shape ihs' hh' hh₁ hrest).2.2.2.2 (by simp [h₁])
-          simp [ht'] at this
-      have hgok : ∀ g', some (argGiven p prev role owner er) = some g' → g'.Ok W.Sc ρ := by
-        rintro g' ⟨⟩
-        exact ⟨⟨prevv, by simpa [argGiven] using hprev⟩, fun h => by cases h⟩
-      obtain ⟨ρ₁, vs₁, hI₁, hvs₁, hok₁, hw₁, hrun₁⟩ := (ih _ List.mem_cons_self C sc _ n0 W ρ act o hI hgok ho).1 ht₁
-      rw [single_ok hr] at hvs₁ hok₁ hw₁ hrun₁
-      obtain ⟨v, hv, rfl⟩ := Term.evalList_singleton.1 (by simpa using hvs₁)
-      have hb : WantSat W.Sc (ρ ++ ρ₁) (Want.of p) prevv (!r.tainted) v :=
-        (hw₁ _ rfl prevv (by simpa [argGiven] using hprev)).1
-      obtain ⟨ρ₂, vs₂, hI₂, hvs₂, hok₂, hw₂, hrun₂⟩ := ihas ih' ihs' hh' hI₁ (by simpa using hl)
-        (by
-          rw [List.map_append, List.map_singleton]
-          exact Term.evalList_append (Term.evalList_frame_ρ ρ₁ hprev) (Term.evalList_singleton.2 ⟨v, hv, rfl⟩))
-        hrest ht'
-      refine ⟨ρ₁ ++ ρ₂, v :: vs₂, by simpa using hI₂, ?_, fun i r' v' hr' hv' => ?_, ?_, fun env hE => ?_⟩
-      · simp only [List.map_cons]
-        rw [← List.append_assoc]
-        exact Term.evalList_cons_eq_some.2 ⟨v, vs₂, Term.eval_frame_ρ ρ₂ hv, hvs₂, rfl⟩
-      · cases i with
-        | zero => cases hr'; cases hv'; exact hok₁ 0 r v rfl rfl
-        | succ i => exact hok₂ i r' v' (by simpa using hr') (by simpa using hv')
-      · rw [← List.append_assoc]
-        exact ⟨hb.frame ρ₂, hw₂⟩
-      · obtain ⟨us₁, hev₁, us₁', htk₁, hm₁⟩ := hrun₁ env hE
-        obtain ⟨u, hou, rfl⟩ := one_of_take htk₁
-        obtain ⟨us₂, hev₂, hl₂, hm₂⟩ := hrun₂ env (EnvRel.extend ρ₁ hE hnames₁ hpre₁ hI.sat.1.1)
-        refine ⟨u :: us₂, .cons hev₁ hou hev₂, by simp [hl₂], fun i r' p' u' v' hr' hp' hu' hv' hrt => ?_⟩
-        cases i with
-        | zero =>
-          cases hr'; cases hp'; cases hu'; cases hv'
-          have := hm₁ 0 r u v rfl rfl rfl hrt
-          rwa [posMult_arg] at this
-        | succ i =>
-          exact hm₂ i r' p' u' v' (by simpa using hr') (by simpa using hp') (by simpa using hu') (by simpa using hv')
-            hrt
 
 /-- An application's run-time value is related to its ideal one when each argument is, by its parameter's
 multiplicity, a type constructor's argument erased from phase 2 on (§16). -/
@@ -724,7 +594,7 @@ theorem noRemoved_of_resOk {S : Sigs} {ρ : List Value} :
 
 theorem ctorApp_post {C : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : World} {ρ : List Value} {act : Act}
     {o₀ o : Out} {h : Name} {args : List Arg} {k : HeadKind} {sig : Sig} {role : String} {er it : Bool} {a : ArgsOut}
-    (ih : ∀ a ∈ args, ExprSound a.expr) (ihs : ∀ a ∈ args, ExprShape a.expr) (hh : ∀ a ∈ args, a.expr.holeFree = true)
+    (ih : ∀ a ∈ args, ExprSound a.expr) (ihs : ∀ a ∈ args, ExprShape a.expr) (hit : it = (C.inType || k == .type))
     (hI : Inv C sc n0 W ρ act) (hg : ∀ g', g = some g' → g'.Ok W.Sc ρ) (hk : HeadOk sc.sigs W k h.name)
     (her : er = (k == .type && decide (2 ≤ C.phase))) (hsig : sc.sigs.find ⟨k, h.name⟩ = some sig)
     (har : sig.params.length = args.length)
@@ -735,11 +605,11 @@ theorem ctorApp_post {C : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : W
     (hf : finish (C.enter (whole C g)) (whole C g) (given C g) (.app h args) o₀ = .ok o) :
     ExprPost C sc g n0 W ρ act o := by
   intro ht
-  obtain ⟨-, -, hah, -, -⟩ := checkArgs_shape ihs hh hI.holes ha
+  obtain ⟨-, -, hah, -, -⟩ := ShapeFill.args_grows ihs hI.holes ha hI.solving
   obtain ⟨rfl, hpr⟩ := applied_eq hah h₀
   obtain ⟨-, hsc₀, -⟩ := finish_spec hf
   have ht₀ : a.sc.taintedBy = none := by rw [hsc₀] at ht; exact ht
-  obtain ⟨ρ', vs, hI', hvs, hok, hw, hrun⟩ := checkArgs_sound ih ihs hh
+  obtain ⟨ρ', vs, hI', hvs, hok, hw, hrun⟩ := Call.args_sound ih ihs
     (hI.congr_ctx (C' := { C.enter (whole C g) with inType := it }) rfl rfl rfl) har rfl ha ht₀
   have hhead : sig.head = ⟨k, h.name⟩ := Sigs.find_head hsig
   obtain ⟨hbelow, hbounds⟩ := hI.sigsOk sig (List.mem_of_find?_eq_some hsig)
@@ -766,7 +636,7 @@ theorem ctorApp_post {C : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : W
     (fun g' h => let ⟨_, he⟩ := (given_ok hg g' h).env; ⟨_, Term.evalList_frame_ρ ρ' he⟩) hpr
   obtain ⟨hsc, hres', -, -⟩ := finish_untainted hf ht₀
   refine ⟨ρ', [.app sig.head vs], by rw [hsc]; exact hI'.congr_ctx rfl rfl rfl, by rw [hres']; exact hvs1,
-    fun i r v hr hv => ?_, fun g' hg' envv henv => ?_, fun env hE => ?_⟩
+    fun i r v hr hv => ?_, fun g' hg' envv henv => ?_, fun hit' env hE => ?_⟩
   · rw [hres'] at hr
     cases i with
     | zero => cases hr; cases hv; exact hres
@@ -784,7 +654,8 @@ theorem ctorApp_post {C : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : W
     cases i with
     | succ => simp at hr
     | zero => cases hr; cases hu; cases hv; rw [hhead]; exact MultRel.of_rel _ (.type hkt)
-  obtain ⟨us, hev, hul, hm⟩ := hrun env hE
+  rename_i hkt
+  obtain ⟨us, hev, hul, hm⟩ := hrun (by cases k <;> simp_all) env hE
   refine ⟨_, .ctor hev hk.fns hk.kind, _, take_of_length rfl, fun i r u v hr hu hv _ => ?_⟩
   cases i with
   | succ => simp at hr
@@ -799,6 +670,6 @@ theorem ctorApp_post {C : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : W
     have hrt : r.tainted = false := by
       simp only [List.any_eq_false] at hut
       simpa using hut r (List.mem_of_getElem? hr)
-    simpa [whole, hwh] using hm j r p u v hr hp hu hv hrt
+    simpa [whole, hwh, Call.argMult] using hm j r p u v hr hp hu hv hrt
 
 end Pledge.Simple
