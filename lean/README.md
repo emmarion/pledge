@@ -55,7 +55,7 @@ requests that touch `lean/` or `src/`.
   `Value.junk`, `Approx`, `Rel`, `MultRel`, `Sig.close`.
 - `Pledge/Unify.lean`: opening telescopes, `abstract?`, the strict
   subterm relation, `difference` (§12), and the equation solver behind
-  forcing (§7) and `_` (§16).
+  forcing (§7), which the solver's `unify` (§20) also uses.
 - `Pledge/Eval.lean`: evaluation (§11, §12, §16) as a big-step
   relation, `Eval` with `EvalList`, `CallRel`, `EvalBlock` and
   `EvalStmt`; its determinism (`Eval.det`) and monotonicity in the
@@ -64,15 +64,19 @@ requests that touch `lean/` or `src/`.
   evaluation and return its values with a derivation of the relation.
   They recurse on what evaluating asks for first (`Cfg.Sub`), which is
   well-founded below anything that has an evaluation (`Eval.acc`).
-- `Pledge/Check/Basic.lean`, `Expr.lean`, `Top.lean`: the checker;
-  `Top.lean` has the top-level items, `topItem`, and `Outcome`.
+- `Pledge/Check/Basic.lean`, `Expr.lean`, `Top.lean`: the checking
+  pass; `Top.lean` has the top-level items, `topItem`, and `Outcome`.
+  It solves no `_`: a `_` takes a term of the table it is given.
+- `Pledge/Solve.lean`: the solver of `_` (§20), which finds the terms
+  of the table by unification (`unify`); nothing the theorems rely on
+  uses it but `report` and `solveTable` in `Run.lean`.
 - `Pledge/Run.lean`: `topItems`, `checkItems`, `runProgramWith`,
-  `solveFrom`, `runProgram` and `run`. It comes after the proofs it
-  needs (`Sound/Item.lean`, below): each state `topItems` passes to
-  `topItem` carries the fact (`TopOk`) from which what the item
-  evaluates has an evaluation (`TopState.Runs`). When checking stops at
-  an error, `topItems` returns it with its item and the number of items
-  after it (`Stop`).
+  `report`, `solveTable`, `solution`, `runProgram` and `run`. It comes
+  after the proofs it needs (`Sound/Item.lean`, below): each state
+  `topItems` passes to `topItem` carries the fact (`TopOk`) from which
+  what the item evaluates has an evaluation (`TopState.Runs`). When
+  checking stops at an error, `topItems` returns it with its item and
+  the number of items after it (`Stop`).
 - `Main.lean`: the command line.
 - `Pledge/CoreLemmas.lean`, `UnifySound.lean`, `Pledge/Sound/`: the
   proofs. `Sound/Defs.lean` worlds, the invariants, the function
@@ -87,62 +91,69 @@ requests that touch `lean/` or `src/`.
   `Data.lean` the `goal` item; `Sound/Stmt.lean` the other top-level
   statements; `Sound/Item.lean` that each item keeps the top level's
   invariant (`topItem_sound`), what a `print` shows (`PrintJust`,
-  `topItem_step`), and that, outside the solving pass, what the top
-  level evaluates has an evaluation (`TopInv.runs`); and
+  `topItem_step`), and that what the top level evaluates has an
+  evaluation (`TopInv.runs`); and
   `Sound/Top.lean` the invariant of checking a program item by item
-  (`checkItems_inv`) and the headline theorems.
+  (`checkItems_inv`) and the headline theorems; `Sound/Wf.lean`,
+  `Sound/Internal.lean` and `Sound/InternalTop.lean` that the checking
+  pass reaches no internal check; `Pledge/ParserSound.lean` that the
+  parser's output meets the conditions that needs (`parse_shaped`).
 - `Pledge/ParserTest.lean`, `EvalTest.lean`, `UnifyTest.lean`,
   `SolveTest.lean`: `#guard` tests; `EvalTest.lean` runs programs
   through `run`. `SolveTest.lean` holds tests of `_`
   (§20), among them tests of `solution` and of `runProgramWith` given a
   table.
+- `tests/`: the differential comparison with the TypeScript checker
+  (`tests/README.md`), `Audit.lean` and `gate.mjs`.
 
 ## How `_` is checked
 
-Checking is split in two. `solveFrom` finds, by unification, a table
+The checking pass (`checkItems`, `runProgramWith`) is given a table
 from the position of each `_` for an argument or inside a type (§20)
-to the terms it may stand for, evaluating nothing; `runProgramWith`
-then checks and evaluates the program
-with no unification for `_` (`Ctx.solving` is false, so no entry is
-made for a `_` and every written term, `_` in it or not, is checked by
-`checkTerm`): at each `_` it takes the first term of the
-table that is a well-formed term of the scope there (`coreType`), of
-the `_`'s type, meeting its parameter's `is` clause and §16's rule on
-erased names, and it computes the `_`'s taint from that term. A `_`
-with no term in the table is an error. `runProgram` runs the two and
-reports what `runProgramWith` reports with the table `solveFrom` found:
-an error exactly when it meets one, and every other field of the
-outcome. `solveFrom` gives only the position and text of an error: those
-of the error it met at the same item, if `runProgramWith`'s was not
-found by evaluating (`CheckError.evaluated`, as for a `comptime`
-pattern `let` whose value has another head); an error found by
-evaluating is reported as is, and one `solveFrom` did not meet at that
-item is reported as internal. The soundness theorems are meant not to
-depend on `solveFrom`: they hold for `runProgramWith` with any table,
-and `runProgram_eq` states the above.
+to the terms it may stand for, and solves nothing: at each `_` it
+takes the first term of the table that is a well-formed term of the
+scope there (`coreType`), of the `_`'s type, meeting its parameter's
+`is` clause and §16's rule on erased names, and it computes the `_`'s
+taint from that term. A `_` with no term in the table is an ordinary
+error. A tuple `let` whose binders have a `_` is checked right-hand
+side first, given only its binders' multiplicities, and then each
+binder's type or `is` clause, with the binders before it naming their
+results, against the result it names.
 
-`solveFrom` checks the program with the table found so far; a `_` the
-table does not cover gets an entry of the scope, solved by unification
-as the checker did before the split, and at the end of the call,
-statement or other boundary it is in (§20), its terms are found and
-checking starts again with them. The terms use the numbering of
-entries `runProgramWith` has, which has no entry for a `_` or for the
-placeholder a tuple `let` binder gets while solving: a number counts
-only the entries before it that are neither. The terms offered for a
-`_` are, in order, one built from untainted entries that exist before
-it wherever canonicalization allows, the term unification first gave
-it, and its canonical form when its boundary ends. While solving, a
-tuple `let` whose binders have a `_` gives its right-hand side each
+`runProgram` checks with the table `solveTable` ends with
+(`solution`). `solveTable` runs the checking pass with the table found
+so far, starting from none; when checking stops at an error not found
+by evaluating (`CheckError.evaluated`), it runs the solver
+(`Solve.item`) on the item checking stopped at, from the top-level
+state checking reached before it, and when the solver finds terms for
+`_` the table had none for, it adds them and starts again. It ends
+when checking stops at no error, at an error found by evaluating, or
+where the solver finds no new terms; each round lowers the number of
+the program's `_` with no term in the table, which is its termination
+measure. `runProgram` reports what checking with that table reports,
+but for its error (`report`): when that error was not found by
+evaluating and the solver, run on the same item from the same state,
+stops at an error that is not internal, that error is reported
+instead, so that a `_` that cannot be inferred, or an equation
+unification cannot meet, is reported as the solver finds it.
+
+The solver checks the item as the checking pass does, but a `_` the
+table does not cover gets an entry of the scope, solved by
+unification, and at the end of the call, statement or other boundary
+it is in (§20) its terms are found and solving stops with them. The
+terms use the numbering of entries the checking pass has, which has
+no entry for a `_` or for the placeholder a tuple `let` binder gets
+while solving: a number counts only the entries before it that are
+neither. The terms offered for a `_` are, in order, one built from
+untainted entries that exist before it wherever canonicalization
+allows, the term unification first gave it, and its canonical form
+when its boundary ends. While solving, a tuple `let` whose binders
+have a `_` the table does not cover gives its right-hand side each
 binder's type or `is` clause abstracted only over the binders before
 it, so a `_` there can be unified with a later binder's placeholder,
 which the end of the statement unifies with the result that binder
-names. A tuple `let` whose
-binders have a `_` is checked by `runProgramWith` right-hand side
-first, given only its binders' multiplicities, and then each binder's
-type or `is` clause, with the binders before it naming their results,
-against the result it names.
-- `tests/`: the differential comparison with the TypeScript checker
-  (`tests/README.md`), `Audit.lean` and `gate.mjs`.
+names. The solver evaluates nothing. The theorems are meant not to
+depend on it: they hold for the checking pass with any table.
 
 ## The model the theorems use
 
@@ -199,8 +210,8 @@ no default, which `run` reads off the tokens) and any syntax error
 `runProgram phase prog has err`, Lean checks:
 
 - `runProgram_sound`: there is a world `W` of which `OutcomeSound`
-  holds for `out`, with the table `solution phase prog` that
-  `solveFrom` finds: the evaluator's view of the program `W.P` is that
+  holds for `out`, with the table `solution phase prog` that solving
+  ends with: the evaluator's view of the program `W.P` is that
   of the final top-level state of `runProgramWith` with that table,
   the closed signatures `W.Sc` are `out.sigs.map (Sig.close W.ρ)`, the
   functions are `out.fns`, and the valuation `W.ρ` has one value per
@@ -225,12 +236,16 @@ no default, which `run` reads off the tokens) and any syntax error
   `typeOf` gives the result, both read in `W` (`PrintJust`). With no
   error, `out.prints` has one entry per `print` of `prog`.
   `runProgramWith_sound` states the same of `runProgramWith` with any
-  table (nothing about `solveFrom` is used).
+  table (nothing about the solver is used).
 - `runProgram_eq`: `out` is `runProgramWith` with the table
-  `solution phase prog`, but for its error, which is set exactly when
-  that one's is, and is the same one when checking stopped at an error
-  found by evaluating. So no field of `out` but the text and position
-  of an error comes from the solving pass.
+  `solution phase prog`, but for its error, which is either that one's,
+  or, when checking with that table stops at an error `e` at an item
+  `t` and `e` was not found by evaluating, the error `e'` that
+  `Solve.item` stops at solving `t` from the state checking reached
+  before it, and `e'` is not internal. This holds by how `runProgram`
+  is defined: it is the checking pass's outcome with its error mapped
+  by `report`. So no field of `out` but the position and text of an
+  error comes from the solver.
 - `type_goal_inhabited`: if the goal is proved and is the type `t`,
   there is a valuation `ρ` with one value per entry of `out.entries`,
   satisfying the final scope if it is untainted and, by its first
@@ -270,26 +285,35 @@ no default, which `run` reads off the tokens) and any syntax error
   an ideal value of type `t`, which `TopState.eval` would return.
 - `checkItems_noInternal` and `runProgramWith_noInternal`
   (`Sound/InternalTop.lean`): for any phase and any table, when every
-  item of `prog` meets `Top.okFor table` (no `removed` node, no
-  `comptime` pattern `let` below the top level, no type constructor or
-  value constructor named `sorry`, at least one element in each tuple,
+  item of `prog` meets `Top.shaped` (no `removed` node, no `comptime`
+  pattern `let` below the top level, no type constructor or value
+  constructor named `sorry`, and at least one element in each tuple,
   binder in each tuple `let`, entry in each written annotation and
-  `sorry` telescope and return in each function, and terms in the
-  table for every `_` of the program), checking it with that table
-  stops at no error marked `internal`, so with no syntax error the
-  error `runProgramWith` reports is not internal. The proof carries a
-  well-formedness invariant through the checking pass (`ScOk`, `TopWf`
-  in `Sound/Internal.lean` and `Sound/InternalTop.lean`, over
-  `Sound/Wf.lean`'s well-formed terms, telescopes, signatures and
-  scopes, on which `solve`, `force` and `unify` are shown never to get
-  stuck).
+  `sorry` telescope and return in each function), checking it with
+  that table stops at no error marked `internal`, so with no syntax
+  error the error `runProgramWith` reports is not internal. A `_` with
+  no term in the table is an ordinary error, so no condition on the
+  table is needed. The proof carries a well-formedness invariant
+  through the checking pass (`ScOk`, `TopWf` in `Sound/Internal.lean`
+  and `Sound/InternalTop.lean`, over `Sound/Wf.lean`'s well-formed
+  terms, telescopes, signatures and scopes, on which `solve` and
+  `force` are shown never to get stuck).
+- `runProgram_noInternal`: when every item of `prog` meets
+  `Top.shaped`, the error `runProgram` reports for an item, whatever
+  `err` is, is not internal, since `report` keeps the checking pass's
+  error unless the solver's is not internal.
+- `parse_shaped` (`ParserSound.lean`): every item `parse source phase`
+  returns meets `Top.shaped`; it rests on `lex_name` (`Lexer.lean`), by
+  which a name token is not a keyword, so not `sorry`. So
+  `run_noInternal`: for any source and phase, the error `run` reports
+  for an item is not internal, with no hypothesis.
 
 The evaluator is defined only for what has an evaluation: `evalExpr`
 takes the fact that one exists and returns it, unique by determinism
-(`Eval.det`), so it neither fails nor runs without end. Outside the
-solving pass, `topItem` evaluates with that fact from `TopState.Runs`,
-which holds at every state `topItems` reaches by `TopInv.runs`, the
-main lemma applied to the item; the solving pass evaluates nothing.
+(`Eval.det`), so it neither fails nor runs without end. `topItem`
+evaluates with that fact from `TopState.Runs`, which holds at every
+state `topItems` reaches by `TopInv.runs`, the main lemma applied to
+the item; the solver evaluates nothing.
 Every definition is total, by structural or well-founded recursion,
 with no fuel, which is what the gate checks, so checking and evaluating
 a program is meant to end, by Lean's acceptance of those definitions. The top level does not evaluate a `qed`'s expression:
@@ -315,10 +339,11 @@ differential corpus, 45 report their goal proved.
   `HasType`, `TeleSat`, `WType`, `WSat`, `Sat`, `junkHead`, `Approx`,
   `Sigs.erasedArg`, `Rel`, `MultRel`, `MultsRel`, `Sig.close`,
   `GoalHolds`, `GoalBelow`, `ProvedAt`, `OutcomeSound`, `PrintsShown`,
-  `PrintJust`, `typeOf`, `showValue`, `World`, `Top.okFor`,
+  `PrintJust`, `typeOf`, `showValue`, `World`, `Top.shaped`,
   `CheckError.internal`, the evaluation relation `Eval` and its
   companions, `CallRel` among them, `bindPattern`, and the meaning of
-  `runProgram`, `runProgramWith`, `run`, `checkItems`, `topItems`,
+  `runProgram`, `report`, `runProgramWith`, `run`, `checkItems`,
+  `topItems`,
   `topItem` and the checker functions the `reached_` theorems name,
   `TopState.eval`, `TopState.run` and `Outcome`'s fields. That `HasType`
   captures what a value of a type is rests on SOUNDNESS.md part 2, which
@@ -329,7 +354,7 @@ differential corpus, 45 report their goal proved.
   implementations agree on whether there is an error, the printed
   values, `qed`, `goalProved` and `containsSorry` for every program of
   the corpus.
-- The parser: no theorem is about it. The `run_` theorems say nothing
+- The parser, but for `parse_shaped`: the `run_` theorems say nothing
   about whether the parsed program is the program the source text
   means.
 - Nothing is proved about the TypeScript implementation.
@@ -355,7 +380,7 @@ items 69 to 75.
   program with an error starting "internal:", marked `internal`
   (`CheckError.internal`), so that the proofs need
   no syntactic invariants: a term with no type, a head with no
-  signature, an expression producing no value, a `_` with no entry, a
+  signature, an expression producing no value, a
   term to abstract that is not closed (`abstract?`), an argument with
   no parameter, an undetermined entry in a whole telescope, a missing
   `subterm` parameter or argument in a decrease check, forcing that
@@ -367,38 +392,42 @@ items 69 to 75.
   a telescope, value-constructor return or goal mentioning an entry
   below the top level, a value-constructor return that does not apply
   its type constructor, and a type constructor or value constructor
-  named `sorry`, which, `sorry` being a keyword, the parser is believed
-  never to produce. No program of the corpus reaches one of these.
-  `checkItems_noInternal` (above) shows that the checking pass reaches
-  none of them on a program meeting `Top.okFor`; nothing is proved
-  about the solving pass.
+  named `sorry`, which, `sorry` being a keyword, the parser never
+  produces (`parse_shaped`). No program of the corpus reaches one of
+  these. `checkItems_noInternal` (above) shows that the checking pass
+  reaches none of them on a program meeting `Top.shaped`. The solver
+  has internal checks of its own (a `_` with no entry, unification
+  that gets stuck, an argument with no parameter, as well as the
+  checking pass's); nothing is proved about them, but `report` never
+  reports one, falling back to the checking pass's error.
 - It has no interface: it answers `inspect;` as text, and nothing else
   of §13.
 
 ## What is not proved
 
-- Anything about `solveFrom`: that it finds a term for every `_`
-  DESIGN.md means to be solved, or the terms DESIGN.md means, or that
-  the error text it gives belongs to the error `runProgramWith` meets
-  at that item (`runProgram_eq` pins down only whether there is an
-  error). The theorems hold for `runProgramWith` with any table, so a
-  wrong table is believed to cost only completeness (a program
-  rejected) or a misleading message, not soundness.
-- That the solving pass reaches no internal check, that the solver's
-  table holds every `_` of the program, or that the parser's output
-  meets the conditions of `Top.okFor` other than the table's; so
-  nothing proves that `runProgram` or `run` reports no internal error.
+- Anything about the solver (`Solve.item`, `solveTable`): that it
+  finds a term for every `_` DESIGN.md means to be solved, or the terms
+  DESIGN.md means, that it reaches no internal check, or that the error
+  it reports in place of the checking pass's (`report`) is the one
+  DESIGN.md means. The theorems hold for the checking pass with any
+  table, so a wrong table is believed to cost only completeness (a
+  program rejected) or a misleading message, not soundness. Where the
+  solver meets an internal check, or finds no new term, the checking
+  pass's own error is reported, which for a `_` with no term says only
+  that the `_` cannot be inferred.
 - That only a `comptime` pattern `let` whose value has another head
   meets an error found by evaluating: `reached_comptime` says that such
   an item meets that error, not that no other error is marked as found
   by evaluating, and nothing proves unreachable the error a `comptime`
   pattern `let` reports when binding the value's fields fails. The
-  mark decides only which text `runProgram` reports.
+  mark decides only whether `runProgram` consults the solver about an
+  error.
 - That every `print` checked before an error is listed: with an error,
   `OutcomeSound` says only that each listed print is justified.
 - That the Lean checker implements DESIGN.md, that the parser reads
-  the source as DESIGN.md means it, and anything about the TypeScript
-  code (see above).
+  the source as DESIGN.md means it (`parse_shaped` says only that its
+  output has the shape above), and anything about the TypeScript code
+  (see above).
 
 One thing about how the statements read: `GoalHolds` for a function
 goal says that every tuple of values satisfying the goal's parameters
