@@ -83,7 +83,8 @@ requests that touch `lean/` or `src/`.
   specifications and `GoalHolds`; `Sound/Measure.lean` the measure of
   SOUNDNESS.md part 6 that the totality proof inducts on;
   `Sound/Solution.lean` that a term `coreType` accepts, as the term a
-  `_` takes, has a value of its type (`coreType_sound`);
+  `_` takes, has a value of its type (`coreType_sound`), and that
+  `removed` is related to a value of type `Type()` (`removed_rel_type`);
   `Sound/Expr.lean` the main lemma, `Expr.sound` and `Stmt.sound`, by
   one lemma per construct, whose proofs are mostly in
   `Sound/Simple.lean`, `Call.lean`, `Match.lean` and `Erased.lean`;
@@ -114,7 +115,7 @@ to the terms it may stand for, and solves nothing: at each `_` it
 takes the first term of the table that is a well-formed term of the
 scope there (`coreType`), of the `_`'s type, meeting its parameter's
 `is` clause and §16's rule on erased names, and it computes the `_`'s
-taint from that term. A `_` with no term in the table is an ordinary
+taint from that term and the scope. A `_` with no term in the table is an ordinary
 error. A tuple `let` whose binders have a `_` is checked right-hand
 side first, given only its binders' multiplicities, and then each
 binder's type or `is` clause, with the binders before it naming their

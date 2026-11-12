@@ -7,8 +7,9 @@ of DESIGN.md.
 **How rigorous it is.** The note defines a semantics and a typing of
 values, states its lemmas precisely, and proves each by a written
 induction. The note itself is not machine-checked, and part 9 lists
-what it takes on trust: chiefly that the checker implements §3 to §12
-and §16 as the declarative rules of parts 4, 12 and 13 describe them.
+what it takes on trust: chiefly that the checker implements §3 to §12,
+§16 and §20 as the declarative rules of parts 4, 12, 13 and 14 describe
+them.
 It follows the shape of Sleight's
 [SOUNDNESS.md](https://github.com/emmarion/sleight/blob/main/SOUNDNESS.md),
 which argues the same points for a larger language. A second
@@ -16,11 +17,12 @@ implementation of the checker and evaluator, in Lean under `lean/`,
 comes with Lean-checked counterparts of most of the lemmas below, for
 every program under any phase, `_` for an argument or inside a type
 (§20) and `sorry` included, so their statements take in taint (§12),
-which part 12 argues, and erasure (§16), which part 13 argues. Parts
-11 to 13 list them. Those results are about the Lean implementation
-and about the definitions as formalized there, not about the
-TypeScript code. This note's own argument does not cover `_` for an
-argument or inside a type (parts 11 to 13).
+which part 12 argues, types not being evaluated (§11) and erasure
+(§16), which part 13 argues, and `_`, which part 14 argues. Parts 11
+to 14 list them. Those results are about the Lean implementation and
+about the definitions as formalized there, not about the TypeScript
+code. Neither this note nor Lean argues how the term a `_` stands for
+is found (part 14).
 
 ## In short
 
@@ -29,7 +31,7 @@ paradoxes seem not to reach it:
 
 1. **Types never compute.** A type contains no call (§3), and the
    checker evaluates only top-level statements, as they are checked
-   (§11, §12), never inside a type.
+   (§11, §12), and no type in them.
 2. **Termination does not come from types.** Every call goes down in an
    order made of the definition order of groups and the `subterm`
    parameters (§9), and neither looks at a type.
@@ -43,10 +45,12 @@ paradoxes seem not to reach it:
 
 In a program that contains `sorry`, the claims are about what taint
 (§12) leaves untainted, and taint keeps `sorry` away from them (part
-12). In a phase 2 program, they are about ideal values, those an
-evaluation of everything would compute; what runs, the evaluation of
-what erasure (§16) leaves, computes them outside erased positions
-(part 13).
+12). They are about ideal values, those an evaluation of everything,
+types included, would compute; what runs, the evaluation of what is
+left once types (§11) and, in phase 2, erased code (§16) are removed,
+computes them outside types and erased positions (part 13). A `_` for
+an argument or inside a type stands, for the argument, for a term the
+checker checks in its place, whatever term that is (part 14).
 
 ## 1. What is claimed
 
@@ -70,12 +74,15 @@ nothing runs at compile time that the program's text does not ask for
 (§11), the presence of `sorry` is a property of the text alone, which is
 why reporting it for the whole program suffices (§12).
 
-In a phase 2 program, (T) and (P) are claimed of part 5's evaluation,
-which computes erased values too and so is ideal: nothing runs it.
-What runs is the evaluation of what erasure leaves (§16), and it is
-claimed to terminate, with values that agree with the ideal ones
-outside erased positions; (K) is about ideal values, and is claimed as
-stated. Part 13 argues these, with or without `sorry`.
+In every phase, (T) and (P) are claimed of part 5's evaluation, which
+computes types too, and in phase 2 erased values, and so is ideal:
+nothing runs it. What runs is the evaluation of what is left once
+types (§11) and, in phase 2, erased positions (§16) are removed, and it
+is claimed to terminate, with values that agree with the ideal ones
+outside types and erased positions; (K) is about ideal values, and is
+claimed as stated. Part 13 argues these, with or without `sorry`, and
+part 14 extends the argument to `_` for an argument or inside a type
+(§20).
 
 ## 2. Values and their types
 
@@ -222,13 +229,17 @@ reading of §6 to §12.
   annotation.
 - **A pattern `let`** is a `match` with one branch whose body is the rest of
   the enclosing body.
+- **`_` for an argument or inside a type** stands for a skeleton term
+  that the checker checks in its place (part 14).
 - **Termination** follows §9.
 
 ## 5. Preservation (P)
 
 Evaluation is eager and big-step: `rho |- e => vs`, the values `vs` of
 `e`'s results, with function calls evaluating the body in a valuation of
-the parameters. The top level evaluates in order.
+the parameters. The top level evaluates in order. This evaluation is
+ideal: unlike what runs (§11), it evaluates types too, to the values of
+part 2; part 13 relates the two.
 
 **Theorem 5.1.** If `Gamma |- e => Delta`, `rho |= Gamma` and
 `rho |- e => vs`, then `vs |= Delta rho`, and the valuation extended by
@@ -245,6 +256,8 @@ the entries `e`'s statements add satisfies the extended context.
   then satisfy the return telescope, `is` returns included.
 - **`let`.** Immediate from the right-hand side, with Corollary 3.2 for a
   written type or `is` clause.
+- **`_` for an argument or inside a type.** Its value is its term's
+  (part 14).
 - **`match`.** The scrutinee's value has the scrutinee's type, a data
   type (§10), an application of some data type constructor `T`, so by
   Lemma 2.1 it is `C(w...)` for a value constructor `C` of `T`. By Lemma
@@ -307,7 +320,10 @@ the arguments, and 5.1's induction is on the derivation 6.2 provides.
 
 Canonicalization ends because the rules are acyclic (part 3). Forcing
 ends (Lemma 3.3), and so does comparison for identity. `_` in place of
-an annotation copies a telescope the position already has. Compile-time
+an annotation copies a telescope the position already has. Checking a
+`_` for an argument or inside a type with its term checks that the term
+is well formed and compares types for identity (part 14), which ends;
+that finding the terms ends is not argued here (part 14). Compile-time
 evaluation of each top-level statement ends by Theorem 6.2. Nothing
 here looks at whether `Type()` contains itself.
 
@@ -326,7 +342,7 @@ need not evaluate to such a valuation; Theorem 12.4 takes their place.
 
 ## 9. What is taken on trust
 
-- **The checker implements parts 4 and 12.** The note proves the
+- **The checker implements parts 4, 12 and 14.** The note proves the
   declarative rules sound, not the TypeScript code. In particular it
   assumes that entries are distinct however they are named, that
   forcing and canonicalization follow part 3, that a match branch's
@@ -334,17 +350,18 @@ need not evaluate to such a valuation; Theorem 12.4 takes their place.
   rules, which Lemma 3.3 makes consequences of the typing, last to the
   end of the enclosing match branch or function body, or of the program
   (§7, §10), that taint is computed, and code removed, as part 12
-  reads §12, and that erasure is decided, and code removed, as part 13
-  reads §16. For the Lean implementation, the theorems of parts 11 to
-  13 are about its code instead.
-- **The evaluator** computes the semantics of part 5, on what taint
-  and erasure leave (parts 12 and 13). The facts a `comptime` pattern
-  `let` adds depend on it.
+  reads §12, that erasure is decided, and code removed, as part 13
+  reads §16, that no type is evaluated (§11), and that a `_` is checked
+  as part 14 reads §20. For the Lean implementation, the theorems of
+  parts 11 to 14 are about its code instead.
+- **The evaluator** computes the semantics of part 5 outside types, on
+  what taint and erasure leave (parts 12 and 13). The facts a
+  `comptime` pattern `let` adds depend on it.
 - **Phase 2.** Part 13 takes its relations between run-time and ideal
   values to capture what erasure may remove. What it claims of what
   runs is that run-time values agree with the ideal ones outside erased
-  positions, and nothing more of erased positions; so it does not show
-  that `print` shows an erased field as `_` (§16).
+  positions and types, and nothing more of them; so it does not show
+  that `print` shows an erased field or a type as `_` (§12, §16).
 
 ## 10. What the argument leans on
 
@@ -365,7 +382,10 @@ If any of these changed, the argument would need revisiting:
   being evaluated (part 12);
 - an erased value reaching a position that is not erased, or an
   erased match with a `many` annotation entry and two branches that
-  are not absurd (part 13).
+  are not absurd (part 13);
+- a `_` argument evaluated, or allowed where it is not erased, not of
+  type `Type()` and not inside a type, or a `_` standing for a term that
+  is not well formed or not of its position's type (part 14).
 
 ## 11. The Lean counterparts
 
@@ -374,14 +394,19 @@ theorems are stated in and what they assume. Lean checks the theorems
 below for every program, with or without `_` for an argument or
 inside a type (§20), under any phase, with or without `sorry`, with no
 axioms beyond `propext`, `Classical.choice` and `Quot.sound`. Checking
-is split in two: the solver `solveFrom` finds a table of the terms
-each `_` may stand for, and the checking pass `runProgramWith` checks
-and evaluates the program with it. The theorems about a whole program
-are proved of that pass with any table (`outcome_sound` and
-`runProgramWith_sound`, `Sound/Top.lean`), and those about
-`runProgram`, which runs the two, follow with nothing about the solver
-used. Nothing is proved about the solver; a wrong table is believed to
-cost a program its acceptance, not soundness. Each is meant to be the
+is split in two: the solver (`Solve.item`, `Solve.lean`) finds terms
+each `_` may stand for, which `solveTable` gathers, round by round,
+into a table, `solution` being the table it ends with (`Run.lean`);
+and the checking pass `runProgramWith` checks and evaluates the
+program with a table. The theorems about a whole program are proved of
+that pass with any table (`runProgramWith_sound`, with `OutcomeSound`,
+`Sound/Top.lean`), and those about `runProgram`, which checks with the
+table `solution` gives, follow with nothing about the solver used:
+`runProgram_eq` says that `runProgram`'s outcome is the checking
+pass's with that table, but for its error, which may be one the solver
+meets (`report`). Nothing is proved about the solver; a wrong table is
+believed to cost a program its acceptance, or give it a misleading
+message, not soundness. Each is meant to be the
 counterpart of the part of this note it is listed under; the
 correspondence is a Claude session's reading and may be inexact. File
 names are under `lean/Pledge/`.
@@ -389,8 +414,9 @@ names are under `lean/Pledge/`.
 The Lean statements split the single evaluation of parts 5 and 6 in
 two, as part 13 does: an ideal valuation, which plays the role of
 `rho` here, and run-time values, which the evaluation relation
-computes and from which taint and erasure remove parts. A run-time value is related to an ideal one
-by `Rel`, or by `Approx` at an erased position (`Core.lean`).
+computes, with no type, and from which taint and erasure remove parts.
+A run-time value is related to an ideal one by `Rel`, or by `Approx`
+at an erased position (`Core.lean`).
 
 - **Part 2.** `HasType` and `TeleSat` (`Core.lean`) define the typing of
   values. They type values by closed signatures, the program's
@@ -422,10 +448,22 @@ by `Rel`, or by `Approx` at an erased position (`Core.lean`).
   ideal values that satisfy what the checker assigned.
 - **Lemma 6.1:** `call_lt` (`Sound/Basic.lean`), with `Act.lt_wf`
   (`Sound/Measure.lean`) for the well-foundedness of the order.
-- **(P) and (T)** for the top level: `runProgram_sound`,
-  `reached_eval_ok` and `reached_run_ok` (`Sound/Top.lean`), the last
-  two saying that each top-level evaluation has a derivation of `Eval`
-  and that the executable evaluator returns its result.
+- **(P) and (T)** for the top level: `runProgram_sound`, whose
+  `OutcomeSound` says of each print listed (`PrintsShown`) that it is
+  `sorry` for a tainted result, and otherwise shows the run-time value
+  that the `print`'s checked tree evaluates to (`Eval`), related by
+  `Rel` to an ideal value that has a type (`PrintJust`,
+  `Sound/Item.lean`), and that one is listed for each `print` checked
+  (`allPrints`); and `reached_stmt`, `reached_comptime` and
+  `reached_qed` (`Sound/Top.lean`), which say that, at any state
+  checking reaches, a top-level `let` or `inspect;` that passes runs
+  (`EvalStmt`) to the new values of the top-level names unless it
+  leaves the scope tainted, and that the right-hand side of a
+  `comptime` pattern `let`, and the expression of a `qed` against a
+  type goal that passes and leaves the scope untainted, each with an
+  untainted result, evaluate (`Eval`) to a run-time value related by
+  `Rel` to a typed ideal value, which the executable evaluator returns,
+  or for a `qed` would return (`TopState.eval`).
 - **(K):** `type_goal_inhabited`, `fn_goal_holds` and `no_empty_goal`
   (`Sound/Top.lean`), and `run_sound` and `run_no_empty_goal` for source
   text, about whatever program it parses to; with `sorry`, the valuation
@@ -449,16 +487,28 @@ by `Rel`, or by `Approx` at an erased position (`Core.lean`).
   half and a run-time half (`FnSpec`, `CallSpec`); and the measure is
   taken on ideal arguments. Part 13 names the Lean counterpart of each
   of its steps beside it.
+- **`_` for an argument or inside a type (§20)** enters the statements
+  above only through the checking pass, which takes each `_`'s term
+  from the table. Part 14 names the Lean counterpart of each of its
+  steps beside it.
 
-This note does not argue `_` for an argument or inside a type (§20),
-its solving by unification or taint through a solved `_`; the Lean
-theorems above cover programs with them, the solver aside. The
-following have no Lean counterpart: the solver `solveFrom`; the
-TypeScript implementation; and the parsers, about which no theorem
-says anything. That the Lean checker implements
-DESIGN.md is not proved either; it is supported only by comparing its
-verdicts with the TypeScript checker's on a corpus of programs
-(`lean/tests/README.md`).
+Beyond these counterparts, Lean checks that the checking pass, with
+any table, reaches none of its internal checks on a program of the
+shape the parser produces (`Top.shaped`; `checkItems_noInternal` and
+`runProgram_noInternal`, `Sound/InternalTop.lean`), that on such a
+program the only error found by evaluating is that of a `comptime`
+pattern `let` whose value has another head (`checkItems_evaluated`),
+and that the parser's output has that shape (`parse_shaped`,
+`ParserSound.lean`), so that the error `run` reports for an item is
+never internal (`run_noInternal`). `lean/README.md` states these.
+
+The following have no Lean counterpart: how the terms of `_` are found
+(the solver, `Solve.item` and `solveTable`); the TypeScript
+implementation; and the parsers, but for `parse_shaped`, which says
+only that the output has that shape, not that it is the program the
+source text means. That the Lean checker implements DESIGN.md is not
+proved either; it is supported only by comparing its verdicts with the
+TypeScript checker's on a corpus of programs (`lean/tests/README.md`).
 
 ## 12. Programs that contain `sorry`
 
@@ -540,6 +590,8 @@ its construct, about the Lean checker's implementation of it
   (`FnOk.defn`, `Sound/Defs.lean`);
 - a tuple `let` binder has the taint of the result it binds, and so
   does every use of it (`let_sound`, `var_sound`);
+- a `_` for an argument or inside a type is tainted when the scope is
+  or its term mentions a tainted entry (part 14);
 - a pattern `let` on a tainted scrutinee taints the scope after it,
   and every branch of a match on one is checked in a tainted scope
   (`patletMany_sound`, `matchMany_sound`, `comptimeLet_sound`); every
@@ -563,10 +615,15 @@ invariant is kept through these items by `topStmt_sound`,
 
 Evaluation is now of the tree taint leaves, from a run-time
 environment that gives each name a value; a removed expression
-evaluates to a placeholder, `removed`. Say that such an environment
-**agrees with** `rho` in a scope when it gives each untainted name its
-entry's value under `rho`; a tainted name may have any value, or
-`removed` (`EnvRel`, `Sound/Defs.lean`).
+evaluates to a placeholder, `removed`. No type is evaluated (§11): the
+tree of an application of a type constructor is `removed` too. Write
+`a ~ v` when the run-time value `a` is the ideal value `v` with some
+of its subtrees headed by a type constructor replaced by `removed`;
+this is how this note reads part 13's `~` where nothing is erased, as
+in phase 1. Say that such an environment **agrees with** `rho` in a
+scope when it gives each untainted name a value `a` with `a ~ v`, `v`
+being its entry's value under `rho`; a tainted name may have any
+value, or `removed` (`EnvRel`, `Sound/Defs.lean`).
 
 **Theorem 12.3.** Let `rho |=~ Gamma` for an untainted scope `Gamma`,
 and let `e` check in `Gamma`, given what its position gives it (§8),
@@ -579,9 +636,10 @@ with results `r1..rk`. If the scope after `e` is untainted, then:
   `ri`; and `v1..vk` meet what `e` is given: each entry's `is` rule,
   and its type, by `|-` for an untainted result and by its head for a
   tainted one;
-- (b) from every run-time environment that agrees with `rho`, the tree
-  taint leaves of `e` evaluates, and the run-time value of each
-  untainted `ri` is `vi`.
+- (b) unless `e` is inside an argument of a type constructor, which is
+  never evaluated (§11), from every run-time environment that agrees
+  with `rho`, the tree taint leaves of `e` evaluates, and the run-time
+  value `a` of each untainted `ri` has `a ~ vi`.
 
 If the scope after `e` is tainted, every result of `e` is tainted and
 `e` is removed, and nothing is claimed. The same holds of a statement,
@@ -589,8 +647,7 @@ with no results. (`ExprPost`, `StmtPost`, `Expr.sound` and
 `Stmt.sound`, `Sound/Defs.lean` and `Sound/Expr.lean`. `ExprPost`
 states of an untainted result's value that it has some type by `|-`,
 not which, besides that the values meet what `e` is given; and it
-relates run-time values to ideal ones as part 13 describes, which is
-equality where nothing is erased, as in phase 1.)
+relates run-time values to ideal ones by part 13's `~`.)
 
 *Proof,* by the induction of Theorems 5.1 and 6.2, now on the measure
 of activations of untainted functions only. The cases:
@@ -598,9 +655,11 @@ of activations of untainted functions only. The cases:
 - **`sorry`.** Every result is tainted; Lemma 12.2 gives its values
   from the telescope. It is removed and evaluates to `removed`.
 - **A name.** Its entry's value. The environment gives an untainted
-  name that value.
+  name a value related to it by `~`.
 - **Application, tuple, block.** As in part 5. A tainted application
-  still has the value `F(v1..vn)`, which has its type by its head. A
+  still has the value `F(v1..vn)`, which has its type by its head. For
+  (b), an application of a type constructor is not evaluated: its tree
+  is `removed`, and `removed ~ v` for its ideal value `v`, a type. A
   block whose statements taint its scope has only tainted results, and
   is removed; its values come from Lemma 12.2 (`block_sound`).
 - **Call.** If the function or an argument is tainted, every result is
@@ -639,7 +698,8 @@ of activations of untainted functions only. The cases:
   its results are tainted, so all the match's are, and Lemma 12.2
   gives their values instead.
   For (b): a match with an untainted result is not removed. Its
-  scrutinee is untainted, so its run-time value is its ideal one,
+  scrutinee is untainted, so its run-time value `a` has `a ~ C(w...)`
+  for its ideal value, and, `C` being a value constructor, `a` is
   headed by `C`; the evaluator takes the branch for `C` and binds the
   fields to their values (`EnvRel.pattern`, `Sound/Match.lean`), and
   the branch's untainted results evaluate to their values by the
@@ -661,10 +721,11 @@ taint leaves has an evaluation by the big-step relation (`Eval`,
 `match` or pattern `let` whose scrutinee's value is `removed`, so the
 evaluation of what taint leaves never reaches a `sorry` and never
 inspects a removed value. A removed value may still be passed along
-unexamined, as the value of a tainted name, a tuple's element or a
-match's result. At the top level, `reached_eval_ok` and
-`reached_run_ok` (`Sound/Top.lean`) state this for the evaluations a
-top-level item performs while the scope is untainted.
+unexamined, as a type or as the value of a tainted name, a tuple's
+element or a match's result. At the top level, `PrintJust`
+(`Sound/Item.lean`), `reached_stmt`, `reached_comptime` and
+`reached_qed` (`Sound/Top.lean`) state this for the evaluations a
+top-level item performs while the scope is untainted (part 11).
 
 ### The top level and the goal
 
@@ -704,9 +765,8 @@ a program with `sorry` or without (`no_empty_goal`).
 
 ### What this part does not cover
 
-- `_` for an argument or inside a type (§20), and so taint through a
-  solved `_` (§12): this part does not argue them, though the Lean
-  theorems it names cover programs with them (part 11).
+- `_` for an argument or inside a type (§20), and taint through it
+  (§12): part 14 extends this part to them.
 - Erasure (§16): part 13 extends this part to phase 2.
 - The TypeScript code: this part is about the taint rules as it reads
   them, and the Lean theorems about the Lean implementation, whose
@@ -719,26 +779,28 @@ a program with `sorry` or without (`no_empty_goal`).
 
 ## 13. Erasure
 
-This part extends parts 3 to 8, and part 12, to a phase 2 program
-(§16), with or without `sorry`. Beside each step it names the Lean
+This part extends parts 3 to 8, and part 12, to what runs: in every
+phase no type is evaluated (§11), and in phase 2 erasure (§16) removes
+code too, with or without `sorry`. Beside each step it names the Lean
 theorem or definition that checks its counterpart in the Lean
 implementation, for every program (part 11); file names are under
 `lean/Pledge/`, and the correspondence is a Claude session's reading.
 Without `sorry` every result is untainted, and
 nothing of part 12 is needed but its notation.
 
-**The idea.** Erasure removes code before evaluation, so part 5's
-evaluation, which computes every value, is not what runs. The argument
-keeps it all the same, as an ideal valuation: every entry and every
-result has an ideal value whether or not anything computes it, and
-parts 5 to 8 are claims about ideal values. What runs is the
+**The idea.** No type is evaluated, and erasure removes code before
+evaluation, so part 5's evaluation, which computes every value, is not
+what runs. The argument keeps it all the same, as an ideal valuation:
+every entry and every result has an ideal value whether or not anything
+computes it, and parts 5 to 8 are claims about ideal values. What runs is the
 evaluation of the tree that erasure and taint leave, on run-time
 values in which an erased position may hold the placeholder `removed`.
 A run-time value approximates the ideal one, and where a result is not
 erased it carries the ideal value's tag and, recursively, the tags of
-its fields that are not erased. Type-constructor arguments are erased
-from phase 2 on. What remains to check is that nothing that runs needs
-what erasure removed: that an erased value never reaches a position
+its fields that are not erased, unless the ideal value is a type,
+which may be `removed` at run time. Type-constructor arguments are
+erased from phase 2 on. What remains to check is that nothing that
+runs needs what erasure removed: that an erased value never reaches a position
 that is not erased, and that every match that runs can choose its
 branch.
 
@@ -753,18 +815,23 @@ value `v`:
 
 - `a <~ v`, `a` **approximates** `v`, when `a` is `removed`, or
   `a = F(a1..an)`, `v = F(v1..vn)` and each `ai <~ vi` (`Approx`);
-- `a ~ v`, `a` is **related to** `v`, when `a = F(a1..an)`,
-  `v = F(v1..vn)` and each `ai ~ vi`, except that only `ai <~ vi` is
-  asked where argument `i` of `F` is erased (`Rel`);
+- `a ~ v`, `a` is **related to** `v`, when `a` is `removed` and `v`
+  is headed by a type constructor, since no type is evaluated (§11);
+  or when `a = F(a1..an)`, `v = F(v1..vn)` and each `ai ~ vi`, except
+  that only `ai <~ vi` is asked where argument `i` of `F` is erased
+  (`Rel`);
 - `a ~m v`, for a multiplicity `m`, is `a ~ v` when `m` is `many` and
   `a <~ v` when `m` is `erased` (`MultRel`, and `MultsRel` position by
   position).
 
-A related value is never `removed`, so a result in a position that is
-not erased carries its tag (§16), and so does each of its fields that
-is not erased, all the way down. Where nothing is erased, as in phase
-1, `a ~ v` is `a = v`. The typing of part 2 is unchanged: an erased
-field is typed like any other, since it still constrains types
+A related value is `removed` only where the ideal value is a type, so
+a result in a position that is not erased whose ideal value is headed
+by a value constructor carries its tag (§16), and so does each of its
+fields that is not erased and is not a type, all the way down. Where
+nothing is erased, as in phase 1, `a ~ v` says that `a` is `v` with
+some of its subtrees headed by a type constructor replaced by
+`removed`, as part 12 has it. The typing of part 2 is unchanged: an
+erased field is typed like any other, since it still constrains types
 (`HasType` and `TeleSat` read no multiplicity).
 
 **Lemma 13.1.** If `a ~ v` then `a <~ v`; a value without `removed` is
@@ -814,6 +881,8 @@ definition that implements it (`Check/Basic.lean`, `Check/Expr.lean`):
   of a block (`Expr.absurd`); an erased match's absurd branches are
   left out of its tree. A `comptime` pattern `let` cannot be erased.
 
+The tree of an application of a type constructor is `removed`, with
+everything in it, in every phase (`checkExpr`, `Check/Expr.lean`).
 Evaluation (`Eval`, `Eval.lean`) meets erasure in three places. A
 removed expression evaluates to `removed`, one value standing for as
 many as are needed (`take`). An erased match takes the one branch its
@@ -847,7 +916,8 @@ the scrutinee's run-time value `a` has `a ~ C(w1..wn)`, then `a` is
 headed by `C`, and binding the fields' names to `a`'s arguments gives
 an environment that agrees with `rho[f1 := w1, ..., fn := wn]` in the
 scope with the fields named. If it is erased, binding every field's
-name to `removed` does. *Proof:* by Lemma 13.1, `a = C(a1..an)` with
+name to `removed` does. *Proof:* `C` is a value constructor, so `a` is
+not `removed`, and by Lemma 13.1 `a = C(a1..an)` with
 each `ai ~m wi`, `m` the multiplicity of `C`'s `i`-th field, which, at
 a `many` match, is the multiplicity of `fi`. At an erased one every
 `fi` is erased, and `removed <~ wi`. ∎ (`EnvRel.pattern`,
@@ -918,14 +988,17 @@ untainted, then:
 
 - (a) as Theorem 12.3 (a), with values `v1..vk`, whether or not `e` is
   in an erased position;
-- (b) from every run-time environment that agrees with `rho`, the tree
-  that erasure and taint leave of `e` evaluates to run-time values
+- (b) unless `e` is inside an argument of a type constructor, which is
+  never evaluated (§11), from every run-time environment that agrees
+  with `rho`, the tree that erasure and taint leave of `e` evaluates
+  to run-time values
   `u1..uk` (a removed tree to one `removed` standing for all of them,
   `take`), and `ui ~m vi` for each untainted `ri`, `m` being `erased`
   when `ri`'s position is erased and `many` otherwise.
 
 The same holds of a statement, with no results, its (b) being claimed
-only outside a wholly erased expression: there it runs to an
+only outside a wholly erased expression and an argument of a type
+constructor: there it runs to an
 environment that agrees with the extended valuation. (`ExprPost`,
 `StmtPost`, `ResRel` and `Ctx.posMult`, `Sound/Defs.lean`; `Expr.sound`
 and `Stmt.sound`, `Sound/Expr.lean`.)
@@ -954,18 +1027,24 @@ other, and gets its ideal results from the callee's ideal half. For
   `<~` follows by
   Lemma 13.1 (`Simple.var_post`).
 - **Application.** Its arguments are untainted, since its result is.
-  Each argument is given its parameter or field, so its position is
-  erased exactly where the argument of `F` is, and by (b) for it, it
-  runs to `ai ~m vi`; Lemma 13.2 relates the application
-  (`ctorApp_sound`, `Sound/Expr.lean`).
+  An application of a type constructor is not evaluated: its tree is
+  `removed`, and its ideal value, a type, is headed by a type
+  constructor, so `removed ~ v`; nothing is claimed of its arguments,
+  which never run. For a value constructor `F`, each argument is given
+  its field, so its position is erased exactly where the argument of
+  `F` is, and by (b) for it, it runs to `ai ~m vi`; Lemma 13.2 relates
+  the application (`ctorApp_sound`, `Sound/Expr.lean`;
+  `Simple.ctorApp_post`, `Sound/Simple.lean`). A `_` argument is the
+  case of part 14.
 - **Tuple, block, tuple `let`.** As in part 12, each element or
   statement in turn, the environment agreeing with the valuation as it
   grows (`EnvRel.extend`).
 - **Call.** The call is untainted, so its arguments are; each runs to a
   value related to its ideal value by its parameter's multiplicity, an
   argument for an erased parameter being wholly erased and running to
-  `removed`. The callee's measure is below the caller's on the ideal
-  arguments (Lemma 6.1, `call_lt`), so its run-time half gives run-time
+  `removed`, and a `_` argument running to `removed` (part 14). The
+  callee's measure is below the caller's on the ideal arguments (Lemma
+  6.1, `call_lt`), so its run-time half gives run-time
   results related to the ideal ones by the returns' multiplicities. A
   `many` return at an erased position is then related by `<~` (Lemma
   13.1), and an erased return is never at a position that is not
@@ -1006,7 +1085,8 @@ other, and gets its ideal results from the callee's ideal half. For
 
 In every case, a run-time value that is inspected, the scrutinee of a
 match or pattern `let` that is not erased, is at a position that is not
-erased, so it is related by `~` and is not `removed`; this is where the
+erased, so it is related by `~` to an ideal value headed by a value
+constructor, and is not `removed`; this is where the
 argument needs that no erased value reaches a position that is not
 erased, and that an erased match that runs has one branch to take. ∎
 
@@ -1035,7 +1115,8 @@ level evaluates for `print`, for a `qed` against a type goal and for a
 `comptime` pattern `let` are given nothing, or a type of multiplicity
 `many`, so they are not at erased positions, and by Theorem 13.5 (b)
 each with an untainted result evaluates to one value `a` with `a ~ v`
-for its ideal value `v`, which has a type (`reached_eval_ok`,
+for its ideal value `v`, which has a type (`PrintJust`,
+`Sound/Item.lean`; `reached_comptime` and `reached_qed`,
 `Sound/Top.lean`). A `comptime` pattern `let` is never erased, and the
 value its run produces has the ideal value's head (by the definition
 of `~`), so
@@ -1070,21 +1151,24 @@ no theorem states it separately.
 ### What `print` shows
 
 `print` shows its run-time value, `removed` as `_` (`showValue`,
-`Eval.lean`). By `reached_eval_ok`, that value `a` has `a ~ v` for the
-ideal value `v` of the printed expression, which has a type. So
-`print` shows `v`'s tags at every position that is not erased, and, at
-an erased position, `_` or a tree that approximates `v`'s subtree
-there. §16 says that an erased field is shown as `_`; the note expects
-this, since the tree of every wholly erased expression is `removed`
+`Eval.lean`). By `PrintsShown` (`runProgram_sound`, part 11), that
+value `a` has `a ~ v` for the ideal value `v` of the printed
+expression, which has a type. So `print` shows `v`'s tags at every
+position that is not erased and is not a type, and, at an erased
+position, `_` or a tree that approximates `v`'s subtree there. §16
+says that an erased field is shown as `_`; the note expects this,
+since the tree of every wholly erased expression is `removed`
 (`checkExpr_removed`), but no theorem states it, as `<~` allows any
-approximation, `v`'s subtree itself included.
+approximation, `v`'s subtree itself included. Likewise §11 and §12
+say that a type is shown as `_`, and `~` allows at a type either
+`removed` or a tree with the type's head; the note expects `removed`,
+since the tree of an application of a type constructor is, but no
+theorem states it.
 
 ### What this part does not cover
 
-- `_` for an argument or inside a type (§20), and so the solving of a
-  `_` by unification: this part does not argue them, though the Lean
-  theorems it names cover programs with them, nothing being proved
-  about the solver (part 11).
+- `_` for an argument or inside a type (§20): part 14 extends this
+  part to it.
 - The TypeScript code, as in part 12.
 - The executable evaluator: Theorem 13.5 (b) and its Lean counterparts
   say that an evaluation exists in the relation. The Lean evaluator
@@ -1107,3 +1191,116 @@ approximation, `v`'s subtree itself included.
 - A function goal holds vacuously when no values satisfy its
   parameters, as in part 12, and its run-time half constrains the
   results only up to `~m`.
+
+## 14. `_` for an argument or inside a type
+
+This part extends parts 4 to 8, 12 and 13 to `_` for an argument or
+inside a type (§20), in every phase, with or without `sorry`. Beside
+each step it names the Lean theorem or definition that checks its
+counterpart in the Lean implementation, for every program (part 11);
+file names are under `lean/Pledge/`, and the correspondence is a Claude
+session's reading.
+
+**The idea.** The argument does not look at how a `_` is solved. It
+takes the checker to check the program with a skeleton term in place
+of each `_`, and asks only that the term fit where it stands. For the
+argument, a `_` is then that term, which has a value of the right type
+under any valuation satisfying the scope; and since §20 allows a `_`
+argument only where its value is erased or a type, or inside a type,
+nothing needs to evaluate it. So the argument holds whatever terms are
+chosen, and needs nothing about how they are found: not unification,
+not that the facts in force leave one term (§20), and not the
+preference for an untainted term. None of these is argued here, and
+nothing about them is proved in Lean.
+
+### The rule, as this note reads it
+
+At each `_` for an argument or inside a type, the checker has a
+skeleton term `t` over the entries of the scope there, entries with no
+name included (§20), and requires that:
+
+- `t` is well formed in the scope, each application in it checking
+  against its telescope (§3, §8), and has a type `B` (`coreType`,
+  `Core.lean`);
+- `B` is canonically identical to the type the `_`'s position has: its
+  parameter's or field's type, instantiated by the earlier arguments,
+  or `Type()` for a whole type; and, for a parameter or field
+  `x is e`, `t` is canonically identical to `e` so instantiated;
+- outside an erased position, `t` meets §16's rule on erased names:
+  it mentions no erased name outside an argument that is erased, a
+  name whose type is `Type()` being exempt from phase 2 on
+  (`Term.erasedUse`);
+- a `_` argument is erased where it stands, is for a parameter or
+  field of type `Type()`, or is inside a type (§20; `holeType`,
+  `Check/Basic.lean`).
+
+The `_`'s result is `t`, tainted when the scope is tainted or `t`
+mentions a tainted entry (§12), and nothing is evaluated for it: its
+tree is `removed` (`Scope.solution`, `holeArg`, `Check/Basic.lean`;
+`Scope.solution_spec`, `holeArg_spec`, `Sound/Solution.lean`). In the
+Lean checker, `t` is the first term of the table given for the `_`
+that meets these conditions (`Scope.hole`; part 11).
+
+**Lemma 14.1.** Let `rho |=~ Gamma`, and let `t` be well formed in
+`Gamma` with type `B`. Then `t rho` is a value without `removed` that
+has type `B rho` by its head, and, when every entry `t` mentions is
+untainted, `|- t rho : B rho`. *Proof,* by induction on `t`. An entry
+has its type by its head, and, when untainted, by `|-`, since
+`rho |=~ Gamma`. An application `F(t1..tn)` is well formed when the
+type of each `ti`, and `ti` itself for an `is` field, is canonically
+identical to what `F`'s telescope asks, instantiated by `t1..t(i-1)`;
+by the induction hypothesis and Corollary 3.2 under Lemma 12.1, the
+values `ti rho` then meet the telescope by their heads, and by `|-`
+when the entries they mention are untainted, so `t rho` has `F`'s
+return, instantiated, as its type by its head, and by part 2's clauses
+in the second case. ∎ (`coreType_sound` and `coreArgs_sound`,
+`Sound/Solution.lean`.)
+
+So, under the rule, a `_`'s value `t rho` has the position's type by
+its head, by Corollary 3.2; when the `_` is untainted, its term
+mentions only untainted entries, so it has that type by `|-`; and it
+is the value of the parameter's `is` term (`Scope.solution_sound`,
+`holeArg_value`, `Sound/Solution.lean`). The third condition of the
+rule is not used: `Scope.solution_spec`, which is what the Lean proof
+uses of a `_`'s term, does not state it, and the argument below would
+hold without it, the `_`'s tree being `removed` whatever `t`
+mentions.
+
+### Preservation and totality
+
+In Theorems 5.1, 12.3 and 13.5 (a), a `_` is the case of its term
+written in its place: its ideal value is `t rho`, which meets what the
+position gives it as above, the `_` adding no entry or rule in Lean
+(`Call.arg_sound`, `Sound/Call.lean`, for an argument;
+`checkTerm_resOk`, `Sound/Term.lean`, inside a written type). For
+taint, all this needs is that an untainted `_`'s term mentions no
+tainted entry, which the rule gives, and a `_` in a tainted scope is
+tainted, as every result there is (part 12).
+
+For (b) of Theorems 12.3 and 13.5: a `_` in a written type or `is`
+term has no tree, nothing in a telescope or annotation being
+evaluated, and inside an argument of a type constructor nothing is
+claimed (part 13). Otherwise the `_` is an argument, and its tree
+evaluates to `removed`: at an erased position, `removed <~ v`; at a
+position that is not erased, the rule makes the parameter's type
+`Type()`, so an untainted `_`'s value is a type, headed by a type
+constructor, and `removed ~ v` (`removed_rel_type`,
+`Sound/Solution.lean`; `Call.arg_sound`).
+
+A tuple `let` with a `_` in a binder (§20) gives its right-hand side
+only its binders' multiplicities, and then checks each binder against
+the result it names; that check adds no entry and no rule (§8), so the
+argument for the `let` is part 5's (`anyGiven`, `Check/Expr.lean`;
+`letBinders`, `Check/Basic.lean`).
+
+### What this part does not cover
+
+- How the terms are found (§20): unification, that a `_` is solved
+  only where the facts leave one term, the preference for an untainted
+  term, and the boundaries by which a `_` must be solved. The Lean
+  solver (`Solve.item`, `solveTable`) is total, as every Lean
+  definition is (part 11), `solveTable` recursing on the number of `_`
+  with no term in the table; nothing else is proved about it, such as
+  that it finds the terms §20 means. That the TypeScript checker's
+  search for terms ends is not argued.
+- The TypeScript code, as in part 12.
