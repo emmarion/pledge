@@ -14,11 +14,13 @@ It follows the shape of Sleight's
 which argues the same points for a larger language. A second
 implementation of the checker and evaluator, in Lean under `lean/`,
 comes with Lean-checked counterparts of most of the lemmas below, for
-programs with no `_` for an argument or inside a type (§16) under phase 1 or 2, `sorry`
-included, so their statements take in taint (§12), which part 12
-argues, and erasure (§16), which part 13 argues. Parts 11 to 13 list
-them. Those results are about the Lean implementation and about the
-definitions as formalized there, not about the TypeScript code.
+every program under any phase, `_` for an argument or inside a type
+(§20) and `sorry` included, so their statements take in taint (§12),
+which part 12 argues, and erasure (§16), which part 13 argues. Parts
+11 to 13 list them. Those results are about the Lean implementation
+and about the definitions as formalized there, not about the
+TypeScript code. This note's own argument does not cover `_` for an
+argument or inside a type (parts 11 to 13).
 
 ## In short
 
@@ -369,9 +371,17 @@ If any of these changed, the argument would need revisiting:
 
 `lean/README.md` describes the Lean implementation, the model its
 theorems are stated in and what they assume. Lean checks the theorems
-below for programs with no `_` for an argument or inside a type (`Program.holeFree`), under
-any phase, with or without `sorry`, with no axioms beyond `propext`,
-`Classical.choice` and `Quot.sound`. Each is meant to be the
+below for every program, with or without `_` for an argument or
+inside a type (§20), under any phase, with or without `sorry`, with no
+axioms beyond `propext`, `Classical.choice` and `Quot.sound`. Checking
+is split in two: the solver `solveFrom` finds a table of the terms
+each `_` may stand for, and the checking pass `runProgramWith` checks
+and evaluates the program with it. The theorems about a whole program
+are proved of that pass with any table (`outcome_sound` and
+`runProgramWith_sound`, `Sound/Top.lean`), and those about
+`runProgram`, which runs the two, follow with nothing about the solver
+used. Nothing is proved about the solver; a wrong table is believed to
+cost a program its acceptance, not soundness. Each is meant to be the
 counterpart of the part of this note it is listed under; the
 correspondence is a Claude session's reading and may be inexact. File
 names are under `lean/Pledge/`.
@@ -414,20 +424,20 @@ by `Rel`, or by `Approx` at an erased position (`Core.lean`).
   (`Sound/Measure.lean`) for the well-foundedness of the order.
 - **(P) and (T)** for the top level: `runProgram_sound`,
   `reached_eval_ok` and `reached_run_ok` (`Sound/Top.lean`), the last
-  two saying that each top-level evaluation has a derivation of `Eval`,
-  not that the executable evaluator, a `partial` function, finds it.
+  two saying that each top-level evaluation has a derivation of `Eval`
+  and that the executable evaluator returns its result.
 - **(K):** `type_goal_inhabited`, `fn_goal_holds` and `no_empty_goal`
   (`Sound/Top.lean`), and `run_sound` and `run_no_empty_goal` for source
-  text whose parsed program is hole-free; with `sorry`, the valuation
+  text, about whatever program it parses to; with `sorry`, the valuation
   they give satisfies the top-level scope at the `qed` (`ProvedAt`,
   Theorem 12.4). `lean/README.md` lists ways in which these statements
   are weaker than they may first read.
-- **(C)** has no theorem. Every definition of the Lean implementation
-  other than the executable evaluator is total, by structural or
-  well-founded recursion, with no fuel. The evaluator is `partial`: each
-  result it returns carries a derivation of `Eval`, but nothing
-  establishes that it returns, so the Lean implementation does not
-  show that compile-time evaluation ends.
+- **(C)** has no theorem of its own. Every definition of the Lean
+  implementation is total, by structural or well-founded recursion,
+  with no fuel. The executable evaluator is defined only on what has
+  an evaluation by `Eval`, which the top level seems to get from the
+  theorems above (`TopInv.runs`), so its being accepted by Lean is
+  what suggests that compile-time evaluation ends.
 - **Taint (§12)** enters the statements above: an untainted entry or
   result is typed and a tainted one need not be; the invariant and the
   main lemma assert nothing once a scope is tainted; and a tainted
@@ -440,10 +450,12 @@ by `Rel`, or by `Approx` at an erased position (`Core.lean`).
   taken on ideal arguments. Part 13 names the Lean counterpart of each
   of its steps beside it.
 
-The following have no Lean counterpart: programs with a `_` for an argument or inside a type,
-and so §16's unification and taint through a `_`, which this note does
-not argue either; the TypeScript implementation; and the parsers, about
-which no theorem says anything. That the Lean checker implements
+This note does not argue `_` for an argument or inside a type (§20),
+its solving by unification or taint through a solved `_`; the Lean
+theorems above cover programs with them, the solver aside. The
+following have no Lean counterpart: the solver `solveFrom`; the
+TypeScript implementation; and the parsers, about which no theorem
+says anything. That the Lean checker implements
 DESIGN.md is not proved either; it is supported only by comparing its
 verdicts with the TypeScript checker's on a corpus of programs
 (`lean/tests/README.md`).
@@ -452,10 +464,9 @@ verdicts with the TypeScript checker's on a corpus of programs
 
 This part extends parts 3 to 8 to a phase 1 program that contains
 `sorry`. Beside each step it names the Lean theorem or definition that
-checks its counterpart in the Lean implementation, for programs
-with no `_` for an argument or inside a type in phases 1 and 2 (part 11); file names are
-under `lean/Pledge/`, and the correspondence is a Claude session's
-reading.
+checks its counterpart in the Lean implementation, for every program
+(part 11); file names are under `lean/Pledge/`, and the correspondence
+is a Claude session's reading.
 
 **The idea.** `sorry(x : False())` has no value, so a program with
 `sorry` can have no valuation satisfying part 3. The argument gives
@@ -693,8 +704,9 @@ a program with `sorry` or without (`no_empty_goal`).
 
 ### What this part does not cover
 
-- `_` for an argument or inside a type (§16), and so taint through a solved `_` (§12): neither
-  this part nor any Lean theorem covers them.
+- `_` for an argument or inside a type (§20), and so taint through a
+  solved `_` (§12): this part does not argue them, though the Lean
+  theorems it names cover programs with them (part 11).
 - Erasure (§16): part 13 extends this part to phase 2.
 - The TypeScript code: this part is about the taint rules as it reads
   them, and the Lean theorems about the Lean implementation, whose
@@ -710,9 +722,9 @@ a program with `sorry` or without (`no_empty_goal`).
 This part extends parts 3 to 8, and part 12, to a phase 2 program
 (§16), with or without `sorry`. Beside each step it names the Lean
 theorem or definition that checks its counterpart in the Lean
-implementation, for programs with no `_` for an argument or inside a type (part 11); file
-names are under `lean/Pledge/`, and the correspondence is a Claude
-session's reading. Without `sorry` every result is untainted, and
+implementation, for every program (part 11); file names are under
+`lean/Pledge/`, and the correspondence is a Claude session's reading.
+Without `sorry` every result is untainted, and
 nothing of part 12 is needed but its notation.
 
 **The idea.** Erasure removes code before evaluation, so part 5's
@@ -793,7 +805,8 @@ definition that implements it (`Check/Basic.lean`, `Check/Expr.lean`):
   erased expression, an erased result in a position that is not erased
   is an error (`finish`; `Scope.multOf` for a name;
   `FnGroup.telescope_erased`, `Sound/Fn.lean`, for a parameter's
-  entry).
+  entry). A use of a name whose type is canonically `Type()` is not an
+  erased result, from phase 2 on (`Sigs.restricted`).
 - **Erased match and pattern `let`.** Every field they bind is erased
   (`forcings`). An erased match with a `many` annotation entry has at
   most one branch that is not **absurd**, a branch being absurd when
@@ -877,8 +890,7 @@ activation's measure is its group and the ideal values of its
 check is about skeleton terms in the caller's scope, which Corollary
 3.2 relates to ideal values (`call_lt`, `Sound/Basic.lean`). This lets
 a function decrease only on an erased `subterm` parameter, as `len`
-does in `lean/tests/extra/phase2_erased_subterm_len.pledge`, a program
-with no `_` for an argument or inside a type:
+does in `lean/tests/extra/phase2_erased_subterm_len.pledge`:
 
 ```
 fn len(erased A : Type(), subterm erased n : Nat(), v : Vec(A, n)) -> (r : Nat()) {
@@ -934,7 +946,12 @@ other, and gets its ideal results from the callee's ideal half. For
 - **A name.** The environment gives an untainted name a value `a` with
   `a ~m rho(x)`, `m` the name's multiplicity. If the name's position is
   not erased, `finish` rejects an erased name there, so the name is
-  `many` and `a ~ rho(x)`; at an erased position, `<~` follows by
+  `many` and `a ~ rho(x)`, unless the name's type is `Type()` in phase
+  2 or later: then `rho(x)` has type `Type()`, so it is headed by a type
+  constructor (`TypeHeads`), whose arguments are all erased, and
+  `a <~ rho(x)` is `a ~ rho(x)` (`approx_rel_type`,
+  `rel_of_unrestricted`, `Sound/Solution.lean`). At an erased position,
+  `<~` follows by
   Lemma 13.1 (`Simple.var_post`).
 - **Application.** Its arguments are untainted, since its result is.
   Each argument is given its parameter or field, so its position is
@@ -1064,17 +1081,17 @@ approximation, `v`'s subtree itself included.
 
 ### What this part does not cover
 
-- `_` for an argument or inside a type (§16), and so the solving of a `_` by unification:
-  neither this part nor any Lean theorem covers them. The two programs
-  of `lean/tests/extra/` other than `len`'s pass `_` arguments, so they
-  are outside the theorems, and are only compared with the TypeScript
-  checker (part 11).
+- `_` for an argument or inside a type (§20), and so the solving of a
+  `_` by unification: this part does not argue them, though the Lean
+  theorems it names cover programs with them, nothing being proved
+  about the solver (part 11).
 - The TypeScript code, as in part 12.
 - The executable evaluator: Theorem 13.5 (b) and its Lean counterparts
-  say that an evaluation exists in the relation. The evaluator is
-  `partial`, and a result it returns comes with a derivation of the
-  relation, so by determinism it is the one described (`Eval.det`,
-  `TopState.eval_cert`), but nothing shows that it returns.
+  say that an evaluation exists in the relation. The Lean evaluator
+  is total on what has one, and a result it returns comes with a
+  derivation of the relation, so by determinism it is the one
+  described (`Eval.det`); the TypeScript evaluator has no such
+  statement.
 - What erased positions hold at run time: `<~` is all that is claimed
   of them. That evaluation skips erased positions is a property of the
   trees the checker builds, which `checkExpr_removed` states of each

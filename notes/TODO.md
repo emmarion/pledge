@@ -13,7 +13,7 @@ page "_ for erased arguments". A phase 1 learner may never see
 could be a short phase 1 page, or a paragraph on an existing page with
 the phase 2 page retitled.
 
-## 2. SOUNDNESS.md has not been revisited
+## 2. SOUNDNESS.md's argument has not been revisited
 
 Its prose argument predates §11's rule that no type is evaluated: claim
 (P), that every evaluation produces values of the types, would need to

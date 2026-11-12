@@ -95,12 +95,13 @@ two disagree, DESIGN.md is right and the code is wrong. Section numbers
 ## The Lean implementation
 
 `lean/` holds a second implementation of the checker and evaluator, in
-Lean 4, and Lean-checked soundness theorems about it for programs
-with no `_` for an argument or inside a type, under phase 1 or 2, `sorry` included;
+Lean 4, and Lean-checked soundness theorems about it, under phase 1 or 2,
+`sorry` and `_` included;
 `lean/README.md` describes its layout, what
 is proved and how it differs from the code above. It shares no code
-with `src/`. Its evaluation is a big-step relation, run by a `partial`
-evaluator whose results each carry a derivation of it. `lean/tests/`
+with `src/`. Its evaluation is a big-step relation, run by an evaluator that is
+defined on what has an evaluation and whose results each carry a
+derivation of it. `lean/tests/`
 compares its verdicts with those of `src/check.ts` on a corpus of
 programs that `lean/tests/gen-corpus.mjs` collects from the test suite,
 `tests/*.pledge`, `lean/tests/extra/*.pledge` and the tutorial.
