@@ -280,15 +280,26 @@ theorem removed_shape : ExprShape .removed := by
   intro C sc g o _ h
   simp [checkExpr, internal, failAt_eq, bind, Except.bind] at h
 
+theorem let_steps {C : Ctx} {sc : Scope} {p : Pos} {bs : List LetBinder} {rhs : Expr} {o : StmtOut}
+    (hf : bs.any (·.ann.any (·.term.holed)) = false) (h : checkStmt C sc (.let p bs rhs) = .ok o) :
+    ∃ o' ws, letWants C sc bs = .ok (ws, sc) ∧ checkExpr C sc (some (letGiven bs ws)) rhs = .ok o' ∧
+      (do let o ← keep o'.snaps (close o' 0)
+          pure (⟨o.sc.bind (bs.map LetBinder.name) ((bs.zip o.res).map fun (x : LetBinder × Res) =>
+            ({ x.2 with erased := x.1.mult == some Mult.erased } : Res)), .let p bs o.tree, o.snaps⟩ : StmtOut)) =
+        .ok o := by
+  have hr : rhsFirst C bs = false := by simp [rhsFirst, hf]
+  simp only [checkStmt, hr, Bool.false_eq_true, ↓reduceIte] at h
+  obtain ⟨u, -, h₁⟩ := bind_eq_ok.1 h
+  obtain ⟨⟨ws, sc'⟩, hws, h₂⟩ := bind_eq_ok.1 h₁
+  obtain ⟨hsc, -⟩ := letWants_spec hws hf
+  rw [hsc] at hws h₂
+  obtain ⟨o', ho', h₃⟩ := bind_eq_ok.1 h₂
+  exact ⟨o', ws, hws, ho', h₃⟩
+
 theorem let_shape {p : Pos} {bs : List LetBinder} {rhs : Expr} (hf : bs.any (·.ann.any (·.term.holed)) = false)
     (ih : ExprShape rhs) : StmtShape (.let p bs rhs) := by
   intro C sc o hsh h
-  simp only [checkStmt] at h
-  obtain ⟨u, -, h⟩ := bind_eq_ok.1 h
-  obtain ⟨⟨ws, sc'⟩, hws, h⟩ := bind_eq_ok.1 h
-  obtain ⟨hsc, -⟩ := letWants_spec hws hf
-  simp only [hsc] at h
-  obtain ⟨o', ho', h⟩ := bind_eq_ok.1 h
+  obtain ⟨o', ws, hws, ho', h⟩ := let_steps hf h
   obtain ⟨a₁, -, a₃, a₄, a₅⟩ := ih C sc _ o' hsh ho'
   simp only [close_nil a₃, keep, ok_bind, pure, Except.pure, Except.ok.injEq] at h
   subst h

@@ -44,6 +44,16 @@ mutual
     | a :: as => a.holed || WTerm.holedList as
 end
 
+mutual
+  def WTerm.holes : WTerm → List Pos
+    | .var _ => []
+    | .app _ as => WTerm.holesList as
+    | .hole p => [p]
+  def WTerm.holesList : List WTerm → List Pos
+    | [] => []
+    | a :: as => a.holes ++ WTerm.holesList as
+end
+
 def Arg.mark : Arg → Option Mark
   | .mk m _ => m
 
@@ -71,6 +81,8 @@ structure Hole where
   pos : Pos
   is : Option Term
   late : Bool := false
+  first : Option Term := none
+  binder : Option Nat := none
 
 /-- What the checker knows at a position (§7): signatures, entries with their rules, the names in scope (newest
 first, each bound to a result whose `erased` says whether the name was bound erased), the scrutinee position whose
@@ -123,8 +135,9 @@ def Scope.addHole (sc : Scope) (type : Term) (is : Option Term) (pos : Pos) (era
 
 def Entry.isHole (en : Entry) : Bool := en.origin.startsWith "_@"
 
-def markTainted (Γ : Entries) (rs : List Res) : Entries :=
-  Γ.mapIdx fun i en => if rs.any (·.term == .entry i) then { en with tainted := true } else en
+def Entry.real (en : Entry) : Bool := !en.isHole && !en.origin.startsWith "let@"
+
+abbrev Table := List (Pos × List Term)
 
 structure FnSig where
   params : Telescope
@@ -173,6 +186,8 @@ structure Ctx where
   decl : Option (Nat × Nat) := none
   place : String := "this position"
   inType : Bool := false
+  table : Table := []
+  solving : Bool := false
 
 def Ctx.global (C : Ctx) (n : String) : Option Global := C.globals.find? (·.name == n)
 
@@ -225,6 +240,7 @@ structure CheckError where
   pos : Pos
   msg : Unit → String
   snaps : List Snapshot := []
+  solved : Table := []
 
 abbrev CheckM := Except CheckError
 
@@ -296,11 +312,12 @@ def solveHoles (sc : Scope) (lhs rhs : Term) (pos : Pos) : CheckM Scope :=
     match unify sc.sigs sc.Γ lhs rhs (fun i => holes.any (·.id == i)) with
     | .error msg => internal pos msg
     | .ok (Γ, stuck) =>
-      let now := { sc with Γ }
+      let first (h : Hole) := { h with first := h.first.orElse fun _ => (Γ[h.id]?).bind (·.rule) }
+      let now := { sc with Γ, holes := holes.map first }
       match stuck.bind fun (a, b) => (holes.find? fun h => a.occurs h.id || b.occurs h.id).map (a, b, ·) with
       | some (a, b, h) => failAt h.pos fun _ =>
         s!"this `_` cannot be inferred: it would need {now.disp a} and {now.disp b} to be equal, " ++
-        "and this checker solves a `_` only by giving a rule to its own entry"
+        "and this checker solves a `_` only by giving rules to entries of `_`"
       | none => pure now
 
 /-- Checks results against what the position is given (§8): each entry is instantiated to its result's term. -/
@@ -339,45 +356,69 @@ def produced (sc : Scope) (g : Option Given) (pos : Pos) (rs : List Res) (tree :
     | none => pure sc
   pure ⟨sc, rs, tree, []⟩
 
-/-- Checks a `_` at its boundary (§16): its solution mentions no unsolved `_` and only entries before it, has its
-type and meets its parameter's `is` term; gives whether the solution is tainted (§12). -/
-def settle (sc : Scope) (h : Hole) : CheckM Bool := do
-  let value := (Term.entry h.id).canon sc.Γ
-  if value.entries.any fun x => (sc.Γ[x]?).any Entry.isHole then failAt h.pos fun _ =>
-    "this `_` cannot be inferred: a `_` is solved only by unification, from the arguments around it " ++
-    "and what its position is given, before the call, statement, scrutinee, body or binder it is in ends, " ++
-    "and these do not determine it (§16)"
-  if !h.late && value.entries.any (· > h.id) then failAt h.pos fun _ =>
-    s!"this `_` would be {sc.disp value}, which mentions what is produced only after it, " ++
-    "such as a result of the call it is an argument of, and a `_` is solved only to what exists before it"
-  let some en := sc.Γ[h.id]? | internal h.pos "a `_` has no entry"
-  let has ← sc.typeOf h.pos value
-  unless identical sc.Γ en.type has do failAt h.pos fun _ =>
-    s!"this `_` would be {sc.disp value}, of type {sc.disp has}, and it must have type {sc.disp en.type}"
-  if let some e := h.is then
-    unless identical sc.Γ e value do failAt h.pos fun _ =>
-      s!"this `_` must be {sc.disp e}, and it would be {sc.disp value}"
-  pure (value.entries.any fun x => (sc.Γ[x]?).any (·.tainted))
+mutual
+  def untaintedAs (Γ : Entries) (ok : Nat → Bool) (c : Term) : Term :=
+    let same (x : Nat) := ok x && (Γ[x]?).any (!·.tainted) && (Term.entry x).canon Γ == c
+    match (List.range Γ.length).find? same, c with
+    | some x, _ => .entry x
+    | none, .app h as => .app h (untaintedAsList Γ ok as)
+    | none, c => c
+  def untaintedAsList (Γ : Entries) (ok : Nat → Bool) : List Term → List Term
+    | [] => []
+    | a :: as => untaintedAs Γ ok a :: untaintedAsList Γ ok as
+end
 
-/-- A boundary (§16): every `_` created since `since` is settled; a result whose term mentions a `_` solved to
-something tainted, or every result when `all`, becomes tainted (§12), and the tree is removed when every result
-is. Nothing happens when there is no such `_`. -/
-def close (o : Out) (since : Nat) (all : Bool) : CheckM Out :=
+def candidates (Γ : Entries) (ok : Nat → Bool) (first : Option Term) (canonical : Term) : List Term :=
+  (untaintedAs Γ ok canonical :: first.toList ++ [canonical]).eraseDups
+
+/-- Checks a `_` at its boundary (§16): its solution mentions no unsolved `_` and only entries before it, has its
+type and meets its parameter's `is` term; gives the solutions to try, in the numbering of the scope without `_`. -/
+def settle (sc : Scope) (h : Hole) : CheckM (Pos × List Term) := do
+  let some en := sc.Γ[h.id]? | internal h.pos "a `_` has no entry"
+  let real (x : Nat) := (sc.Γ[x]?).any Entry.real
+  let canonical := (Term.entry h.id).canon sc.Γ
+  let first := h.first.map (·.mapEntries fun x => if real x then .entry x else (Term.entry x).canon sc.Γ)
+  let wrong (value : Term) : Option (Unit → String) :=
+    if !value.entries.all real then some fun _ =>
+      "this `_` cannot be inferred: a `_` is solved only by unification, from the arguments around it " ++
+      "and what its position is given, before the call, statement, scrutinee, body or binder it is in ends, " ++
+      "and these do not determine it (§16)"
+    else if !h.late && value.entries.any (· > h.id) then some fun _ =>
+      s!"this `_` would be {sc.disp value}, which mentions what is produced only after it, " ++
+      "such as a result of the call it is an argument of, and a `_` is solved only to what exists before it"
+    else match typeOf sc.sigs sc.Γ value with
+      | none => some fun _ => s!"this `_` would be {sc.disp value}, which has no type"
+      | some has =>
+        if !identical sc.Γ en.type has then some fun _ =>
+          s!"this `_` would be {sc.disp value}, of type {sc.disp has}, and it must have type {sc.disp en.type}"
+        else if h.is.any (!identical sc.Γ · value) then some fun _ =>
+          s!"this `_` must be {sc.disp ((h.is.map (·.canon sc.Γ)).getD value)}, and it would be {sc.disp value}"
+        else none
+  let renumber (t : Term) := t.mapEntries fun x => .entry ((sc.Γ.take x).countP Entry.real)
+  let ok (x : Nat) := real x && (h.late || x < h.id)
+  match (candidates sc.Γ ok first canonical).filter fun t => (wrong t).isNone with
+  | [] => failAt h.pos ((wrong canonical).getD fun _ => "")
+  | ts => pure (h.pos, ts.map renumber)
+
+def identify (sc : Scope) (rs : List Res) (holes : List Hole) : CheckM Scope :=
+  holes.foldlM (init := sc) fun sc h => match h.binder.bind (rs[·]?) with
+    | some r => solveHoles sc (.entry h.id) r.term h.pos
+    | none => pure sc
+
+/-- A boundary (§16): when a `_` was created since `since`, its solutions are found and checking starts again with
+them (`CheckError.solved`). -/
+def close (o : Out) (since : Nat) : CheckM Out :=
   match o.sc.holes.drop since with
   | [] => pure o
   | mine => do
-    let done := mine.zip (← mine.mapM (settle o.sc))
-    let sc := { o.sc with holes := o.sc.holes.take since }
-    let bad := (done.filter (·.2)).map (·.1.id)
-    if bad.isEmpty then pure { o with sc } else
-    let res := o.res.map fun r => if all || r.term.entries.any bad.contains then { r with tainted := true } else r
-    pure ⟨{ sc with Γ := markTainted sc.Γ (res.filter (·.tainted)) }, res,
-      if res.all (·.tainted) then .removed else o.tree, o.snaps⟩
+    let sc ← identify o.sc o.res mine
+    let solved ← (mine.filter (·.binder.isNone)).mapM (settle sc)
+    throw { pos := 0, msg := fun _ => "internal: a `_` was solved, and checking was not started again", solved }
 
 /-- Checks with no `_` being solved, then closes the boundary (§16), the enclosing `_` being solved again after. -/
 def closed (sc : Scope) (check : Scope → CheckM Out) : CheckM Out := do
   let o ← check { sc with holes := [] }
-  let o ← keep o.snaps (close o 0 false)
+  let o ← keep o.snaps (close o 0)
   pure { o with sc := { o.sc with holes := sc.holes } }
 
 /-- Results of an application (§8), checked against what the position is given; a call is a boundary (§16), whose
@@ -386,7 +427,7 @@ def applied (sc : Scope) (g : Option Given) (pos : Pos) (rs : List Res) (tree : 
     (snaps : List Snapshot) : CheckM Out := keep snaps do
   let o ← produced sc g pos rs tree
   let o ← match since with
-    | some n => close o n true
+    | some n => close o n
     | none => pure o
   pure { o with snaps }
 
@@ -481,8 +522,44 @@ def argGiven (p : TBinder) (prev : List Res) (role owner : String) (erased : Boo
   { wants := [{ Want.of p with mult := if erased then .erased else p.mult }], env := prev.map (·.term),
     label := some fun _ => labelled role p.name i owner }
 
-/-- A `_` argument (§16): a fresh entry typed by its parameter, solved by unification, erased where the argument
-is; it is never evaluated, so its tree is `removed`. -/
+mutual
+  def Term.erasedUse (S : Sigs) (Γ : Entries) (phase : Nat) : Term → Bool
+    | .entry i => (Γ[i]?).any fun en => en.erased && !identical Γ en.type .TYPE
+    | .bound _ => false
+    | .app h as => Term.erasedUseList S Γ phase h 0 as
+  def Term.erasedUseList (S : Sigs) (Γ : Entries) (phase : Nat) (h : Head) (k : Nat) : List Term → Bool
+    | [] => false
+    | a :: as => (!S.erasedArg phase h k && a.erasedUse S Γ phase) || Term.erasedUseList S Γ phase h (k + 1) as
+end
+
+def Scope.solution (C : Ctx) (sc : Scope) (ts : List Term) (pos : Pos) (type : Term) (is : Option Term)
+    (erased : Bool) : CheckM Res :=
+  let wrong (t : Term) : Option (Unit → String) := match coreType sc.sigs sc.Γ t with
+    | none => some fun _ => s!"this `_` would be {sc.disp t}, which is not a term of this scope (§3)"
+    | some has =>
+      if !identical sc.Γ type has then some fun _ =>
+        s!"this `_` would be {sc.disp t}, of type {sc.disp has}, and it must have type {sc.disp type}"
+      else if is.any (!identical sc.Γ · t) then some fun _ =>
+        s!"this `_` must be {sc.disp ((is.map (·.canon sc.Γ)).getD t)}, and it would be {sc.disp t}"
+      else if !erased && t.erasedUse sc.sigs sc.Γ C.phase then some fun _ =>
+        s!"this `_` would be {sc.disp t}, which mentions an erased name outside an erased position (§16)"
+      else none
+  match ts.find? fun t => (wrong t).isNone with
+  | some t => pure ⟨t, sc.taintedBy.isSome || t.entries.any fun x => (sc.Γ[x]?).any (·.tainted), erased⟩
+  | none => failAt pos ((ts.head?.bind wrong).getD fun _ => "this `_` has no solution")
+
+def Scope.hole (C : Ctx) (sc : Scope) (pos : Pos) (type : Term) (is : Option Term) (erased : Bool) : CheckM Out :=
+  match C.table.lookup pos, C.solving with
+  | some ts, _ => do pure ⟨sc, [← sc.solution C ts pos type is erased], .removed, []⟩
+  | none, true => do
+    let (sc, id) := sc.addHole type is pos erased
+    let sc ← match is with
+      | some e => solveHoles sc (.entry id) e pos
+      | none => pure sc
+    pure ⟨sc, [⟨.entry id, false, erased⟩], .removed, []⟩
+  | none, false => internal pos "a `_` has no solution"
+
+/-- A `_` argument (§16), typed by its parameter, erased where the argument is. -/
 def holeArg (C : Ctx) (sc : Scope) (g : Given) (p : TBinder) (prev : List Res) (pos : Pos) : CheckM Out := do
   let env := prev.map (·.term)
   let type := p.type.subst env
@@ -490,12 +567,7 @@ def holeArg (C : Ctx) (sc : Scope) (g : Given) (p : TBinder) (prev : List Res) (
   unless erased || C.inType || identical sc.Γ type .TYPE do failAt pos fun _ =>
     "`_` stands for an argument that is erased or has type `Type()`, or for part of a type (§16), " ++
     s!"and {(g.label.map (· 0)).getD "this argument"} is none of these"
-  let is := p.is.map (·.subst env)
-  let (sc, id) := sc.addHole type is pos erased
-  let sc ← match is with
-    | some e => solveHoles sc (.entry id) e pos
-    | none => pure sc
-  pure ⟨sc, [⟨.entry id, false, erased⟩], .removed, []⟩
+  sc.hole C pos type (p.is.map (·.subst env)) erased
 
 mutual
   /-- A skeleton term with `_` (§3, §16), checked as an expression in a position that is not evaluated: its `_`
@@ -539,19 +611,15 @@ type when `whole`. Its `_` stay holes of the scope. -/
 def written (C : Ctx) (sc : Scope) (whole : Bool) (t : WTerm) : CheckM Out :=
   let C := { C with erased := C.erased || C.phase ≥ 2 }
   match t, whole with
-  | .hole p, true =>
-    let (sc, id) := sc.addHole .TYPE none p C.erased
-    pure ⟨sc, [⟨.entry id, false, C.erased⟩], .removed, []⟩
+  | .hole p, true => sc.hole C p .TYPE none C.erased
   | t, _ => checkSkel C sc none t
 
 /-- A written term (§3), a whole `_` standing for a type when `whole`; its `_` (§16) are solved by the term alone,
 and its term mentions only entries of `sc`. -/
 def term (C : Ctx) (sc : Scope) (t : WTerm) (whole : Bool) : CheckM Res :=
   if t.holed then do
-    let o ← written C { sc with holes := [] } whole t >>= (close · 0 false)
-    let r ← single t.pos o.res
-    pure { r with term := r.term.mapEntries fun i =>
-      if i < sc.Γ.length then .entry i else ((o.sc.Γ[i]?).bind (·.rule)).getD (.entry i) }
+    let o ← written C { sc with holes := [] } whole t >>= (close · 0)
+    single t.pos o.res
   else checkTerm C sc t
 
 def isType (sc : Scope) (pos : Pos) (t : Term) : CheckM Unit := do
@@ -654,6 +722,12 @@ mutual
     | a :: as => (a.unknown untyped).orElse fun _ => WTerm.unknownList untyped as
 end
 
+def typedBefore (untyped : List String) (ann : Ann) : CheckM Unit :=
+  if let some u := ann.term.unknown untyped then
+    failAt u.pos fun _ => s!"{code (match u with | .var n | .app n _ => n.name | .hole _ => "_")} has no " ++
+      "type here: give it one before referring to it"
+  else pure ()
+
 def letWant (Γ : Entries) (ids : List Nat) : LetBinder × Option Opening → CheckM Want
   | (b, some o) => do
     let t ← abstracted Γ b.name.name b.mult b.name.pos o.type o.is ids
@@ -668,7 +742,9 @@ def letWants (C : Ctx) (sc : Scope) (bs : List LetBinder) : CheckM (List Want ×
   let holed := bs.any (·.ann.any (·.term.holed))
   let (sc', opens) ← go holed sc [] [] bs
   let ws ← (bs.zip opens).mapM (letWant sc'.Γ (opens.map fun o => (o.map (·.id)).getD sc'.Γ.length))
-  let late := sc.holes ++ (sc'.holes.drop sc.holes.length).map fun h => { h with late := true }
+  let placeholders := (opens.zipIdx.zip bs).filterMap fun ((o, i), b) =>
+    o.map fun o => ({ id := o.id, pos := b.name.pos, is := none, binder := some i } : Hole)
+  let late := sc.holes ++ (sc'.holes.drop sc.holes.length).map ({ · with late := true }) ++ placeholders
   pure (ws, if holed then { sc' with names := sc.names, holes := late } else sc)
 where
   go (holed : Bool) (sc : Scope) (untyped : List String) (acc : List (Option Opening)) :
@@ -676,15 +752,30 @@ where
     | [] => pure (sc, acc)
     | b :: bs => match b.ann with
       | some ann => do
-        if let some u := ann.term.unknown untyped then
-          failAt u.pos fun _ => s!"{code (match u with | .var n | .app n _ => n.name | .hole _ => "_")} has no " ++
-            "type here: give it one before referring to it"
+        typedBefore untyped ann
         let o ← if holed then do
-            let (sc, type, is) ← annotateOpen C sc ann
-            pure (sc.openBinder b.name type is b.mult "binder" false)
+            let (sc, type, is) ← annotateOpen { C with table := [] } sc ann
+            pure (sc.openBinder b.name type is b.mult "let" false)
           else opening C sc b.name ann b.mult "binder"
         go holed o.sc untyped (acc ++ [some o]) bs
       | none => go holed sc ((b.name.name.map ([·])).getD [] ++ untyped) (acc ++ [none]) bs
+
+def letBinders (C : Ctx) (sc : Scope) (pos : Pos) (bs : List LetBinder) (rs : List Res) : CheckM Unit :=
+  go sc [] 0 (bs.zip rs)
+where
+  go (sc : Scope) (untyped : List String) (i : Nat) : List (LetBinder × Res) → CheckM Unit
+    | [] => pure ()
+    | (b, r) :: rest => do
+      let r := { r with erased := b.mult == some .erased }
+      let untyped ← match b.ann with
+        | some ann => do
+          typedBefore untyped ann
+          let (type, is, _) ← annotate C sc ann
+          let want : Want := ⟨b.name.name, some type, is, b.mult.getD .many⟩
+          let _ ← against sc { wants := [want], label := some fun _ => labelled "binder" b.name.name i } pos [r]
+          pure untyped
+        | none => pure ((b.name.name.map ([·])).getD [] ++ untyped)
+      go (sc.bind [b.name] [r]) untyped (i + 1) rest
 
 def unmarked (args : List Arg) (why : Unit → String) : CheckM Unit :=
   match args.find? (·.mark.isSome) with

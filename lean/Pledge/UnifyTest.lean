@@ -68,6 +68,9 @@ def eqn : Entries := [en Nat', en (T "Eq" [Nat', x 0, Succ (x 0)])]
 #guard match unify S [en Nat', en Nat'] (Succ (x 0)) (x 1) (· == 0) with
   | .ok (_, some (a, b)) => a == Succ (x 0) && b == x 1
   | _ => false
+#guard match unify S [en Nat', en Nat'] (Succ (x 0)) (x 0) (· == 0) with
+  | .ok (_, some (a, b)) => a == x 0 && b == Succ (x 0)
+  | _ => false
 
 def opened := openTele [] [b Nat', b Nat' (Succ (v 0)), b (T "IsZero" [v 1])] [] mk
 #guard opened.ids == [0, 1, 2] && opened.Γ[1]?.bind (·.rule) == some (Succ (x 0))

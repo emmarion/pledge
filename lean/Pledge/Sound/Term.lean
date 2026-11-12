@@ -1101,12 +1101,11 @@ theorem letWants_go_chain {C : Ctx} : ∀ (bs : List LetBinder) (sc : Scope) (un
     simp only [letWants.go] at h
     split at h
     · rename_i ann hann
-      split at h
-      · simp [failAt_eq, bind, Except.bind] at h
-      · obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
-        obtain ⟨new, h1, h2, h3⟩ := letWants_go_chain bs _ _ _ h hall.2 hf.2
-        have hfa : ann.term.holed = false := by simpa [hann] using hf.1
-        exact ⟨o :: new, by simp [h1], by simp [h2], .cons hfa (by simpa using ho) h3⟩
+      obtain ⟨-, -, h⟩ := bind_eq_ok.1 h
+      obtain ⟨o, ho, h⟩ := bind_eq_ok.1 h
+      obtain ⟨new, h1, h2, h3⟩ := letWants_go_chain bs _ _ _ h hall.2 hf.2
+      have hfa : ann.term.holed = false := by simpa [hann] using hf.1
+      exact ⟨o :: new, by simp [h1], by simp [h2], .cons hfa (by simpa using ho) h3⟩
     · rename_i hn
       simp [hn] at hall
 
@@ -1228,10 +1227,9 @@ theorem letWants_go_length {C : Ctx} : ∀ (bs : List LetBinder) (sc : Scope) (u
   | b :: bs, sc, untyped, acc, res, h => by
     simp only [letWants.go] at h
     split at h
-    · split at h
-      · simp [failAt_eq, bind, Except.bind] at h
-      · obtain ⟨o, -, h⟩ := bind_eq_ok.1 h
-        have := letWants_go_length bs _ _ _ h; simp at this ⊢; omega
+    · obtain ⟨-, -, h⟩ := bind_eq_ok.1 h
+      obtain ⟨o, -, h⟩ := bind_eq_ok.1 h
+      have := letWants_go_length bs _ _ _ h; simp at this ⊢; omega
     · have := letWants_go_length bs _ _ _ h; simp at this ⊢; omega
 
 /-- What a tuple `let` gives its right-hand side: one entry per binder, with the binder's multiplicity, and the

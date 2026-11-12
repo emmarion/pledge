@@ -37,6 +37,10 @@ def letGiven (bs : List LetBinder) (wants : List Want) : Given :=
   { wants, whole := bs.all (·.ann.any (!·.term.holed)),
     label := some fun i => labelled "binder" ((bs[i]?).bind (·.name.name)) i }
 
+def rhsFirst (C : Ctx) (bs : List LetBinder) : Bool :=
+  bs.any (·.ann.any (·.term.holed)) &&
+    !(C.solving && bs.any (·.ann.any fun a => a.term.holes.any (C.table.lookup · |>.isNone)))
+
 def isHole : Expr → Bool
   | .var ⟨none, _⟩ => true
   | _ => false
@@ -173,9 +177,16 @@ mutual
     | .inspect p => pure ⟨sc, .inspect p, [⟨p, sc, none, C.fn, C.decl⟩]⟩
     | .let p bs rhs => do
       freshAll C sc (bs.map (·.name))
-      let (ws, sc') ← letWants C sc bs
-      let o ← checkExpr C sc' (some (letGiven bs ws)) rhs
-      let o ← keep o.snaps (close o 0 false)
+      let o ← if rhsFirst C bs then do
+          let any (b : LetBinder) : Want := ⟨b.name.name, none, none, b.mult.getD .many⟩
+          let o ← checkExpr C sc (some (letGiven bs (bs.map any))) rhs
+          let o ← keep o.snaps (close o 0)
+          keep o.snaps (letBinders C o.sc rhs.pos bs o.res)
+          pure o
+        else do
+          let (ws, sc') ← letWants C sc bs
+          let o ← checkExpr C sc' (some (letGiven bs ws)) rhs
+          keep o.snaps (close o 0)
       let rs := (bs.zip o.res).map fun (b, r) => { r with erased := b.mult == some .erased }
       pure ⟨o.sc.bind (bs.map (·.name)) rs, .let p bs o.tree, o.snaps⟩
     | .patlet p ct m pat rhs => do

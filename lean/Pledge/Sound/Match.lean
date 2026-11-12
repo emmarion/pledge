@@ -255,7 +255,7 @@ theorem applied_length {sc : Scope} {g : Given} {pos : Pos} {rs : List Res} {tre
   · obtain ⟨o'', ho'', h₂⟩ := bind_eq_ok.1 h₁
     simp only [pure, Except.pure, Except.ok.injEq] at h₂
     subst h₂
-    simp [close_res ho'', hl]
+    simp [close_ok ho'', hl]
 
 theorem checkElems_length {C : Ctx} {g : Option Given} : ∀ {es : List Expr} {sc : Scope} {prev : List Res}
     {eo : ElemsOut}, checkElems C sc g prev es = .ok eo → eo.res.length = es.length

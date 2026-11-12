@@ -170,13 +170,7 @@ theorem removed_sound : ExprSound .removed := by
 theorem let_sound {p : Pos} {bs : List LetBinder} {rhs : Expr} (hf : bs.any (·.ann.any (·.term.holed)) = false)
     (ih : ExprSound rhs) (ihs : ExprShape rhs) : StmtSound (.let p bs rhs) := by
   intro C sc n0 W ρ act o hI h
-  simp only [checkStmt] at h
-  obtain ⟨u, -, h⟩ := bind_eq_ok.1 h
-  obtain ⟨⟨ws, sc'⟩, hws, h⟩ := bind_eq_ok.1 h
-  obtain ⟨hsc, -⟩ := letWants_spec hws hf
-  rw [hsc] at hws
-  simp only [hsc] at h
-  obtain ⟨o', ho', h⟩ := bind_eq_ok.1 h
+  obtain ⟨o', ws, hws, ho', h⟩ := let_steps hf h
   obtain ⟨-, -, hh', -⟩ := ihs C sc _ o' hI.holes ho'
   simp only [close_nil hh', keep, ok_bind, pure, Except.pure, Except.ok.injEq] at h
   subst h

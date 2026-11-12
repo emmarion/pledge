@@ -168,6 +168,19 @@ def typeOf (S : Sigs) (Γ : Entries) : Term → Option Term
   | .bound _ => none
   | .app h as => (S.find h).map (·.ret.subst as)
 
+mutual
+  def coreType (S : Sigs) (Γ : Entries) : Term → Option Term
+    | .entry i => (Γ[i]?).map (·.type)
+    | .bound _ => none
+    | .app h as => (S.find h).bind fun sig => if coreArgs S Γ sig.params [] as then some (sig.ret.subst as) else none
+  def coreArgs (S : Sigs) (Γ : Entries) : Telescope → List Term → List Term → Bool
+    | [], _, [] => true
+    | p :: ps, prev, a :: as =>
+      (coreType S Γ a).any (identical Γ (p.type.subst prev)) && p.is.all (fun e => identical Γ (e.subst prev) a) &&
+        coreArgs S Γ ps (prev ++ [a]) as
+    | _, _, _ => false
+end
+
 /-- Gives the entry `x` the rule that it is `e`, and rewrites the other rules by it. It is
 meant to be called with `e` canonical and not mentioning `x`. -/
 def addRule (Γ : Entries) (x : Nat) (e : Term) : Entries :=

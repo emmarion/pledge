@@ -32,13 +32,16 @@ structure TopState where
   qedFn : Option String := none
   prints : List (Pos × String) := []
   snaps : List Snapshot := []
+  table : Table := []
+  solving : Bool := false
 
-def TopState.init (phase : Nat) : TopState :=
-  { phase, sc := { sigs := [⟨.Type, [], .TYPE⟩], Γ := [] }, globals := [.type "Type" none true] }
+def TopState.init (phase : Nat) (table : Table := []) (solving : Bool := false) : TopState :=
+  { phase, sc := { sigs := [⟨.Type, [], .TYPE⟩], Γ := [] }, globals := [.type "Type" none true], table, solving }
 
 def TopState.ctx (st : TopState) (inDecl : Bool := false) : Ctx :=
   { phase := st.phase, globals := st.globals,
-    decl := if inDecl then some (st.sc.Γ.length, st.sc.names.length) else none }
+    decl := if inDecl then some (st.sc.Γ.length, st.sc.names.length) else none, table := st.table,
+    solving := st.solving }
 
 /-- The evaluator's view of the program at the top level. -/
 def TopState.prog (st : TopState) : Prog := ⟨st.fns, kindOf st.globals⟩
@@ -367,11 +370,8 @@ structure Outcome where
   qedFn : Option String
   tainted : Bool
 
-/-- Checks and evaluates a parsed program; `has` says whether the source contains a keyword, and `syntaxError`
-is the parser's error, if any. -/
-def runProgram (phase : Nat) (prog : Program) (has : String → Bool)
-    (syntaxError : Option (Pos × String) := none) : Outcome :=
-  let (st, failed) := topItems (.init phase) prog
+def outcome (has : String → Bool) (st : TopState) (failed : Option (CheckError × Top))
+    (syntaxError : Option (Pos × String)) : Outcome :=
   let error := (failed.map fun (e, _) => (e.pos, e.msg ())).orElse fun _ => syntaxError
   let qed := if !has "qed" then "none"
     else if failed.any fun (_, t) => t matches .qed .. then "fails"
@@ -380,6 +380,79 @@ def runProgram (phase : Nat) (prog : Program) (has : String → Bool)
     goalProved := if has "goal" then some (error.isNone && st.proved) else none, containsSorry := has "sorry",
     sigs := st.sc.sigs, entries := st.sc.Γ, fns := st.fns, env := st.env, goal := st.goal, qedFn := st.qedFn,
     tainted := st.sc.taintedBy.isSome }
+
+def runProgramWith (phase : Nat) (table : Table) (prog : Program) (has : String → Bool)
+    (syntaxError : Option (Pos × String) := none) : Outcome :=
+  let (st, failed) := topItems (.init phase table) prog
+  outcome has st failed syntaxError
+
+mutual
+  def Expr.holes : Expr → List Pos
+    | .var ⟨none, p⟩ => [p]
+    | .var _ | .removed => []
+    | .app _ args => Arg.holesList args
+    | .tuple _ es => Expr.holesList es
+    | .block ss f => Stmt.holesList ss ++ f.holes
+    | .match _ _ s ann bs => s.holes ++ Tele.holesOf ann ++ Branch.holesList bs
+    | .sorry _ t => Tele.holesOf t
+  def Expr.holesList : List Expr → List Pos
+    | [] => []
+    | e :: es => e.holes ++ Expr.holesList es
+  def Arg.holesList : List Arg → List Pos
+    | [] => []
+    | .mk _ e :: as => e.holes ++ Arg.holesList as
+  def Stmt.holesList : List Stmt → List Pos
+    | [] => []
+    | .let _ bs rhs :: ss => bs.flatMap (·.ann.elim [] (·.term.holes)) ++ rhs.holes ++ Stmt.holesList ss
+    | .patlet _ _ _ _ rhs :: ss => rhs.holes ++ Stmt.holesList ss
+    | .inspect _ :: ss => Stmt.holesList ss
+  def Branch.holesList : List Branch → List Pos
+    | [] => []
+    | .mk _ body :: bs => body.holes ++ Branch.holesList bs
+  def Tele.holesOf : Tele → List Pos
+    | .binders bs => bs.flatMap (·.ann.term.holes)
+    | .hole _ => []
+end
+
+def Header.holes (h : Header) : List Pos :=
+  (h.params.map (·.binder) ++ h.returns).flatMap (·.ann.term.holes)
+
+def Data.holes (d : Data) : List Pos :=
+  d.params.flatMap (·.ann.term.holes) ++ d.ctors.flatMap fun k => k.fields.flatMap (·.ann.term.holes) ++ k.ret.holes
+
+def Top.holes : Top → List Pos
+  | .data d => d.holes
+  | .mutualData _ ds => ds.flatMap Data.holes
+  | .fn f => f.header.holes ++ f.body.holes
+  | .mutualFn _ fs => fs.flatMap fun f => f.header.holes ++ f.body.holes
+  | .stmt s => Stmt.holesList [s]
+  | .print _ e | .qed _ e => e.holes
+  | .goal _ (.type t) => t.holes
+  | .goal _ (.fn h) => h.holes
+
+def unsolved (prog : Program) (table : Table) : Nat :=
+  ((prog.flatMap Top.holes).filter fun p => (table.lookup p).isNone).length
+
+def solveFrom (phase : Nat) (prog : Program) (table : Table) : Table × Option (CheckError × Top) :=
+  match topItems (.init phase table true) prog with
+  | (_, some (e, t)) =>
+    if e.solved.isEmpty then (table, some (e, t))
+    else if _h : unsolved prog (table ++ e.solved) < unsolved prog table then solveFrom phase prog (table ++ e.solved)
+    else (table, some ({ e with msg := fun _ => "internal: a `_` was solved again; the checker rejects the program" },
+      t))
+  | (_, none) => (table, none)
+termination_by unsolved prog table
+
+def solution (phase : Nat) (prog : Program) : Table := (solveFrom phase prog []).1
+
+/-- Checks and evaluates a parsed program: finds the solutions of its `_` (§20), then checks it with them. An error
+met while solving is reported; one met only after is reported as internal. -/
+def runProgram (phase : Nat) (prog : Program) (has : String → Bool)
+    (syntaxError : Option (Pos × String) := none) : Outcome :=
+  let (table, solving) := solveFrom phase prog []
+  let (st, failed) := topItems (.init phase table) prog
+  outcome has st (solving.orElse fun _ => failed.map fun (e, t) =>
+    ({ e with msg := fun _ => s!"internal: the solutions found for `_` do not check: {e.msg ()}" }, t)) syntaxError
 
 /-- Parses, checks and evaluates a program under a phase. -/
 def run (source : String) (phase : Nat) : Outcome :=

@@ -260,13 +260,14 @@ def force (S : Sigs) (Γ : Entries) (scrut : Term) (ctor : Sig) (mk : TBinder �
     | .stuck msg => .stuck msg
 
 /-- Solves `lhs = rhs` for `_` (§16), only `hole` entries taking rules. Returns the scope with
-the rules found and, on a rigid failure, its two terms; other failures are dropped. -/
+the rules found and, on a failure, the two terms that could not be equated. -/
 def unify (S : Sigs) (Γ : Entries) (lhs rhs : Term) (hole : Nat → Bool) :
     Except String (Entries × Option (Term × Term)) :=
   match solve S hole Γ [] [⟨lhs.canon Γ, rhs.canon Γ, .given⟩] with
   | .ok Γ' _ => .ok (Γ', none)
   | .failed ⟨Γ', _, .rigid a b, _⟩ => .ok (Γ', some (a, b))
-  | .failed f => .ok (f.Γ, none)
+  | .failed ⟨Γ', _, .occurs x e, _⟩ => .ok (Γ', some (.entry x, e))
+  | .failed ⟨Γ', q, .heads .., _⟩ => .ok (Γ', some (q.lhs, q.rhs))
   | .stuck msg => .error msg
 
 mutual

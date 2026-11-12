@@ -28,7 +28,15 @@ D61. Tentatively: the global entries are in creation order.
 
 ## Approved rules awaiting wording
 
-None at present.
+D66. A program with a `_` for an argument or inside a type (§20) checks
+     as if each `_` were replaced by a written term, except that the
+     term is allowed to refer to entries that have no name. A `_` is
+     solved only when its solution is unique up to canonicalization.
+D67. §16's restriction, that an erased name is allowed only in an
+     erased position, does not apply to an entry whose type is
+     `Type()`.
+D68. Where canonicalization makes several terms identical, a `_` is
+     the untainted one whenever one of them is untainted.
 
 ## Proposals, not approved
 

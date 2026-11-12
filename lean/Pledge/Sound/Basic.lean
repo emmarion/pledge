@@ -163,7 +163,8 @@ theorem Value.StrictSub.lt {v w : Value} (h : v.StrictSub w) : v.lt w := by
   | arg hm => exact Value.isSub_of_mem hm
   | deep hm _ ih => exact Value.isSubList_of_mem_sub hm ih
 
-theorem failAt_eq {α : Type} {pos : Pos} {m : Unit → String} : (failAt pos m : CheckM α) = .error ⟨pos, m, []⟩ := rfl
+theorem failAt_eq {α : Type} {pos : Pos} {m : Unit → String} :
+    (failAt pos m : CheckM α) = .error ⟨pos, m, [], []⟩ := rfl
 
 theorem solveHoles_nil {sc : Scope} (h : sc.holes = []) (l r : Term) (pos : Pos) :
     solveHoles sc l r pos = .ok sc := by
@@ -284,7 +285,7 @@ theorem ensure_ok {ok : Bool} {pos : Pos} {what : String} {u : Unit} (h : ensure
   · simp [ensure, internal, failAt_eq] at h
   · rfl
 
-theorem close_nil {o : Out} (hh : o.sc.holes = []) (since : Nat) (all : Bool) : close o since all = .ok o := by
+theorem close_nil {o : Out} (hh : o.sc.holes = []) (since : Nat) : close o since = .ok o := by
   unfold close; rw [hh, List.drop_nil]; rfl
 
 theorem produced_eq {sc : Scope} {g : Option Given} {pos : Pos} {rs : List Res} {tree : Expr} {o : Out}
@@ -333,19 +334,16 @@ theorem applied_eq {sc : Scope} {g : Option Given} {pos : Pos} {rs : List Res} {
   simp only [applied, keep_ok] at h
   obtain ⟨o', ho', h⟩ := bind_eq_ok.1 h
   obtain rfl := produced_eq hh ho'
-  have hc : close ⟨sc, rs, tree, []⟩ = fun n a => .ok ⟨sc, rs, tree, []⟩ := funext fun n => funext (close_nil hh n)
+  have hc : close ⟨sc, rs, tree, []⟩ = fun n => .ok ⟨sc, rs, tree, []⟩ := funext (close_nil hh)
   cases since <;> simp only [hc, ok_bind, pure, Except.pure, Except.ok.injEq] at h <;> exact ⟨h.symm, ho'⟩
 
-theorem close_res {o o' : Out} {since : Nat} {all : Bool} (h : close o since all = .ok o') :
-    o'.res.length = o.res.length := by
+theorem close_ok {o o' : Out} {since : Nat} (h : close o since = .ok o') : o' = o := by
   unfold close at h
   split at h
   · cases h; rfl
-  · obtain ⟨vs, -, h⟩ := bind_eq_ok.1 h
-    simp only at h
-    split at h
-    · cases h; rfl
-    · cases h; simp
+  · obtain ⟨sc, -, h⟩ := bind_eq_ok.1 h
+    obtain ⟨vs, -, h⟩ := bind_eq_ok.1 h
+    cases h
 
 /-- `closed` with no `_` being solved, around a check that leaves none, is the check. -/
 theorem closed_eq {sc : Scope} {check : Scope → CheckM Out} (hh : sc.holes = [])

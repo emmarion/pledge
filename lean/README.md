@@ -64,7 +64,8 @@ requests that touch `lean/` or `src/`.
   program (`Eval.ext`); and the executable evaluator, `evalExpr` and
   its companions, whose results carry a derivation of the relation.
 - `Pledge/Check/Basic.lean`, `Expr.lean`, `Top.lean`: the checker;
-  `Top.lean` has `runProgram`, `run` and `Outcome`.
+  `Top.lean` has `runProgramWith`, `solveFrom`, `runProgram`, `run` and
+  `Outcome`.
 - `Main.lean`: the command line.
 - `Pledge/CoreLemmas.lean`, `UnifySound.lean`, `Pledge/Sound/`: the
   proofs. `Sound/HoleFree.lean` defines `Program.holeFree`;
@@ -77,8 +78,41 @@ requests that touch `lean/` or `src/`.
   `Sound/Fn.lean` and `Data.lean` the declaration groups, and
   `Data.lean` the `goal` item; `Sound/Stmt.lean` the other top-level
   statements; and `Sound/Top.lean` the headline theorems.
-- `Pledge/ParserTest.lean`, `EvalTest.lean`, `UnifyTest.lean`: `#guard`
-  tests.
+- `Pledge/ParserTest.lean`, `EvalTest.lean`, `UnifyTest.lean`,
+  `SolveTest.lean`: `#guard` tests. `SolveTest.lean` holds the tests of
+  `_` (§20) whose verdicts differ from the TypeScript checker's, so they
+  are not in `tests/extra/`.
+
+## How `_` is checked
+
+Checking is split in two. `solveFrom` finds, by unification, a table
+from the position of each `_` for an argument or inside a type (§20)
+to the terms it may stand for; `runProgramWith` then checks the program
+with no unification for `_`: at each `_` it takes the first term of the
+table that is a well-formed term of the scope there (`coreType`), of
+the `_`'s type, meeting its parameter's `is` clause and §16's rule on
+erased names, and it computes the `_`'s taint from that term. A `_`
+with no term in the table is an error. `runProgram` runs the two, and
+reports an error met by `solveFrom`; an error met only by
+`runProgramWith` is reported as internal. The soundness theorems are
+meant not to depend on `solveFrom`: they hold for `runProgramWith` with
+any table.
+
+`solveFrom` checks the program with the table found so far; a `_` the
+table does not cover gets an entry of the scope, solved by unification
+as the checker did before the split, and at the end of the call,
+statement or other boundary it is in (§20), its terms are found and
+checking starts again with them. The terms use the numbering of
+entries `runProgramWith` has, which has no entry for a `_` or for the
+placeholder a tuple `let` binder gets while solving: a number counts
+only the entries before it that are neither. The terms offered for a
+`_` are, in order, one built from untainted entries that exist before
+it wherever canonicalization allows, the term unification first gave
+it, and its canonical form when its boundary ends. A tuple `let` whose
+binders have a `_` is checked by `runProgramWith` right-hand side
+first, given only its binders' multiplicities, and then each binder's
+type or `is` clause, with the binders before it naming their results,
+against the result it names.
 - `tests/`: the differential comparison with the TypeScript checker
   (`tests/README.md`), `Audit.lean` and `gate.mjs`.
 
@@ -143,7 +177,9 @@ no default, which `run` reads off the tokens) and any syntax error
 `runProgram phase prog has err`, Lean checks:
 
 - `runProgram_sound`: there is a world `W` whose evaluator's view of
-  the program `W.P` is that of the final top-level state, whose closed
+  the program `W.P` is that of the final top-level state of
+  `runProgramWith` with the table `solution phase prog` that
+  `solveFrom` finds, whose closed
   signatures `W.Sc` are `out.sigs.map (Sig.close W.ρ)`, whose functions
   are `out.fns`, and whose valuation `W.ρ` has one value per entry of
   `out.entries`; if the final top-level scope is untainted
@@ -157,6 +193,9 @@ no default, which `run` reads off the tokens) and any syntax error
   scope, typed by its signatures closed by them (`Sat`). The goal is so
   tied to a valuation satisfying the scope as it stood when the goal
   was proved, whatever later items do to the scope.
+  `runProgramWith_sound` states the same of `runProgramWith` with any
+  table, and `outcome_sound` of any report whose error is set whenever
+  `runProgramWith`'s is.
 - `type_goal_inhabited`: if the goal is proved and is the type `t`,
   there is a valuation `ρ` with one value per entry of `out.entries`,
   satisfying the final scope if it is untainted and, by its first
@@ -277,10 +316,10 @@ items 69 to 75.
 ## What is not proved
 
 - Programs with `_` (§16): every theorem assumes a hole-free program,
-  so the solving of `_` by unification, the checking of written terms
-  that contain `_` (which the Lean checker does apart from the checking
-  of those that do not), and taint through a `_` (§12) are not
-  covered.
+  so `runProgramWith`'s checking of the terms a table gives for `_`,
+  of written terms that contain `_`, of a tuple `let` right-hand side
+  first, and taint through a `_` (§12) are not covered. Nothing is
+  proved about `solveFrom`, and no theorem is meant to need it.
 - That the internal checks are unreachable on programs DESIGN.md
   accepts.
 - Anything about the executable evaluator beyond its results'
