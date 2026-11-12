@@ -415,11 +415,11 @@ theorem wantsCons_closed {S : Sigs} {ρ : List Value} :
 
 end DataTop
 
-/-- A top-level statement other than a `comptime` pattern `let`, reached by checking a program with any table for its
-`_` (§20), that passes: its scope is the checked statement's, and its run (`EvalStmt`) gives the new values of the
+/-- A top-level statement other than a `comptime` pattern `let`, at the state checking any items `pre` with any table
+for their `_` (§20) reaches, that passes: its scope is the checked statement's, and its run (`EvalStmt`) gives the new values of the
 top-level names, unless it leaves the scope tainted (§12), when it runs nothing. -/
 theorem reached_stmt (phase : Nat) (table : Table) {pre : Program} {s : Stmt}
-    (hn : (checkItems phase table pre).2 = none) (hs : ∀ p m pat rhs, s ≠ .patlet p true m pat rhs) {hw : _}
+    (hs : ∀ p m pat rhs, s ≠ .patlet p true m pat rhs) {hw : _}
     {st' : TopState} (h : topItem (checkItems phase table pre).1 hw (.stmt s) = .ok st') :
     ∃ o, checkStmt (checkItems phase table pre).1.ctx (checkItems phase table pre).1.sc s = .ok o ∧ st'.sc = o.sc ∧
       (o.sc.taintedBy = none →
@@ -439,12 +439,12 @@ theorem reached_stmt (phase : Nat) (table : Table) {pre : Program} {s : Stmt}
   simp only [hto, Option.isSome_none, Bool.false_eq_true, ↓reduceDIte]
   exact TopState.run_cert hI.solving
 
-/-- A `qed` against a type goal `t`, reached by checking a program with any table for its `_` (§20), that passes:
+/-- A `qed` against a type goal `t`, at the state checking any items `pre` with any table reaches, that passes:
 it checks its expression given the goal, and if the scope after it is untainted, the expression has one result, and
 when that is untainted, its checked tree has an evaluation (`Eval`) to a run-time value related (`Rel`) to an ideal
 value of type `t`, under an ideal valuation `ρ` satisfying the scope; `TopState.eval` would return that value. -/
 theorem reached_qed (phase : Nat) (table : Table) {pre : Program} {p : Pos} {e : Expr} {goal : CheckedGoal} {t : Term}
-    (hn : (checkItems phase table pre).2 = none) (hgoal : (checkItems phase table pre).1.goal = some goal)
+    (hgoal : (checkItems phase table pre).1.goal = some goal)
     (hk : goal.kind = .type t) {hw : _} {st' : TopState}
     (h : topItem (checkItems phase table pre).1 hw (.qed p e) = .ok st') :
     let st := (checkItems phase table pre).1
@@ -516,14 +516,14 @@ theorem keep_eq_error {α : Type} {snaps : List Snapshot} {x : CheckM α} {e : C
   | ok => cases h
   | error e0 => exact ⟨e0, rfl, (Except.error.inj h).symm⟩
 
-/-- A `comptime` pattern `let C(...) = rhs;`, reached by checking a program with any table for its `_` (§20), whose
+/-- A `comptime` pattern `let C(...) = rhs;`, at the state checking any items `pre` with any table reaches, whose
 right-hand side checks with one untainted result: its checked tree has an evaluation (`Eval`) to a run-time value
 `a` related (`Rel`) to a typed ideal value, under an ideal valuation `ρ` satisfying the scope, which `TopState.eval`
 returns; if the item passes, `a` is headed by `C` and, unless the scope after it is tainted (§12), the new values of
 the top-level names are `a`'s fields (`bindPattern`); and if `a` is not headed by `C`, once forcing `C` succeeds, the
 item fails with the error that shows `a` (§11). -/
 theorem reached_comptime (phase : Nat) (table : Table) {pre : Program} {p : Pos} {m : Option Mult} {pat : Pattern}
-    {rhs : Expr} (hn : (checkItems phase table pre).2 = none) {o : Out} {r : Res}
+    {rhs : Expr} {o : Out} {r : Res}
     (h : closed (checkItems phase table pre).1.sc (checkExpr (checkItems phase table pre).1.ctx · none rhs) = .ok o)
     (hr : single rhs.pos o.res = .ok r) (hrt : r.tainted = false) :
     let st := (checkItems phase table pre).1

@@ -249,9 +249,9 @@ no default, which `run` reads off the tokens) and any syntax error
   reported proved.
 - `run_sound` and `run_no_empty_goal`: `runProgram_sound` and
   `no_empty_goal` for `run source phase`.
-- `reached_stmt`, `reached_comptime` and `reached_qed`, for each item
-  that checking a program reaches with any table, after items at which
-  it stops at no error, at the state they leave. A top-level `let` or
+- `reached_stmt`, `reached_comptime` and `reached_qed`, for an item
+  checked at the state that checking any items `pre` with any table
+  reaches, after them or before the first of them that fails. A top-level `let` or
   `inspect;` that passes has the checked statement's scope, and, unless
   that scope is tainted, the new values of the top-level names are
   those its run (`EvalStmt`) gives; otherwise they are unchanged. For
