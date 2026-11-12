@@ -82,9 +82,6 @@ function against(ctx: Ctx, before: Scope, given: Given, ids: readonly EntryId[],
     const id = ids[i]!, env = [...given.env, ...ids.slice(0, i).map(ref)];
     const what = () => given.label?.(i) ?? (w.name !== null ? code(w.name) : n === 1 ? "the value expected here"
       : `value ${i + 1}`);
-    const later = [w.type, w.is].find(t => t && !fits(t, env.length));
-    if (later) fail(span, () => `${what()} has a \`_\` in its ${later === w.is ? "`is` term" : "type"} that would ` +
-      "be a binder after it, and a type or `is` term refers only to the binders before it (§6)");
     const type = w.type && subst(w.type, env), is = w.is && subst(w.is, env);
     const withType = type ? solveHoles(ctx, acc, type, entry(acc, id).type, span) : acc;
     const scope = is ? solveHoles(ctx, withType, is, ref(id), span) : withType;
