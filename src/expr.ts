@@ -156,11 +156,11 @@ export function closed(ctx: Ctx, local: Local, e: Expr, given: Given | null, whe
 const erasedArg = (ctx: Ctx, scope: Scope, head: Head, k: number): boolean =>
   head.kind === "type" && ctx.st.phase >= 2 || signature(scope, head.name)?.params[k]?.mult === "erased";
 
-const restricted = (scope: Scope, erased: boolean, t: Term): boolean =>
-  erased && !identical(scope, typeOf(scope, t), TYPE);
+const restricted = (ctx: Ctx, scope: Scope, erased: boolean, t: Term): boolean =>
+  erased && !(ctx.st.phase >= 2 && identical(scope, typeOf(scope, t), TYPE));
 
 const erasedUse = (ctx: Ctx, scope: Scope, t: Term): boolean => t.tag === "entry"
-  ? restricted(scope, entry(scope, t.id).erased, t)
+  ? restricted(ctx, scope, entry(scope, t.id).erased, t)
   : t.args.some((a, k) => !erasedArg(ctx, scope, t.head, k) && erasedUse(ctx, scope, a));
 
 type Made = { local: Local; result: Result };
@@ -204,7 +204,7 @@ function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snaps
       occur(ctx, e.name.span, local, found.id, local.boundAt.get(name) ?? null);
       point(ctx, local.scope, e.span, ref(found.id));
       return produced(ctx, local, given, [{ id: found.id, tainted: local.tainted.has(name),
-        erased: restricted(local.scope, found.erased || local.erased.has(name), ref(found.id)) }], e.span, e);
+        erased: restricted(ctx, local.scope, found.erased || local.erased.has(name), ref(found.id)) }], e.span, e);
     }
     case "app": {
       const name = e.head.name, g = global(ctx, name);
