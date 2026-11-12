@@ -242,14 +242,15 @@ structure CheckError where
   snaps : List Snapshot := []
   solved : Table := []
   evaluated : Bool := false
+  internal : Bool := false
 
 abbrev CheckM := Except CheckError
 
-def failAt (pos : Pos) (msg : Unit → String) : CheckM α := throw { pos, msg }
+def failAt (pos : Pos) (msg : Unit → String) (internal : Bool := false) : CheckM α := throw { pos, msg, internal }
 
-/-- An error that is meant to be unreachable; the program is rejected. -/
+/-- An error that is meant to be unreachable, marked `internal`; the program is rejected. -/
 def internal (pos : Pos) (what : String) : CheckM α :=
-  failAt pos fun _ => s!"internal: {what}; the checker rejects the program"
+  failAt pos (fun _ => s!"internal: {what}; the checker rejects the program") true
 
 /-- Rejects the program unless `ok`: a check meant never to fail, which the soundness proof relies on. -/
 def ensure (ok : Bool) (pos : Pos) (what : String) : CheckM Unit :=
@@ -419,7 +420,8 @@ def close (o : Out) (since : Nat) : CheckM Out :=
   | mine => do
     let sc ← identify o.sc o.res mine
     let solved ← (mine.filter (·.binder.isNone)).mapM (settle sc)
-    throw { pos := 0, msg := fun _ => "internal: a `_` was solved, and checking was not started again", solved }
+    throw { pos := 0, solved, internal := true,
+            msg := fun _ => "internal: a `_` was solved, and checking was not started again" }
 
 /-- Checks with no `_` being solved, then closes the boundary (§16), the enclosing `_` being solved again after. -/
 def closed (sc : Scope) (check : Scope → CheckM Out) : CheckM Out := do

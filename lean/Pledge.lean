@@ -20,3 +20,6 @@ import Pledge.Sound.Expr
 import Pledge.Sound.Item
 import Pledge.Run
 import Pledge.Sound.Top
+import Pledge.Sound.Wf
+import Pledge.Sound.Internal
+import Pledge.Sound.InternalTop

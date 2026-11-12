@@ -13,3 +13,5 @@ open Pledge
 #print axioms reached_stmt
 #print axioms reached_comptime
 #print axioms reached_qed
+#print axioms checkItems_noInternal
+#print axioms runProgramWith_noInternal

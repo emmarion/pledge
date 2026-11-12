@@ -164,8 +164,8 @@ theorem Value.StrictSub.lt {v w : Value} (h : v.StrictSub w) : v.lt w := by
   | arg hm => exact Value.isSub_of_mem hm
   | deep hm _ ih => exact Value.isSubList_of_mem_sub hm ih
 
-theorem failAt_eq {α : Type} {pos : Pos} {m : Unit → String} :
-    (failAt pos m : CheckM α) = .error { pos, msg := m } := rfl
+theorem failAt_eq {α : Type} {pos : Pos} {m : Unit → String} {i : Bool} :
+    (failAt pos m i : CheckM α) = .error { pos, msg := m, internal := i } := rfl
 
 theorem evalFail_eq {α : Type} {pos : Pos} {m : Unit → String} :
     (evalFail pos m : CheckM α) = .error { pos, msg := m, evaluated := true } := rfl

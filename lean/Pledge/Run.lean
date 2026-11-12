@@ -25,8 +25,9 @@ def solveFrom (phase : Nat) (prog : Program) (table : Table) : Table × Option S
   | (_, some (e, t, n)) =>
     if e.solved.isEmpty then (table, some (e, t, n))
     else if _h : unsolved prog (table ++ e.solved) < unsolved prog table then solveFrom phase prog (table ++ e.solved)
-    else (table, some ({ e with msg := fun _ => "internal: a `_` was solved again; the checker rejects the program" },
-      t, n))
+    else
+      let msg (_ : Unit) := "internal: a `_` was solved again; the checker rejects the program"
+      (table, some ({ e with msg, internal := true }, t, n))
   | (_, none) => (table, none)
 termination_by unsolved prog table
 

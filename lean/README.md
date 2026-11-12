@@ -268,6 +268,21 @@ no default, which `run` reads off the tokens) and any syntax error
   it is untainted, the expression has one result, and if that is
   untainted, its checked tree evaluates to a run-time value related to
   an ideal value of type `t`, which `TopState.eval` would return.
+- `checkItems_noInternal` and `runProgramWith_noInternal`
+  (`Sound/InternalTop.lean`): for any phase and any table, when every
+  item of `prog` meets `Top.okFor table` (no `removed` node, no
+  `comptime` pattern `let` below the top level, no type constructor or
+  value constructor named `sorry`, at least one element in each tuple,
+  binder in each tuple `let`, entry in each written annotation and
+  `sorry` telescope and return in each function, and terms in the
+  table for every `_` of the program), checking it with that table
+  stops at no error marked `internal`, so with no syntax error the
+  error `runProgramWith` reports is not internal. The proof carries a
+  well-formedness invariant through the checking pass (`ScOk`, `TopWf`
+  in `Sound/Internal.lean` and `Sound/InternalTop.lean`, over
+  `Sound/Wf.lean`'s well-formed terms, telescopes, signatures and
+  scopes, on which `solve`, `force` and `unify` are shown never to get
+  stuck).
 
 The evaluator is defined only for what has an evaluation: `evalExpr`
 takes the fact that one exists and returns it, unique by determinism
@@ -300,14 +315,14 @@ differential corpus, 45 report their goal proved.
   `HasType`, `TeleSat`, `WType`, `WSat`, `Sat`, `junkHead`, `Approx`,
   `Sigs.erasedArg`, `Rel`, `MultRel`, `MultsRel`, `Sig.close`,
   `GoalHolds`, `GoalBelow`, `ProvedAt`, `OutcomeSound`, `PrintsShown`,
-  `PrintJust`, `typeOf`, `showValue`, `World`,
-  the evaluation relation `Eval` and its companions, `CallRel` among
-  them, `bindPattern`, and the meaning of `runProgram`,
-  `runProgramWith`, `run`, `checkItems`, `topItems`, `topItem` and the
-  checker functions the `reached_` theorems name, `TopState.eval`,
-  `TopState.run` and `Outcome`'s fields. That `HasType` captures
-  what a value of a type is rests on SOUNDNESS.md part 2, which it
-  follows; that `Rel` and `Approx` capture what erasure and taint may
+  `PrintJust`, `typeOf`, `showValue`, `World`, `Top.okFor`,
+  `CheckError.internal`, the evaluation relation `Eval` and its
+  companions, `CallRel` among them, `bindPattern`, and the meaning of
+  `runProgram`, `runProgramWith`, `run`, `checkItems`, `topItems`,
+  `topItem` and the checker functions the `reached_` theorems name,
+  `TopState.eval`, `TopState.run` and `Outcome`'s fields. That `HasType`
+  captures what a value of a type is rests on SOUNDNESS.md part 2, which
+  it follows; that `Rel` and `Approx` capture what erasure and taint may
   remove rests on a reading of §12 and §16.
 - That the Lean checker implements DESIGN.md. Nothing proves this; it is
   supported only by the differential comparison, in which the two
@@ -337,7 +352,8 @@ items 69 to 75.
   proof; the pass that solves `_` evaluates nothing. There is no fuel.
 - **Internal checks.** Where the TypeScript checker relies on
   invariants of its data, the Lean checker tests them and rejects the
-  program with an error starting "internal:", so that the proofs need
+  program with an error starting "internal:", marked `internal`
+  (`CheckError.internal`), so that the proofs need
   no syntactic invariants: a term with no type, a head with no
   signature, an expression producing no value, a `_` with no entry, a
   term to abstract that is not closed (`abstract?`), an argument with
@@ -352,8 +368,10 @@ items 69 to 75.
   below the top level, a value-constructor return that does not apply
   its type constructor, and a type constructor or value constructor
   named `sorry`, which, `sorry` being a keyword, the parser is believed
-  never to produce. No program of the corpus reaches one of these;
-  nothing proves them unreachable.
+  never to produce. No program of the corpus reaches one of these.
+  `checkItems_noInternal` (above) shows that the checking pass reaches
+  none of them on a program meeting `Top.okFor`; nothing is proved
+  about the solving pass.
 - It has no interface: it answers `inspect;` as text, and nothing else
   of §13.
 
@@ -366,8 +384,10 @@ items 69 to 75.
   error). The theorems hold for `runProgramWith` with any table, so a
   wrong table is believed to cost only completeness (a program
   rejected) or a misleading message, not soundness.
-- That the internal checks are unreachable on programs DESIGN.md
-  accepts.
+- That the solving pass reaches no internal check, that the solver's
+  table holds every `_` of the program, or that the parser's output
+  meets the conditions of `Top.okFor` other than the table's; so
+  nothing proves that `runProgram` or `run` reports no internal error.
 - That only a `comptime` pattern `let` whose value has another head
   meets an error found by evaluating: `reached_comptime` says that such
   an item meets that error, not that no other error is marked as found
