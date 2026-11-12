@@ -29,22 +29,20 @@ theorem checkExpr_removed {C : Ctx} {sc : Scope} {g : Option Given} {e : Expr} {
     simp [hres, ht]
   exact ⟨hall hres', hres'⟩
 
-/-- What checking an expression keeps, whatever the scope's taint: signatures and names, no `_` (§16) to solve,
-entries only added or given rules, and taint (§12). -/
+/-- What checking an expression keeps, whatever the scope's taint: signatures and names, entries only added or given
+rules, and taint (§12). -/
 def ExprShape (e : Expr) : Prop :=
-  ∀ (C : Ctx) (sc : Scope) (g : Option Given) (o : Out), C.solving = false → sc.holes = [] →
-    checkExpr C sc g e = .ok o →
-    o.sc.sigs = sc.sigs ∧ o.sc.names = sc.names ∧ o.sc.holes = [] ∧ sc.Γ.eraseRules <+: o.sc.Γ.eraseRules ∧
+  ∀ (C : Ctx) (sc : Scope) (g : Option Given) (o : Out), checkExpr C sc g e = .ok o →
+    o.sc.sigs = sc.sigs ∧ o.sc.names = sc.names ∧ sc.Γ.eraseRules <+: o.sc.Γ.eraseRules ∧
     (sc.taintedBy.isSome → o.sc.taintedBy.isSome)
 
 /-- What checking a statement keeps, whatever the scope's taint. -/
 def StmtShape (s : Stmt) : Prop :=
-  ∀ (C : Ctx) (sc : Scope) (o : StmtOut), C.solving = false → sc.holes = [] → checkStmt C sc s = .ok o →
-    o.sc.sigs = sc.sigs ∧ o.sc.holes = [] ∧ sc.Γ.eraseRules <+: o.sc.Γ.eraseRules ∧
-    (sc.taintedBy.isSome → o.sc.taintedBy.isSome)
+  ∀ (C : Ctx) (sc : Scope) (o : StmtOut), checkStmt C sc s = .ok o →
+    o.sc.sigs = sc.sigs ∧ sc.Γ.eraseRules <+: o.sc.Γ.eraseRules ∧ (sc.taintedBy.isSome → o.sc.taintedBy.isSome)
 
 theorem var_shape (x : Id) : ExprShape (.var x) := by
-  intro C sc g o hsv hh h
+  intro C sc g o h
   unfold checkExpr at h
   obtain ⟨o₀, h₀, hf⟩ := bind_eq_ok.1 h
   obtain ⟨-, hsc, -⟩ := finish_spec hf
@@ -52,9 +50,9 @@ theorem var_shape (x : Id) : ExprShape (.var x) := by
   split at h₀
   · simp [failAt_eq] at h₀
   · split at h₀
-    · obtain rfl := produced_eq hh h₀
+    · obtain rfl := produced_eq h₀
       rw [hsc]
-      exact ⟨rfl, rfl, hh, List.prefix_refl _, id⟩
+      exact ⟨rfl, rfl, List.prefix_refl _, id⟩
     · simp [notValue, failAt_eq] at h₀
 
 /-- One argument of a call or application (§8): a `_` (§16), or an expression checked against its parameter. -/
@@ -79,30 +77,29 @@ namespace ShapeFill
 
 /-- What `ExprShape` says of the scope after an expression. -/
 def Grows (sc sc' : Scope) : Prop :=
-  sc'.sigs = sc.sigs ∧ sc'.names = sc.names ∧ sc'.holes = [] ∧ sc.Γ.eraseRules <+: sc'.Γ.eraseRules ∧
+  sc'.sigs = sc.sigs ∧ sc'.names = sc.names ∧ sc.Γ.eraseRules <+: sc'.Γ.eraseRules ∧
     (sc.taintedBy.isSome → sc'.taintedBy.isSome)
 
-theorem Grows.refl {sc : Scope} (hh : sc.holes = []) : Grows sc sc := ⟨rfl, rfl, hh, List.prefix_refl _, id⟩
+theorem Grows.refl (sc : Scope) : Grows sc sc := ⟨rfl, rfl, List.prefix_refl _, id⟩
 
 theorem Grows.trans {a b c : Scope} (h₁ : Grows a b) (h₂ : Grows b c) : Grows a c :=
-  ⟨h₂.1.trans h₁.1, h₂.2.1.trans h₁.2.1, h₂.2.2.1, h₁.2.2.2.1.trans h₂.2.2.2.1, h₂.2.2.2.2 ∘ h₁.2.2.2.2⟩
+  ⟨h₂.1.trans h₁.1, h₂.2.1.trans h₁.2.1, h₁.2.2.1.trans h₂.2.2.1, h₂.2.2.2 ∘ h₁.2.2.2⟩
 
-theorem Grows.opened {sc : Scope} (hh : sc.holes = []) (tele : Telescope) (env : List Term) (kind : String)
+theorem Grows.opened (sc : Scope) (tele : Telescope) (env : List Term) (kind : String)
     (pos : Pos) (taint : Nat → Bool) : Grows sc (opened sc tele env kind pos taint).1 := by
   obtain ⟨⟨t, ht⟩, -⟩ := opened_shape sc tele env kind pos taint
-  exact ⟨rfl, rfl, hh, ⟨Entries.eraseRules t, by rw [← ht]; simp [Entries.eraseRules]⟩, id⟩
+  exact ⟨rfl, rfl, ⟨Entries.eraseRules t, by rw [← ht]; simp [Entries.eraseRules]⟩, id⟩
 
 theorem args_grows {args : List Arg} (ih : ∀ a ∈ args, ExprShape a.expr) :
     ∀ {C : Ctx} {sc : Scope} {owner role : String} {erased : Bool} {params : Telescope} {prev : List Res}
-      {a : ArgsOut}, sc.holes = [] → checkArgs C sc owner role erased params prev args = .ok a → C.solving = false →
-        Grows sc a.sc := by
+      {a : ArgsOut}, checkArgs C sc owner role erased params prev args = .ok a → Grows sc a.sc := by
   induction args with
   | nil =>
-    intro C sc owner role erased params prev a hh h _
+    intro C sc owner role erased params prev a h
     simp only [checkArgs, pure, Except.pure, Except.ok.injEq] at h
-    subst h; exact Grows.refl hh
+    subst h; exact Grows.refl _
   | cons arg args ihs =>
-    intro C sc owner role erased params prev a hh h hsv
+    intro C sc owner role erased params prev a h
     obtain ⟨m, e⟩ := arg
     cases params with
     | nil => simp [checkArgs, internal, failAt_eq] at h
@@ -110,20 +107,20 @@ theorem args_grows {args : List Arg} (ih : ∀ a ∈ args, ExprShape a.expr) :
       obtain ⟨o, r, rest, ho, -, hrest, rfl⟩ := checkArgs_cons h
       have h₁ : Grows sc o.sc := by
         split at ho
-        · rw [(holeArg_spec hsv ho).2.1]; exact Grows.refl hh
-        · exact ih (.mk m e) List.mem_cons_self C sc _ o hsv hh ho
-      exact h₁.trans (ihs (fun a ha => ih a (List.mem_cons_of_mem _ ha)) (a := rest) h₁.2.2.1 hrest hsv)
+        · rw [(holeArg_spec ho).2.1]; exact Grows.refl _
+        · exact ih (.mk m e) List.mem_cons_self C sc _ o ho
+      exact h₁.trans (ihs (fun a ha => ih a (List.mem_cons_of_mem _ ha)) (a := rest) hrest)
 
 theorem elems_grows {es : List Expr} (ih : ∀ e ∈ es, ExprShape e) :
-    ∀ {C : Ctx} {sc : Scope} {g : Option Given} {prev : List Res} {o : ElemsOut}, C.solving = false → sc.holes = [] →
+    ∀ {C : Ctx} {sc : Scope} {g : Option Given} {prev : List Res} {o : ElemsOut},
       checkElems C sc g prev es = .ok o → Grows sc o.sc := by
   induction es with
   | nil =>
-    intro C sc g prev o hsv hh h
+    intro C sc g prev o h
     simp only [checkElems, pure, Except.pure, Except.ok.injEq] at h
-    subst h; exact Grows.refl hh
+    subst h; exact Grows.refl _
   | cons e es ihs =>
-    intro C sc g prev o hsv hh h
+    intro C sc g prev o h
     simp only [checkElems] at h
     obtain ⟨o₁, ho₁, h⟩ := bind_eq_ok.1 h
     obtain ⟨r, -, h⟩ := bind_eq_ok.1 h
@@ -131,42 +128,41 @@ theorem elems_grows {es : List Expr} (ih : ∀ e ∈ es, ExprShape e) :
     simp only [pure, Except.pure, Except.ok.injEq] at h
     subst h
     rw [keep_ok] at hrest
-    have h₁ : Grows sc o₁.sc := ih e List.mem_cons_self C sc _ o₁ hsv hh ho₁
-    exact h₁.trans (ihs (fun a ha => ih a (List.mem_cons_of_mem _ ha)) (o := rest) hsv h₁.2.2.1 hrest)
+    have h₁ : Grows sc o₁.sc := ih e List.mem_cons_self C sc _ o₁ ho₁
+    exact h₁.trans (ihs (fun a ha => ih a (List.mem_cons_of_mem _ ha)) (o := rest) hrest)
 
 /-- What `StmtShape` says, for a list of statements. -/
 theorem stmts_grows {ss : List Stmt} (ih : ∀ s ∈ ss, StmtShape s) :
-    ∀ {C : Ctx} {sc : Scope} {o : StmtsOut}, C.solving = false → sc.holes = [] → checkStmts C sc ss = .ok o →
-      o.sc.sigs = sc.sigs ∧ o.sc.holes = [] ∧ sc.Γ.eraseRules <+: o.sc.Γ.eraseRules ∧
-        (sc.taintedBy.isSome → o.sc.taintedBy.isSome) := by
+    ∀ {C : Ctx} {sc : Scope} {o : StmtsOut}, checkStmts C sc ss = .ok o →
+      o.sc.sigs = sc.sigs ∧ sc.Γ.eraseRules <+: o.sc.Γ.eraseRules ∧ (sc.taintedBy.isSome → o.sc.taintedBy.isSome) := by
   induction ss with
   | nil =>
-    intro C sc o hsv hh h
+    intro C sc o h
     simp only [checkStmts, pure, Except.pure, Except.ok.injEq] at h
-    subst h; exact ⟨rfl, hh, List.prefix_refl _, id⟩
+    subst h; exact ⟨rfl, List.prefix_refl _, id⟩
   | cons s ss ihs =>
-    intro C sc o hsv hh h
+    intro C sc o h
     simp only [checkStmts] at h
     obtain ⟨o₁, ho₁, h⟩ := bind_eq_ok.1 h
     obtain ⟨rest, hrest, h⟩ := bind_eq_ok.1 h
     simp only [pure, Except.pure, Except.ok.injEq] at h
     subst h
     rw [keep_ok] at hrest
-    obtain ⟨a₁, a₂, a₃, a₄⟩ := ih s List.mem_cons_self C sc o₁ hsv hh ho₁
-    obtain ⟨b₁, b₂, b₃, b₄⟩ := ihs (fun a ha => ih a (List.mem_cons_of_mem _ ha)) hsv a₂ hrest
-    exact ⟨b₁.trans a₁, b₂, a₃.trans b₃, b₄ ∘ a₄⟩
+    obtain ⟨a₁, a₃, a₄⟩ := ih s List.mem_cons_self C sc o₁ ho₁
+    obtain ⟨b₁, b₃, b₄⟩ := ihs (fun a ha => ih a (List.mem_cons_of_mem _ ha)) hrest
+    exact ⟨b₁.trans a₁, a₃.trans b₃, b₄ ∘ a₄⟩
 
-theorem applied_opened {sc : Scope} (hh : sc.holes = []) {tele : Telescope} {env : List Term} {name : String}
-    {pos pos' : Pos} {taint : Nat → Bool} {g : Option Given} {tree : Expr} {since : Option Nat} {snaps : List Snapshot}
+theorem applied_opened {sc : Scope} {tele : Telescope} {env : List Term} {name : String}
+    {pos pos' : Pos} {taint : Nat → Bool} {g : Option Given} {tree : Expr} {snaps : List Snapshot}
     {o : Out} (h : applied (opened sc tele env name pos taint).1 g pos' (opened sc tele env name pos taint).2 tree
-      since snaps = .ok o) : Grows sc o.sc := by
-  obtain ⟨rfl, -⟩ := applied_eq (by exact hh) h
-  exact Grows.opened hh ..
+      snaps = .ok o) : Grows sc o.sc := by
+  obtain ⟨rfl, -⟩ := applied_eq h
+  exact Grows.opened ..
 
 end ShapeFill
 
 theorem app_shape {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprShape a.expr) : ExprShape (.app h args) := by
-  intro C sc g o hsv hsh hc
+  intro C sc g o hc
   unfold checkExpr at hc
   obtain ⟨o₀, h₀, hf⟩ := bind_eq_ok.1 hc
   obtain ⟨-, hsc, -⟩ := finish_spec hf
@@ -186,21 +182,21 @@ theorem app_shape {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprShape a
         all_goals
           repeat obtain ⟨_, _, h₀⟩ := bind_eq_ok.1 h₀
           rw [keep_ok] at h₀
-          have hg := ShapeFill.args_grows ih hsh (by assumption) (by exact hsv)
+          have hg := ShapeFill.args_grows ih (by assumption)
           split at h₀ <;> (try obtain ⟨_, -, h₀⟩ := bind_eq_ok.1 h₀) <;>
-            exact hg.trans (ShapeFill.applied_opened hg.2.2.1 h₀)
+            exact hg.trans (ShapeFill.applied_opened h₀)
     | type T cs d | ctor c =>
       simp only [hg, ↓reduceIte] at h₀
       obtain ⟨u, -, h₀⟩ := bind_eq_ok.1 h₀
       obtain ⟨sig, -, h₀⟩ := bind_eq_ok.1 h₀
       obtain ⟨u₂, -, h₀⟩ := bind_eq_ok.1 h₀
       obtain ⟨a, ha, h₀⟩ := bind_eq_ok.1 h₀
-      have hg := ShapeFill.args_grows ih hsh ha (by exact hsv)
-      obtain ⟨rfl, -⟩ := applied_eq hg.2.2.1 h₀
+      have hg := ShapeFill.args_grows ih ha
+      obtain ⟨rfl, -⟩ := applied_eq h₀
       exact hg
 
 theorem tuple_shape (p : Pos) {es : List Expr} (ih : ∀ e ∈ es, ExprShape e) : ExprShape (.tuple p es) := by
-  intro C sc g o hsv hsh hc
+  intro C sc g o hc
   unfold checkExpr at hc
   obtain ⟨o₀, h₀, hf⟩ := bind_eq_ok.1 hc
   obtain ⟨-, hsc, -⟩ := finish_spec hf
@@ -214,11 +210,11 @@ theorem tuple_shape (p : Pos) {es : List Expr} (ih : ∀ e ∈ es, ExprShape e) 
     obtain ⟨oe, hoe, h₀⟩ := bind_eq_ok.1 h₀
     simp only [pure, Except.pure, Except.ok.injEq] at h₀
     subst h₀
-    exact ShapeFill.elems_grows ih (by exact hsv) hsh hoe
+    exact ShapeFill.elems_grows ih hoe
 
 theorem block_shape {ss : List Stmt} {f : Expr} (ihs : ∀ s ∈ ss, StmtShape s) (ihf : ExprShape f) :
     ExprShape (.block ss f) := by
-  intro C sc g o hsv hsh hc
+  intro C sc g o hc
   unfold checkExpr at hc
   obtain ⟨o₀, h₀, hf⟩ := bind_eq_ok.1 hc
   obtain ⟨-, hsc, -⟩ := finish_spec hf
@@ -230,13 +226,13 @@ theorem block_shape {ss : List Stmt} {f : Expr} (ihs : ∀ s ∈ ss, StmtShape s
   simp only [pure, Except.pure, Except.ok.injEq] at h₀
   subst h₀
   rw [keep_ok] at hof
-  obtain ⟨a₁, -, a₃, a₄⟩ := ShapeFill.stmts_grows ihs (sc := { sc with holes := [] }) (by exact hsv) rfl hs
-  obtain ⟨b₁, -, b₃, b₄, b₅⟩ := ihf _ { s.sc with holes := sc.holes } _ of (by exact hsv) hsh hof
-  exact ⟨b₁.trans a₁, rfl, b₃, a₃.trans b₄, b₅ ∘ a₄⟩
+  obtain ⟨a₁, a₃, a₄⟩ := ShapeFill.stmts_grows ihs hs
+  obtain ⟨b₁, -, b₄, b₅⟩ := ihf _ s.sc _ of hof
+  exact ⟨b₁.trans a₁, rfl, a₃.trans b₄, b₅ ∘ a₄⟩
 
 theorem match_shape {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Branch} (ihs : ExprShape s) :
     ExprShape (.match p m s ann bs) := by
-  intro C sc g o hsv hsh hc
+  intro C sc g o hc
   unfold checkExpr at hc
   obtain ⟨o₀, h₀, hf⟩ := bind_eq_ok.1 hc
   obtain ⟨-, hsc, -⟩ := finish_spec hf
@@ -245,8 +241,7 @@ theorem match_shape {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : Li
   simp only at h₀
   obtain ⟨so, hso, h₀⟩ := bind_eq_ok.1 h₀
   rw [keep_ok] at h₀
-  rw [closed_eq hsh fun o h => (ihs _ sc none o (by exact hsv) hsh h).2.2.1] at hso
-  have h₁ : ShapeFill.Grows sc so.sc := ihs _ sc none so (by exact hsv) hsh hso
+  have h₁ : ShapeFill.Grows sc so.sc := ihs _ sc none so hso
   obtain ⟨r, -, h₀⟩ := bind_eq_ok.1 h₀
   obtain ⟨⟨tele, tenv⟩, -, h₀⟩ := bind_eq_ok.1 h₀
   obtain ⟨fs, -, h₀⟩ := bind_eq_ok.1 h₀
@@ -263,38 +258,36 @@ theorem match_shape {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : Li
     simp only [pure, Except.pure, Except.ok.injEq] at h₀
     subst h₀
     rw [keep_ok] at ho'
-    obtain rfl := produced_eq (by exact h₁.2.2.1) ho'
-    exact h₁.trans (ShapeFill.Grows.opened h₁.2.2.1 ..)
+    obtain rfl := produced_eq ho'
+    exact h₁.trans (ShapeFill.Grows.opened ..)
 
 theorem Entries.eraseRules_prefix {Γ Γ' : Entries} (h : Γ <+: Γ') : Γ.eraseRules <+: Γ'.eraseRules := by
   obtain ⟨t, rfl⟩ := h
   exact ⟨Entries.eraseRules t, by simp [Entries.eraseRules]⟩
 
 theorem sorry_shape (p : Pos) (t : Tele) : ExprShape (.sorry p t) := by
-  intro C sc g o hsv hh h
+  intro C sc g o h
   unfold checkExpr at h
   obtain ⟨o₀, h₀, hf⟩ := bind_eq_ok.1 h
   obtain ⟨-, hsc, -⟩ := finish_spec hf
   simp only at h₀
   obtain ⟨⟨tele, env⟩, -, h₀⟩ := bind_eq_ok.1 h₀
   obtain ⟨hpre, -⟩ := opened_shape sc tele env "sorry" p fun _ => true
-  have hh' : (opened sc tele env "sorry" p fun _ => true).1.holes = [] := hh
-  obtain rfl := produced_eq hh' h₀
+  obtain rfl := produced_eq h₀
   rw [hsc]
-  exact ⟨rfl, rfl, hh, Entries.eraseRules_prefix hpre, id⟩
+  exact ⟨rfl, rfl, Entries.eraseRules_prefix hpre, id⟩
 
 theorem removed_shape : ExprShape .removed := by
-  intro C sc g o _ _ h
+  intro C sc g o h
   simp [checkExpr, internal, failAt_eq, bind, Except.bind] at h
 
 /-- A tuple `let` (§8): its right-hand side is checked against its binders, as `letWants` gives them when they have
-no `_` (§16), and otherwise right-hand side first, given only their multiplicities; its binders name the results. -/
+no `_` (§20), and otherwise right-hand side first, given only their multiplicities; its binders name the results. -/
 theorem let_steps {C : Ctx} {sc : Scope} {p : Pos} {bs : List LetBinder} {rhs : Expr} {o : StmtOut}
-    (hsv : C.solving = false) (h : checkStmt C sc (.let p bs rhs) = .ok o) :
+    (h : checkStmt C sc (.let p bs rhs) = .ok o) :
     ∃ o' ws, checkExpr C sc (some (letGiven bs ws)) rhs = .ok o' ∧ ws.length = bs.length ∧
       (∀ (i : Nat) (w : Want) (b : LetBinder), ws[i]? = some w → bs[i]? = some b → w.mult = b.mult.getD .many) ∧
-      ((bs.any (·.ann.any (·.term.holed)) = false ∧ letWants C sc bs = .ok (ws, sc)) ∨
-        bs.any (·.ann.any (·.term.holed)) = true) ∧
+      ((holedLet bs = false ∧ letWants C sc bs = .ok ws) ∨ holedLet bs = true) ∧
       o = ⟨o'.sc.bind (bs.map LetBinder.name) ((bs.zip o'.res).map fun (x : LetBinder × Res) =>
         ({ x.2 with erased := x.1.mult == some Mult.erased } : Res)), .let p bs o'.tree, o'.snaps⟩ := by
   simp only [checkStmt] at h
@@ -302,41 +295,33 @@ theorem let_steps {C : Ctx} {sc : Scope} {p : Pos} {bs : List LetBinder} {rhs : 
   clear h
   have h := h'
   clear h'
-  by_cases hr : rhsFirst C bs = true
+  by_cases hr : holedLet bs = true
   · simp only [hr, ↓reduceIte] at h
-    have hf : bs.any (·.ann.any (·.term.holed)) = true := by simpa [rhsFirst, hsv] using hr
     obtain ⟨o', ho', h⟩ := bind_eq_ok.1 h
-    obtain ⟨o₂, hc, h⟩ := bind_eq_ok.1 h
-    rw [keep_ok] at hc
-    rw [close_ok hc] at h
     obtain ⟨u, -, h⟩ := bind_eq_ok.1 h
-    simp only [pure, Except.pure, ok_bind, Except.ok.injEq] at h
-    refine ⟨o', _, ho', by simp, fun i w b hw hb => ?_, .inr hf, h.symm⟩
+    simp only [pure, Except.pure, Except.ok.injEq, ok_bind] at h
+    refine ⟨o', _, ho', by simp, fun i w b hw hb => ?_, .inr hr, h.symm⟩
     simp only [List.getElem?_map, hb, Option.map_some, Option.some.injEq] at hw
     subst hw; rfl
   · simp only [hr, Bool.false_eq_true, ↓reduceIte] at h
-    have hf : bs.any (·.ann.any (·.term.holed)) = false := by simpa [rhsFirst, hsv] using hr
-    obtain ⟨⟨ws, sc'⟩, hws, h₁⟩ := bind_eq_ok.1 h
+    have hf : holedLet bs = false := by simpa using hr
+    obtain ⟨ws, hws, h₁⟩ := bind_eq_ok.1 h
     clear h
-    obtain ⟨hsc, hwl, hwm⟩ := letWants_spec hws hf
-    subst hsc
+    obtain ⟨hwl, hwm⟩ := letWants_spec hws
     obtain ⟨o', ho', h⟩ := bind_eq_ok.1 h₁
-    obtain ⟨o₂, hc, h⟩ := bind_eq_ok.1 h
-    rw [keep_ok] at hc
-    rw [close_ok hc] at h
     simp only [pure, Except.pure, Except.ok.injEq] at h
     exact ⟨o', ws, ho', hwl, hwm, .inl ⟨hf, hws⟩, h.symm⟩
 
 theorem let_shape {p : Pos} {bs : List LetBinder} {rhs : Expr} (ih : ExprShape rhs) : StmtShape (.let p bs rhs) := by
-  intro C sc o hsv hsh h
-  obtain ⟨o', ws, ho', -, -, -, rfl⟩ := let_steps hsv h
-  obtain ⟨a₁, -, a₃, a₄, a₅⟩ := ih C sc _ o' hsv hsh ho'
+  intro C sc o h
+  obtain ⟨o', ws, ho', -, -, -, rfl⟩ := let_steps h
+  obtain ⟨a₁, -, a₄, a₅⟩ := ih C sc _ o' ho'
   rw [Scope.bind_eq]
-  exact ⟨a₁, a₃, a₄, a₅⟩
+  exact ⟨a₁, a₄, a₅⟩
 
 theorem patlet_shape {p : Pos} {ct : Bool} {m : Option Mult} {pat : Pattern} {rhs : Expr} (ih : ExprShape rhs) :
     StmtShape (.patlet p ct m pat rhs) := by
-  intro C sc o hsv hsh h
+  intro C sc o h
   simp only [checkStmt] at h
   split at h
   · simp [failAt_eq, bind, Except.bind] at h
@@ -344,13 +329,12 @@ theorem patlet_shape {p : Pos} {ct : Bool} {m : Option Mult} {pat : Pattern} {rh
   obtain ⟨u, -, h⟩ := bind_eq_ok.1 h
   obtain ⟨o', ho', h⟩ := bind_eq_ok.1 h
   rw [keep_ok] at h
-  rw [closed_eq hsh fun o h => (ih _ sc none o (by exact hsv) hsh h).2.2.1] at ho'
   obtain ⟨r, -, h⟩ := bind_eq_ok.1 h
   obtain ⟨fs, hfs, h⟩ := bind_eq_ok.1 h
   obtain ⟨sc', hsc', h⟩ := bind_eq_ok.1 h
   simp only [pure, Except.pure, Except.ok.injEq] at h
   subst h
-  obtain ⟨a₁, -, a₃, a₄, a₅⟩ := ih _ sc none o' (by exact hsv) hsh ho'
+  obtain ⟨a₁, -, a₄, a₅⟩ := ih _ sc none o' ho'
   obtain ⟨Γ, ids, ⟨f, hf, hfo⟩, -, rfl⟩ := patBind_spec hsc'
   obtain ⟨i, hi⟩ := List.mem_iff_getElem?.1 (List.mem_of_find?_eq_some hf)
   obtain ⟨_, -, -, -, hfs'⟩ := forcings_spec hfs
@@ -358,15 +342,15 @@ theorem patlet_shape {p : Pos} {ct : Bool} {m : Option Mult} {pat : Pattern} {rh
   rw [hforce] at hfo
   obtain ⟨-, hpre, -⟩ := force_eraseRules hfo
   rw [Scope.bind_eq]
-  refine ⟨a₁, a₃, a₄.trans hpre, fun ht => ?_⟩
+  refine ⟨a₁, a₄.trans hpre, fun ht => ?_⟩
   obtain ⟨x, hx⟩ := Option.isSome_iff_exists.1 (a₅ ht)
   simp [reach, hx]
 
 theorem inspect_shape (p : Pos) : StmtShape (.inspect p) := by
-  intro C sc o _ _ h
+  intro C sc o h
   simp only [checkStmt, pure, Except.pure, Except.ok.injEq] at h
   subst h
-  exact ⟨rfl, ‹_›, List.prefix_refl _, id⟩
+  exact ⟨rfl, List.prefix_refl _, id⟩
 
 theorem Arg.sizeOf_expr_lt {a : Arg} {args : List Arg} (h : a ∈ args) : sizeOf a.expr < 1 + sizeOf args := by
   have := List.sizeOf_lt_of_mem h

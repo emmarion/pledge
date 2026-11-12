@@ -116,32 +116,40 @@ theorem Scope.solution_spec {C : Ctx} {sc : Scope} {ts : List Term} {pos : Pos} 
         · rfl
   · simp [failAt_eq] at h
 
-/-- With `solving` off, a `_` takes a term of the table, changing nothing in the scope, and its tree is removed. -/
-theorem Scope.hole_spec {C : Ctx} {sc : Scope} {pos : Pos} {type : Term} {is : Option Term} {erased : Bool} {o : Out}
-    (hs : C.solving = false) (h : sc.hole C pos type is erased = .ok o) :
-    o.sc = sc ∧ o.tree = .removed ∧ o.snaps = [] ∧
-      ∃ ts r, sc.solution C ts pos type is erased = .ok r ∧ o.res = [r] := by
+/-- A `_` takes a term of the table. -/
+theorem Scope.hole_spec {C : Ctx} {sc : Scope} {pos : Pos} {type : Term} {is : Option Term} {erased : Bool} {r : Res}
+    (h : sc.hole C pos type is erased = .ok r) : ∃ ts, sc.solution C ts pos type is erased = .ok r := by
   unfold Scope.hole at h
   split at h
-  · obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
+  · exact ⟨_, h⟩
+  · simp [failAt_eq] at h
+
+theorem holeType_spec {C : Ctx} {sc : Scope} {g : Given} {p : TBinder} {prev : List Res} {pos : Pos}
+    {x : Term × Option Term × Bool} (h : holeType C sc g p prev pos = .ok x) :
+    (C.erased || g.erasedAt 0 || C.inType || identical sc.Γ (p.type.subst (prev.map (·.term))) .TYPE) = true ∧
+      x = (p.type.subst (prev.map (·.term)), p.is.map (·.subst (prev.map (·.term))), C.erased || g.erasedAt 0) := by
+  unfold holeType at h
+  simp only at h
+  split at h
+  · rename_i hc
     simp only [pure, Except.pure, Except.ok.injEq] at h
-    subst h
-    exact ⟨rfl, rfl, rfl, _, r, hr, rfl⟩
-  · rename_i hsv; rw [hs] at hsv; cases hsv
-  · simp [internal, failAt_eq] at h
+    exact ⟨by simpa [Bool.or_assoc] using hc, h.symm⟩
+  · simp [failAt_eq, bind, Except.bind] at h
 
 /-- A `_` argument (§16): erased, inside a type, or of type `Type()`, and a `_` as `Scope.hole` takes it. -/
 theorem holeArg_spec {C : Ctx} {sc : Scope} {g : Given} {p : TBinder} {prev : List Res} {pos : Pos} {o : Out}
-    (hs : C.solving = false) (h : holeArg C sc g p prev pos = .ok o) :
+    (h : holeArg C sc g p prev pos = .ok o) :
     (C.erased || g.erasedAt 0 || C.inType || identical sc.Γ (p.type.subst (prev.map (·.term))) .TYPE) = true ∧
       o.sc = sc ∧ o.tree = .removed ∧ o.snaps = [] ∧ ∃ ts r, sc.solution C ts pos (p.type.subst (prev.map (·.term)))
         (p.is.map (·.subst (prev.map (·.term)))) (C.erased || g.erasedAt 0) = .ok r ∧ o.res = [r] := by
   unfold holeArg at h
-  simp only at h
-  split at h
-  · rename_i hc
-    exact ⟨by simpa [Bool.or_assoc] using hc, Scope.hole_spec hs h⟩
-  · simp [failAt_eq, bind, Except.bind] at h
+  obtain ⟨x, hx, h⟩ := bind_eq_ok.1 h
+  obtain ⟨hc, rfl⟩ := holeType_spec hx
+  obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
+  simp only [pure, Except.pure, Except.ok.injEq] at h
+  subst h
+  obtain ⟨ts, hts⟩ := Scope.hole_spec hr
+  exact ⟨hc, rfl, rfl, rfl, ts, r, hts, rfl⟩
 
 /-- The value of the term a `_` takes: it has the wanted type, by its head, and when the `_` is untainted and the
 valuation satisfies the scope, has it; and it is the `is` term's value. -/
@@ -165,13 +173,13 @@ theorem Scope.solution_sound {C : Ctx} {sc : Scope} {ts : List Term} {pos : Pos}
 /-- The value of a `_` argument (§16): it meets its parameter, the earlier arguments taking the values `prevv`, by
 its head, and, when the `_` is untainted and the valuation satisfies the scope, with its type. -/
 theorem holeArg_value {C : Ctx} {sc : Scope} {g : Given} {p : TBinder} {prev : List Res} {pos : Pos} {o : Out}
-    {Sc : Sigs} {ρ prevv : List Value} {n0 : Nat} (hs : C.solving = false) (hΓ : WSat Sc sc.Γ ρ)
+    {Sc : Sigs} {ρ prevv : List Value} {n0 : Nat} (hΓ : WSat Sc sc.Γ ρ)
     (hS : SigsClose sc.sigs ρ Sc) (hJ : Sc.find junkHead = none) (hok : SigsOk n0 sc.sigs) (hn : n0 ≤ ρ.length)
     (hprev : Term.evalList ρ [] (prev.map (·.term)) = some prevv) (h : holeArg C sc g p prev pos = .ok o) :
     ∃ r v A, o.res = [r] ∧ r.term.eval ρ [] = some v ∧ p.type.eval ρ prevv = some A ∧ v.noRemoved = true ∧
       WType Sc v A ∧ (Sat Sc sc.Γ ρ → r.tainted = false → HasType Sc v A) ∧
       ∀ e, p.is = some e → e.eval ρ prevv = some v := by
-  obtain ⟨-, -, -, -, ts, r, hr, hres⟩ := holeArg_spec hs h
+  obtain ⟨-, -, -, -, ts, r, hr, hres⟩ := holeArg_spec h
   obtain ⟨v, A, hv, hA, hnr, hw, hty, his⟩ := Scope.solution_sound hΓ hS hJ hok hn hr
   refine ⟨r, v, A, hres, hv, by rw [← Term.eval_subst hprev]; exact hA, hnr, hw, hty, fun e he => ?_⟩
   rw [← Term.eval_subst hprev]

@@ -545,9 +545,9 @@ theorem Group.topInv (hI : TopInv st ρ) (hg : Group st ts cs new true st')
   have hTH := hg.typeHeads hI
   obtain ⟨heq, -, -, hown, hok, hsigs, htypes, hctors⟩ := id hg
   subst heq
-  refine ⟨hI.len, hI.noRemoved, hI.holes, fun sig hs => ?_, hJ, fun sig hs => ?_, fun h sig hs => ?_,
+  refine ⟨hI.len, hI.noRemoved, fun sig hs => ?_, hJ, fun sig hs => ?_, fun h sig hs => ?_,
     fun d hd => ?_, hI.groups, let ⟨_, hs⟩ := hI.typeSig; ⟨_, Sigs.find_append_old hs⟩,
-    hI.goal_le hle rfl (Nat.le_refl _) id, fun hp => ?_, fun ht => ?_, hI.solving, fun sig hs ⟨args, e⟩ => by
+    hI.goal_le hle rfl (Nat.le_refl _) id, fun hp => ?_, fun ht => ?_, fun sig hs ⟨args, e⟩ => by
       obtain ⟨hd, args', hret, hk⟩ := hTH sig hs
       rw [hret] at e
       injection e with e1
@@ -682,9 +682,9 @@ theorem goalItem_sound {st st' : TopState} {ρ : List Value} {hw : st.Runs} {p :
     (h : topItem st hw (.goal p g) = .ok st') :
     (st.world ρ).Le (st'.world ρ) ∧ TopInv st' ρ := by
   obtain ⟨hnone, goal, rfl, hgoal⟩ := goal_spec h
-  refine ⟨World.Le.refl _, ⟨hI.len, hI.noRemoved, hI.holes, hI.sigsOk, hI.noJunk, hI.rets, hI.sigNames, hI.fnNames,
+  refine ⟨World.Le.refl _, ⟨hI.len, hI.noRemoved, hI.sigsOk, hI.noJunk, hI.rets, hI.sigNames, hI.fnNames,
     hI.groups, hI.typeSig, fun g' hg' => ?_, fun hpr => ?_, fun ht =>
-      let L := hI.live ht; ⟨L.sat, L.names, L.env, L.globals⟩, hI.solving, hI.typeHeads⟩⟩
+      let L := hI.live ht; ⟨L.sat, L.names, L.env, L.globals⟩, hI.typeHeads⟩⟩
   · cases hg'
     cases g with
     | fn hdr =>
@@ -694,13 +694,13 @@ theorem goalItem_sound {st st' : TopState} {ρ : List Value} {hw : st.Runs} {p :
       obtain ⟨ty, is, tainted, h1, h2, rfl⟩ := hgoal
       refine ⟨h2, fun hts => ⟨fun t' ht' => ?_, fun W' hW t' ht' hu => ?_⟩⟩
       · cases ht'
-        obtain ⟨A, hA⟩ := (annotate_eval (DataTop.TopLive.wtermInv hI (hI.live hts)) (ann := .type t) hI.solving h1).1
+        obtain ⟨A, hA⟩ := (annotate_eval (DataTop.TopLive.wtermInv hI (hI.live hts)) (ann := .type t) h1).1
         exact DataTop.Term.boundsBelow_of_eval _ hA
       · cases ht'
         have L := hI.live hts
         obtain ⟨V, hV, hVT⟩ := annotate_type_typed (n0 := st.sc.Γ.length) ⟨L.sat, by rw [hI.len]; exact Nat.le_refl _,
           SigsClose.close hI.noRemoved, hI.sigsOk, by simp [TopState.world, Sigs.find_map_close, hI.noJunk],
-          fun n r h => let ⟨v, hv, ok⟩ := L.names n r h; ⟨v, hv, ok.2.1, ok.2.2⟩⟩ hI.solving h1
+          fun n r h => let ⟨v, hv, ok⟩ := L.names n r h; ⟨v, hv, ok.2.1, ok.2.2⟩⟩ h1
           (by simp at hu; exact hu.1)
         have hρ : ρ.take st.sc.Γ.length = W'.ρ.take st.sc.Γ.length := by
           rw [hW.take_of_le (by simp [TopState.world, hI.len])]
@@ -710,9 +710,9 @@ theorem goalItem_sound {st st' : TopState} {ρ : List Value} {hw : st.Runs} {p :
     rw [hnone] at hg'
     cases hg'
 
-/-- A group of functions keeps the phase, whether `_` is being solved, the goal and whether it is proved. -/
+/-- A group of functions keeps the phase, the goal and whether it is proved. -/
 theorem fnGroup_keeps {st st' : TopState} {fs : List Fn} (h : fnGroup st fs = .ok st') :
-    (st'.phase = st.phase ∧ st'.solving = st.solving) ∧ st'.goal = st.goal ∧ st'.proved = st.proved ∧
+    st'.phase = st.phase ∧ st'.goal = st.goal ∧ st'.proved = st.proved ∧
       st'.prints = st.prints := by
   unfold fnGroup at h
   obtain ⟨st0, h0, h⟩ := bind_eq_ok.1 h
@@ -720,13 +720,13 @@ theorem fnGroup_keeps {st st' : TopState} {fs : List Fn} (h : fnGroup st fs = .o
   obtain ⟨⟨taint, bodies⟩, -, h⟩ := bind_eq_ok.1 h
   simp only [pure, Except.pure, Except.ok.injEq] at h
   subst h
-  have e0 := foldlM_induct (fun _ s => (s.phase = st.phase ∧ s.solving = st.solving) ∧ s.goal = st.goal ∧
+  have e0 := foldlM_induct (fun _ s => s.phase = st.phase ∧ s.goal = st.goal ∧
     s.proved = st.proved ∧ s.prints = st.prints) fs []
     (fun q x b b' _ hb hf => by
       obtain ⟨_, -, hf⟩ := bind_eq_ok.1 hf
       simp only [pure, Except.pure, Except.ok.injEq] at hf
-      rw [← hf]; exact hb) ⟨⟨rfl, rfl⟩, rfl, rfl, rfl⟩ h0
-  exact foldlM_induct (fun _ p => (p.1.phase = st.phase ∧ p.1.solving = st.solving) ∧ p.1.goal = st.goal ∧
+      rw [← hf]; exact hb) ⟨rfl, rfl, rfl, rfl⟩ h0
+  exact foldlM_induct (fun _ p => p.1.phase = st.phase ∧ p.1.goal = st.goal ∧
     p.1.proved = st.proved ∧ p.1.prints = st.prints) fs []
     (fun q x b b' _ hb hf => by
       obtain ⟨⟨s, hd⟩, hh, hf⟩ := bind_eq_ok.1 hf
@@ -830,13 +830,13 @@ theorem ownedBy_empty {ds : List Data} {d : Data} (hn : (ds.map (·.name.name)).
 
 theorem checkTerm_app_head {C : Ctx} {sc : Scope} {whole : Bool} {hn : Name} {args : List WTerm} {r : Res}
     (h : checkTerm C sc whole (.app hn args) = .ok r) : ∃ k ts, r.term = .app ⟨k, hn.name⟩ ts := by
-  obtain ⟨-, k, -, -, sig, -, -, hsig, -, -, rfl⟩ := checkTerm_app h
+  obtain ⟨-, k, -, -, sig, -, hsig, -, -, rfl⟩ := checkTerm_app h
   exact ⟨k, _, by rw [Sigs.find_head (Scope.sig_ok hsig)]⟩
 
 theorem annotate_type {C : Ctx} {sc : Scope} {t : WTerm} {ty : Term} {is : Option Term} {tn : Bool}
-    (hs : C.solving = false) (h : annotate C sc (.type t) = .ok (ty, is, tn)) :
+    (h : annotate C sc (.type t) = .ok (ty, is, tn)) :
     ∃ (C' : Ctx) (r : Res), checkTerm C' sc true t = .ok r ∧ ty = r.term := by
-  obtain ⟨C', r, -, hr, -, -, rfl, -⟩ := TermFill.annotate_spec hs h
+  obtain ⟨C', r, hr, -, -, rfl, -⟩ := TermFill.annotate_spec h
   exact ⟨C', r, hr, rfl⟩
 
 /-- Every type a value has in a world of the top level applies a type constructor. -/

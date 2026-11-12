@@ -53,7 +53,7 @@ theorem ctorApp_sound {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSou
     obtain ⟨sig, hsig, h₀⟩ := bind_eq_ok.1 h₀
     obtain ⟨u₂, har, h₀⟩ := bind_eq_ok.1 h₀
     obtain ⟨a, ha, h₀⟩ := bind_eq_ok.1 h₀
-    simp only [↓reduceIte, reduceCtorEq] at h₀
+    simp only [↓reduceIte] at h₀
     exact Simple.ctorApp_post ih ihs rfl hI hg (hI.globals.type hT).1 rfl (Scope.sig_ok hsig) (arity_ok har) ha h₀ hf
   · rename_i c hT
     simp only [hT] at h₀
@@ -129,25 +129,24 @@ whose forcing survived, so the match has a branch for it, whose results are the 
 scrutinee's tag picks that branch. With no branch, it is absurd: its results are tainted, or it is not reached. -/
 theorem matchMany_sound {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Branch}
     (hm : m ≠ some .erased)
-    (ihs : ExprSound s) (ihss : ExprShape s) (ihb : ∀ b ∈ bs, ExprSound b.body)
-    (ihbs : ∀ b ∈ bs, ExprShape b.body) : ExprSound (.match p m s ann bs) :=
-  MatchMany.sound hm ihs ihss ihb ihbs
+    (ihs : ExprSound s) (ihss : ExprShape s) (ihb : ∀ b ∈ bs, ExprSound b.body) : ExprSound (.match p m s ann bs) :=
+  MatchMany.sound hm ihs ihss ihb
 
 /-- An erased `match` (§16): the scrutinee is not run; when a result is untainted and the match is not wholly
 erased, an annotation entry is `many`, so at most one branch is not absurd, and the branch for the value
 constructor heading the scrutinee's ideal value is not absurd (its results would be tainted, `ExprSound`'s second
 part), so the evaluator's only branch is the right one, its fields bound to `removed`. -/
 theorem matchErased_sound {p : Pos} {s : Expr} {ann : Tele} {bs : List Branch}
-    (ihs : ExprSound s) (ihss : ExprShape s) (ihb : ∀ b ∈ bs, ExprSound b.body) (ihbs : ∀ b ∈ bs, ExprShape b.body) :
+    (ihs : ExprSound s) (ihss : ExprShape s) (ihb : ∀ b ∈ bs, ExprSound b.body) :
     ExprSound (.match p (some .erased) s ann bs) :=
-  Erased.match ihs ihss ihb ihbs
+  Erased.match ihs ihss ihb
 
 theorem match_sound {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Branch}
-    (ihs : ExprSound s) (ihss : ExprShape s) (ihb : ∀ b ∈ bs, ExprSound b.body) (ihbs : ∀ b ∈ bs, ExprShape b.body) :
+    (ihs : ExprSound s) (ihss : ExprShape s) (ihb : ∀ b ∈ bs, ExprSound b.body) :
     ExprSound (.match p m s ann bs) := by
   by_cases hm : m = some .erased
-  · subst hm; exact matchErased_sound ihs ihss ihb ihbs
-  · exact matchMany_sound hm ihs ihss ihb ihbs
+  · subst hm; exact matchErased_sound ihs ihss ihb
+  · exact matchMany_sound hm ihs ihss ihb
 
 /-- `sorry` (§12): every result is tainted, opened to `junk` or its `is` clause's value (`annotation_cons`), and the
 tree is removed. -/
@@ -157,7 +156,7 @@ theorem sorry_sound (p : Pos) (t : Tele) : ExprSound (.sorry p t) := by
   unfold checkExpr at h
   obtain ⟨o₀, h₀, hf⟩ := bind_eq_ok.1 h
   obtain ⟨⟨tele, env⟩, ha, h₀⟩ := bind_eq_ok.1 h₀
-  exact Simple.sorry_post hI hg (by exact hI.solving) ha h₀ hf
+  exact Simple.sorry_post hI hg ha h₀ hf
 
 theorem removed_sound : ExprSound .removed := by
   intro C sc g n0 W ρ act o _ _ h
@@ -167,16 +166,16 @@ theorem removed_sound : ExprSound .removed := by
 theorem let_sound {p : Pos} {bs : List LetBinder} {rhs : Expr} (ih : ExprSound rhs) (ihs : ExprShape rhs) :
     StmtSound (.let p bs rhs) := by
   intro C sc n0 W ρ act o hI h
-  obtain ⟨o', ws, ho', hwl, hwm, hcase, rfl⟩ := let_steps hI.solving h
+  obtain ⟨o', ws, ho', hwl, hwm, hcase, rfl⟩ := let_steps h
   refine Simple.let_post ih ihs hI ?_ hwl hwm ho'
   rintro g' ⟨⟩
   refine ⟨⟨[], rfl⟩, fun hall envv henv => ?_⟩
   cases henv
-  rcases hcase with ⟨hf, hws⟩ | hf
-  · refine letWants_cons hI.termInv.weak hI.solving hws (List.all_eq_true.2 fun b hb => ?_) hf
+  rcases hcase with ⟨-, hws⟩ | hf
+  · refine letWants_cons hI.termInv.weak hws (List.all_eq_true.2 fun b hb => ?_)
     have := List.all_eq_true.1 hall b hb
     cases h : b.ann <;> simp_all
-  · obtain ⟨b, hb, hbh⟩ := List.any_eq_true.1 hf
+  · obtain ⟨b, hb, hbh⟩ := List.any_eq_true.1 (by simpa [holedLet] using hf)
     have := List.all_eq_true.1 hall b hb
     cases h : b.ann <;> simp_all
 
@@ -211,7 +210,6 @@ theorem Expr.sound : (e : Expr) → ExprSound e
   | .tuple p es => tuple_sound p (fun e _ => Expr.sound e) (fun e _ => Expr.shape e)
   | .block ss f => block_sound (fun s _ => Stmt.sound s) (fun s _ => Stmt.shape s) (Expr.sound f) (Expr.shape f)
   | .match p m s ann bs => match_sound (Expr.sound s) (Expr.shape s) (fun b _ => Expr.sound b.body)
-      (fun b _ => Expr.shape b.body)
   | .sorry p t => sorry_sound p t
   | .removed => removed_sound
 termination_by e => sizeOf e

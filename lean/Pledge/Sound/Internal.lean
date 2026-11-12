@@ -137,8 +137,8 @@ theorem coreArgs_wf {S : Sigs} {Γ : Entries} :
   | [], _, _ :: _, h | _ :: _, _, [], h => by simp [coreArgs] at h
 end
 
-/-- What every function checking terms and expressions keeps: no `_` being solved, outside the solving pass; a
-well-formed scope and signatures; names standing for well-formed terms; and globals with signatures. -/
+/-- What every function checking terms and expressions keeps: a well-formed scope and signatures; names standing for
+well-formed terms; and globals with signatures. -/
 def GlobOk (gs : List Global) (S : Sigs) (n : Nat) : Prop :=
   ∀ g ∈ gs, match g with
     | .type nm cs _ => (∃ s, S.find ⟨.type, nm⟩ = some s) ∧
@@ -150,15 +150,10 @@ def GlobOk (gs : List Global) (S : Sigs) (n : Nat) : Prop :=
     | .fn _ none => True
 
 structure ScOk (C : Ctx) (sc : Scope) : Prop where
-  solving : C.solving = false
-  holes : sc.holes = []
   Γ : Entries.Wf sc.sigs sc.Γ
   sigs : Sigs.Wf sc.sigs sc.Γ.length
   names : ∀ p ∈ sc.names, p.2.term.wf sc.sigs sc.Γ.length 0 = true
   globals : GlobOk C.globals sc.sigs sc.Γ.length
-
-/-- Every `_` of a written term has terms in the table. -/
-def WTerm.covered (T : Table) (t : WTerm) : Prop := ∀ p ∈ t.holes, (T.lookup p).isSome = true
 
 theorem ScOk.lookup {C : Ctx} {sc : Scope} (h : ScOk C sc) {n : String} {r : Res} (hl : sc.lookup n = some r) :
     r.term.wf sc.sigs sc.Γ.length 0 = true := h.names _ (lookup_mem hl)
@@ -170,29 +165,35 @@ theorem ScOk.global {C : Ctx} {sc : Scope} (_h : ScOk C sc) {n : String} {g : Gl
   simp only [beq_iff_eq] at this
   exact ⟨this, hm⟩
 
-/-- `against` reports no internal error when the results are well-formed, and leaves the scope as it is. -/
-theorem against_noInt {sc : Scope} {g : Given} {pos : Pos} {rs : List Res} (hh : sc.holes = [])
+theorem meets_noInt {g : Given} {sc : Scope} {pos : Pos} {i : Nat} {w : Want} {env : List Term} {r : Res}
+    {has : Term} : NoInt (g.meets sc pos i w env r has) (fun _ => True) := by
+  unfold Given.meets
+  dsimp only
+  repeat' (first | exact NoInt.failAt | exact NoInt.pure trivial | split)
+
+/-- `against` reports no internal error when the results are well-formed. -/
+theorem against_noInt {sc : Scope} {g : Given} {pos : Pos} {rs : List Res}
     (hΓ : Entries.Wf sc.sigs sc.Γ) (hS : Sigs.Wf sc.sigs sc.Γ.length)
-    (hr : ∀ r ∈ rs, r.term.wf sc.sigs sc.Γ.length 0 = true) : NoInt (against sc g pos rs) (fun sc' => sc' = sc) := by
+    (hr : ∀ r ∈ rs, r.term.wf sc.sigs sc.Γ.length 0 = true) : NoInt (against sc g pos rs) (fun _ => True) := by
   unfold against
   dsimp only
   suffices hgo : ∀ prev ws (rs : List Res), (∀ r ∈ rs, r.term.wf sc.sigs sc.Γ.length 0 = true) →
-      NoInt (against.go g pos sc prev ws rs) (· = sc) by
+      NoInt (against.go sc g pos prev ws rs) (fun _ => True) by
     split
     · exact NoInt.miscount_bind
     · exact hgo _ _ _ hr
   intro prev ws rs hr
   induction ws generalizing prev rs with
-  | nil => cases rs <;> (unfold against.go; exact NoInt.pure rfl)
+  | nil => cases rs <;> (unfold against.go; exact NoInt.pure trivial)
   | cons w ws ih =>
     cases rs with
-    | nil => unfold against.go; exact NoInt.pure rfl
+    | nil => unfold against.go; exact NoInt.pure trivial
     | cons r rs =>
       obtain ⟨ty, hty, -⟩ := typeOf_wf hΓ hS (hr r List.mem_cons_self)
       have ih' := ih (prev ++ [r.term]) rs (fun r' h' => hr r' (List.mem_cons_of_mem _ h'))
       unfold against.go
-      simp only [Scope.typeOf, hty, solveHoles_nil hh, pure, Except.pure, ok_bind]
-      repeat (first | exact ih' | exact NoInt.failAt_bind | split)
+      simp only [Scope.typeOf, hty, pure, Except.pure, ok_bind]
+      exact NoInt.bind meets_noInt fun _ _ => ih'
 
 theorem solution_noInt {C : Ctx} {sc : Scope} {ts : List Term} {pos : Pos} {type : Term} {is : Option Term}
     {erased : Bool} :
@@ -209,44 +210,28 @@ theorem solution_noInt {C : Ctx} {sc : Scope} {ts : List Term} {pos : Pos} {type
     | some ty => exact coreType_wf t ty hc
   · exact NoInt.failAt
 
-/-- A `_` whose position the table has: its one result is a well-formed term, and the scope is unchanged. -/
-theorem hole_noInt {C : Ctx} {sc : Scope} {pos : Pos} {type : Term} {is : Option Term} {erased : Bool}
-    (hT : (C.table.lookup pos).isSome = true) :
-    NoInt (sc.hole C pos type is erased) (fun o => o.sc = sc ∧ ∃ r, o.res = [r] ∧
-      r.term.wf sc.sigs sc.Γ.length 0 = true) := by
-  obtain ⟨ts, hts⟩ := Option.isSome_iff_exists.1 hT
+/-- A `_` takes a well-formed term, or fails with an error that is not internal. -/
+theorem hole_noInt {C : Ctx} {sc : Scope} {pos : Pos} {type : Term} {is : Option Term} {erased : Bool} :
+    NoInt (sc.hole C pos type is erased) (fun r => r.term.wf sc.sigs sc.Γ.length 0 = true) := by
   unfold Scope.hole
-  rw [hts]
-  simp only
-  exact NoInt.bind solution_noInt fun r hr => NoInt.pure ⟨rfl, r, rfl, hr⟩
+  split
+  · exact solution_noInt
+  · exact NoInt.failAt
 
-theorem holeArg_noInt {C : Ctx} {sc : Scope} {g : Given} {p : TBinder} {prev : List Res} {pos : Pos}
-    (hT : (C.table.lookup pos).isSome = true) :
+theorem holeType_noInt {C : Ctx} {sc : Scope} {g : Given} {p : TBinder} {prev : List Res} {pos : Pos} :
+    NoInt (holeType C sc g p prev pos) (fun _ => True) := by
+  unfold holeType
+  dsimp only
+  repeat' (first | exact NoInt.failAt | exact NoInt.pure trivial | split)
+
+theorem holeArg_noInt {C : Ctx} {sc : Scope} {g : Given} {p : TBinder} {prev : List Res} {pos : Pos} :
     NoInt (holeArg C sc g p prev pos) (fun o => o.sc = sc ∧ ∃ r, o.res = [r] ∧
       r.term.wf sc.sigs sc.Γ.length 0 = true) := by
   unfold holeArg
-  dsimp only
-  split
-  · exact hole_noInt hT
-  · exact NoInt.failAt_bind
+  exact NoInt.bind holeType_noInt fun ⟨_, _, _⟩ _ => NoInt.bind hole_noInt fun r hr => NoInt.pure ⟨rfl, r, rfl, hr⟩
 
-theorem ScOk.ctx {C C' : Ctx} {sc : Scope} (h : ScOk C sc) (hs : C'.solving = C.solving)
-    (hg : C'.globals = C.globals) : ScOk C' sc :=
-  ⟨hs.trans h.solving, h.holes, h.Γ, h.sigs, h.names, hg ▸ h.globals⟩
-
-theorem WTerm.covered_app {T : Table} {h : Name} {as : List WTerm} (hc : (WTerm.app h as).covered T) :
-    ∀ a ∈ as, a.covered T := by
-  intro a ha p hp
-  apply hc p
-  simp only [WTerm.holes]
-  clear hc
-  induction as with
-  | nil => cases ha
-  | cons b bs ih =>
-    simp only [WTerm.holesList, List.mem_append]
-    rcases List.mem_cons.1 ha with rfl | ha
-    · exact .inl hp
-    · exact .inr (ih ha)
+theorem ScOk.ctx {C C' : Ctx} {sc : Scope} (h : ScOk C sc) (hg : C'.globals = C.globals) : ScOk C' sc :=
+  ⟨h.Γ, h.sigs, h.names, hg ▸ h.globals⟩
 
 theorem global_sig {C : Ctx} {sc : Scope} (hsc : ScOk C sc) {n : String} {g : Global} (hg : C.global n = some g) :
     (∀ cs d, g = .type n cs d → ∃ s, sc.sigs.find ⟨.type, n⟩ = some s) ∧
@@ -264,21 +249,20 @@ theorem sig_noInt {sc : Scope} {pos : Pos} {h : Head} {sig : Sig} (hs : sc.sigs.
   unfold Scope.sig; rw [hs]; exact NoInt.pure ⟨rfl, rfl⟩
 
 mutual
-/-- Checking a term whose `_` the table covers reports no internal error, and gives a well-formed term. -/
-theorem checkTerm_noInt {sc : Scope} : ∀ (C : Ctx) (whole : Bool) (t : WTerm), ScOk C sc → t.covered C.table →
+/-- Checking a term reports no internal error, and gives a well-formed term. -/
+theorem checkTerm_noInt {sc : Scope} : ∀ (C : Ctx) (whole : Bool) (t : WTerm), ScOk C sc →
     NoInt (checkTerm C sc whole t) (fun r => r.term.wf sc.sigs sc.Γ.length 0 = true)
-  | C, whole, .hole p, hsc, hc => by
+  | C, whole, .hole p, hsc => by
     unfold checkTerm
     split
-    · exact NoInt.bind (hole_noInt (hc p (by simp [WTerm.holes]))) fun o ho =>
-        NoInt.imp NoInt.single fun r hr => by obtain ⟨_, r', h1, h2⟩ := ho; rw [h1] at hr; cases hr; exact h2
+    · exact hole_noInt
     · exact NoInt.failAt
-  | C, whole, .var x, hsc, _ => by
+  | C, whole, .var x, hsc => by
     unfold checkTerm
     split
     · rename_i r hr; have := hsc.lookup hr; exact NoInt.pure this
     · exact NoInt.failAt
-  | C, whole, .app h args, hsc, hc => by
+  | C, whole, .app h args, hsc => by
     have rest : ∀ kind s, sc.sigs.find ⟨kind, h.name⟩ = some s → NoInt (do
         let sig ← sc.sig h.pos ⟨kind, h.name⟩
         arity h.pos h.name sig.params.length args.length
@@ -289,7 +273,7 @@ theorem checkTerm_noInt {sc : Scope} : ∀ (C : Ctx) (whole : Bool) (t : WTerm),
       refine NoInt.bind (sig_noInt hs) fun s' ⟨hss, _⟩ => ?_
       subst hss
       refine NoInt.bind NoInt.arity fun _ har => ?_
-      refine NoInt.bind (checkTerms_noInt _ _ _ _ _ _ args (hsc.ctx rfl rfl) (WTerm.covered_app hc) har.symm)
+      refine NoInt.bind (checkTerms_noInt _ _ _ _ _ _ args (hsc.ctx rfl) har.symm)
         fun rs ⟨hl, hw⟩ => NoInt.pure ?_
       refine Term.wf_app.2 ⟨⟨s', by rw [Sigs.find_head hs]; exact hs, by simp [hl, har]⟩, ?_⟩
       simpa using hw
@@ -308,15 +292,14 @@ theorem checkTerm_noInt {sc : Scope} : ∀ (C : Ctx) (whole : Bool) (t : WTerm),
         obtain ⟨s, hs⟩ := hgs.2 (by have := (hsc.global hg).1; simp only [Global.name] at this; rw [this])
         exact rest .ctor s hs
 theorem checkTerms_noInt {sc : Scope} : ∀ (C : Ctx) (owner role : String) (erased : Bool) (params : Telescope)
-    (prev : List Res) (as : List WTerm), ScOk C sc → (∀ a ∈ as, a.covered C.table) → params.length = as.length →
+    (prev : List Res) (as : List WTerm), ScOk C sc → params.length = as.length →
     NoInt (checkTerms C sc owner role erased params prev as)
       (fun rs => rs.length = as.length ∧ ∀ r ∈ rs, r.term.wf sc.sigs sc.Γ.length 0 = true)
-  | C, owner, role, erased, params, prev, [], hsc, _, _ => by
+  | C, owner, role, erased, params, prev, [], hsc, _ => by
     unfold checkTerms; exact NoInt.pure ⟨rfl, by simp⟩
-  | C, owner, role, erased, [], prev, a :: as, hsc, _, hl => by simp at hl
-  | C, owner, role, erased, p :: ps, prev, a :: as, hsc, hc, hl => by
-    have rest := fun (r : Res) => checkTerms_noInt C owner role erased ps (prev ++ [r]) as hsc
-      (fun b hb => hc b (List.mem_cons_of_mem _ hb)) (by simpa using hl)
+  | C, owner, role, erased, [], prev, a :: as, hsc, hl => by simp at hl
+  | C, owner, role, erased, p :: ps, prev, a :: as, hsc, hl => by
+    have rest := fun (r : Res) => checkTerms_noInt C owner role erased ps (prev ++ [r]) as hsc (by simpa using hl)
     have fin : ∀ r : Res, r.term.wf sc.sigs sc.Γ.length 0 = true →
         NoInt (do let rs ← checkTerms C sc owner role erased ps (prev ++ [r]) as; pure (r :: rs))
           (fun rs => rs.length = (a :: as).length ∧ ∀ r ∈ rs, r.term.wf sc.sigs sc.Γ.length 0 = true) :=
@@ -324,17 +307,17 @@ theorem checkTerms_noInt {sc : Scope} : ∀ (C : Ctx) (owner role : String) (era
     cases a with
     | hole pos =>
       unfold checkTerms
-      exact NoInt.bind (holeArg_noInt (hc _ List.mem_cons_self pos (by simp [WTerm.holes]))) fun o ho =>
+      exact NoInt.bind holeArg_noInt fun o ho =>
         NoInt.bind NoInt.single fun r hr => fin r (by obtain ⟨_, r', h1, h2⟩ := ho; rw [h1] at hr; cases hr; exact h2)
     | var x =>
       unfold checkTerms
-      exact NoInt.bind (checkTerm_noInt C false (.var x) hsc (hc _ List.mem_cons_self)) fun r hr =>
-        NoInt.bind (against_noInt (sc := { sc with holes := [] }) (rs := [r]) rfl hsc.Γ hsc.sigs
+      exact NoInt.bind (checkTerm_noInt C false (.var x) hsc) fun r hr =>
+        NoInt.bind (against_noInt (rs := [r]) hsc.Γ hsc.sigs
           (fun r' h' => by rw [List.mem_singleton.1 h']; exact hr)) fun _ _ => fin r hr
     | app h bs =>
       unfold checkTerms
-      exact NoInt.bind (checkTerm_noInt C false (.app h bs) hsc (hc _ List.mem_cons_self)) fun r hr =>
-        NoInt.bind (against_noInt (sc := { sc with holes := [] }) (rs := [r]) rfl hsc.Γ hsc.sigs
+      exact NoInt.bind (checkTerm_noInt C false (.app h bs) hsc) fun r hr =>
+        NoInt.bind (against_noInt (rs := [r]) hsc.Γ hsc.sigs
           (fun r' h' => by rw [List.mem_singleton.1 h']; exact hr)) fun _ _ => fin r hr
 end
 
@@ -380,10 +363,10 @@ theorem GlobOk.mono {gs : List Global} {S : Sigs} {n n' : Nat} (h : GlobOk gs S 
   | ctor => exact this
 
 /-- A later scope of the same declaration keeps `ScOk`. -/
-theorem ScOk.grow {C : Ctx} {sc sc' : Scope} (h : ScOk C sc) (hh : sc'.holes = []) (hs : sc'.sigs = sc.sigs)
+theorem ScOk.grow {C : Ctx} {sc sc' : Scope} (h : ScOk C sc) (hs : sc'.sigs = sc.sigs)
     (hΓ : Entries.Wf sc'.sigs sc'.Γ) (hl : sc.Γ.length ≤ sc'.Γ.length)
     (hn : ∀ p ∈ sc'.names, p ∈ sc.names ∨ p.2.term.wf sc'.sigs sc'.Γ.length 0 = true) : ScOk C sc' := by
-  refine ⟨h.solving, hh, hΓ, hs ▸ h.sigs.mono hl, fun p hp => ?_, hs ▸ h.globals.mono hl⟩
+  refine ⟨hΓ, hs ▸ h.sigs.mono hl, fun p hp => ?_, hs ▸ h.globals.mono hl⟩
   rcases hn p hp with hp | hp
   · rw [hs]; exact Term.wf_le hl (Nat.le_refl _) (h.names p hp)
   · exact hp
@@ -484,12 +467,9 @@ theorem abstractChecked_noInt {S : Sigs} {Γ : Entries} {t : Term} {ids : List N
   simp only [Term.closed_of_wf (Term.canon_wf hΓ t ht).1, ↓reduceIte]
   exact NoInt.pure rfl
 
-theorem term_noInt {C : Ctx} {sc : Scope} {t : WTerm} {whole : Bool} (hsc : ScOk C sc) (hc : t.covered C.table) :
-    NoInt (term C sc t whole) (fun r => r.term.wf sc.sigs sc.Γ.length 0 = true) := by
-  have : term C sc t whole = checkTerm { C with erased := C.erased || decide (2 ≤ C.phase) } sc whole t := by
-    simp [term, hsc.solving]
-  rw [this]
-  exact checkTerm_noInt _ whole t (hsc.ctx rfl rfl) hc
+theorem term_noInt {C : Ctx} {sc : Scope} {t : WTerm} {whole : Bool} (hsc : ScOk C sc) :
+    NoInt (term C sc t whole) (fun r => r.term.wf sc.sigs sc.Γ.length 0 = true) :=
+  checkTerm_noInt _ whole t (hsc.ctx rfl)
 
 theorem isType_noInt {sc : Scope} {pos : Pos} {t : Term} (hΓ : Entries.Wf sc.sigs sc.Γ)
     (hS : Sigs.Wf sc.sigs sc.Γ.length) (ht : t.wf sc.sigs sc.Γ.length 0 = true) :
@@ -499,19 +479,19 @@ theorem isType_noInt {sc : Scope} {pos : Pos} {t : Term} (hΓ : Entries.Wf sc.si
   simp only [Scope.typeOf, hty, pure, Except.pure, ok_bind]
   split <;> first | exact NoInt.failAt | exact NoInt.pure trivial
 
-theorem annotate_noInt {C : Ctx} {sc : Scope} {ann : Ann} (hsc : ScOk C sc) (hc : ann.term.covered C.table) :
+theorem annotate_noInt {C : Ctx} {sc : Scope} {ann : Ann} (hsc : ScOk C sc) :
     NoInt (annotate C sc ann) (fun a => a.1.wf sc.sigs sc.Γ.length 0 = true ∧
       ∀ e, a.2.1 = some e → e.wf sc.sigs sc.Γ.length 0 = true) := by
   cases ann with
   | «is» t =>
     unfold annotate
-    refine NoInt.bind (term_noInt hsc hc) fun r hr => ?_
+    refine NoInt.bind (term_noInt hsc) fun r hr => ?_
     obtain ⟨ty, hty, htw⟩ := typeOf_wf hsc.Γ hsc.sigs hr
     simp only [Scope.typeOf, hty, pure, Except.pure, ok_bind]
     exact NoInt.pure ⟨htw, fun e he => by cases he; exact hr⟩
   | type t =>
     unfold annotate
-    refine NoInt.bind (term_noInt hsc hc) fun r hr => ?_
+    refine NoInt.bind (term_noInt hsc) fun r hr => ?_
     exact NoInt.bind (isType_noInt hsc.Γ hsc.sigs hr) fun _ _ => NoInt.pure ⟨hr, fun e he => by cases he⟩
 
 /-- Opening a binder whose type and `is` term are well-formed keeps `ScOk`, appending one entry. -/
@@ -534,7 +514,7 @@ theorem openBinder_ok {C : Ctx} {sc : Scope} {name : Id} {type : Term} {is : Opt
   have hl := openTele_length sc.Γ [⟨name.name, type, is, mult.getD .many⟩] [] mk
   obtain ⟨Δ, hΔ, -⟩ := openTele_shape sc.Γ [⟨name.name, type, is, mult.getD .many⟩] [] mk
   rw [Scope.bind_eq]
-  refine ⟨hsc.grow hsc.holes rfl hΓ (by rw [hl]; simp) fun p hp => ?_, rfl, by rw [hl]; rfl, ⟨Δ, hΔ.symm⟩, rfl⟩
+  refine ⟨hsc.grow rfl hΓ (by rw [hl]; simp) fun p hp => ?_, rfl, by rw [hl]; rfl, ⟨Δ, hΔ.symm⟩, rfl⟩
   rcases List.mem_append.1 hp with hp | hp
   · obtain ⟨i, hi⟩ := pushed_mem hp
     cases i with
@@ -543,12 +523,12 @@ theorem openBinder_ok {C : Ctx} {sc : Scope} {name : Id} {type : Term} {is : Opt
   · exact .inl hp
 
 theorem opening_noInt {C : Ctx} {sc : Scope} {name : Id} {ann : Ann} {mult : Option Mult} {kind : String}
-    (hsc : ScOk C sc) (hc : ann.term.covered C.table) :
+    (hsc : ScOk C sc) :
     NoInt (opening C sc name ann mult kind) (fun o => ScOk C o.sc ∧ o.sc.sigs = sc.sigs ∧
       o.sc.Γ.length = sc.Γ.length + 1 ∧ sc.Γ <+: o.sc.Γ ∧ o.id = sc.Γ.length ∧
       o.type.wf sc.sigs sc.Γ.length 0 = true ∧ ∀ e, o.is = some e → e.wf sc.sigs sc.Γ.length 0 = true) := by
   unfold opening
-  exact NoInt.bind (annotate_noInt hsc hc) fun ⟨ty, is, t⟩ ⟨h1, h2⟩ => NoInt.pure
+  exact NoInt.bind (annotate_noInt hsc) fun ⟨ty, is, t⟩ ⟨h1, h2⟩ => NoInt.pure
     (by have := openBinder_ok (name := name) (mult := mult) (kind := kind) (tainted := t) hsc h1 h2; exact
       ⟨this.1, this.2.1, this.2.2.1, this.2.2.2.1, this.2.2.2.2, h1, h2⟩)
 
@@ -563,21 +543,21 @@ theorem freshAll_noInt {C : Ctx} {sc : Scope} {ids : List Id} : NoInt (freshAll 
     NoInt.pure trivial
 
 theorem telescope_go_noInt {C : Ctx} {kind : String} : ∀ (bs : List Binder) (sc : Scope) (seen : List String)
-    (acc : List (Binder × Opening)), ScOk C sc → (∀ b ∈ bs, b.ann.term.covered C.table) →
+    (acc : List (Binder × Opening)), ScOk C sc →
     NoInt (telescope.go C kind sc seen acc bs) (fun res => ScOk C res.1 ∧ res.1.sigs = sc.sigs ∧ sc.Γ <+: res.1.Γ ∧
       res.1.Γ.length = sc.Γ.length + bs.length ∧ ∃ new, res.2.2 = acc ++ new ∧ new.length = bs.length ∧
         ∀ (j : Nat) (o : Binder × Opening), new[j]? = some o → o.2.type.wf sc.sigs (sc.Γ.length + j) 0 = true ∧
           ∀ e : Term, o.2.is = some e → e.wf sc.sigs (sc.Γ.length + j) 0 = true)
-  | [], sc, seen, acc, hsc, _ => by
+  | [], sc, seen, acc, hsc => by
     unfold telescope.go
     exact NoInt.pure ⟨hsc, rfl, List.prefix_refl _, rfl, [], by simp, rfl, by simp⟩
-  | b :: bs, sc, seen, acc, hsc, hc => by
+  | b :: bs, sc, seen, acc, hsc => by
     unfold telescope.go
     refine NoInt.bind fresh_noInt fun seen' _ => ?_
-    refine NoInt.bind (opening_noInt hsc (hc b List.mem_cons_self)) fun o ho => ?_
+    refine NoInt.bind (opening_noInt hsc) fun o ho => ?_
     obtain ⟨h1, h2, h3, h4, h5, h6, h7⟩ := ho
-    refine NoInt.imp (telescope_go_noInt bs o.sc seen' (acc ++ [(b, o)]) h1
-      fun b' hb' => hc b' (List.mem_cons_of_mem _ hb')) fun res ⟨r1, r2, r3, r4, new, r5, r6, r7⟩ => ?_
+    refine NoInt.imp (telescope_go_noInt bs o.sc seen' (acc ++ [(b, o)]) h1)
+      fun res ⟨r1, r2, r3, r4, new, r5, r6, r7⟩ => ?_
     refine ⟨r1, r2.trans h2, h4.trans r3, by rw [r4, h3]; simp; omega, (b, o) :: new, by simp [r5], by simp [r6],
       fun j o' hj => ?_⟩
     cases j with
@@ -625,7 +605,7 @@ theorem idxOf?_range'_none {outer : List Nat} {n n0 len j i : Nat} (hj : j ≤ l
 /-- A telescope checked in a well-formed scope is well-formed, its bound variables standing for `outer` and then its
 own binders, and its other entries below `n` when every entry from `n` on is in `outer`. -/
 theorem telescope_noInt {C : Ctx} {sc : Scope} {bs : List Binder} {kind : String} {outer : List Nat} {n : Nat}
-    (hsc : ScOk C sc) (hc : ∀ b ∈ bs, b.ann.term.covered C.table) (hn : n ≤ sc.Γ.length)
+    (hsc : ScOk C sc) (hn : n ≤ sc.Γ.length)
     (hrule : ∀ i en r, i < n → sc.Γ[i]? = some en → en.rule = some r → r.wf sc.sigs n 0 = true)
     (houter : ∀ i, n ≤ i → i < sc.Γ.length → i ∈ outer) :
     NoInt (telescope C sc bs kind outer) (fun out => ScOk C out.sc ∧ out.sc.sigs = sc.sigs ∧ sc.Γ <+: out.sc.Γ ∧
@@ -633,7 +613,7 @@ theorem telescope_noInt {C : Ctx} {sc : Scope} {bs : List Binder} {kind : String
       out.tele.length = bs.length ∧ Telescope.wf sc.sigs n outer.length out.tele = true) := by
   refine ⟨?_, fun out h => ?_⟩
   · unfold telescope
-    refine (NoInt.bind (R := fun _ : Checked => True) (telescope_go_noInt bs sc [] [] hsc hc)
+    refine (NoInt.bind (R := fun _ : Checked => True) (telescope_go_noInt bs sc [] [] hsc)
       fun ⟨sc', seen, opens⟩ hres => ?_).1
     obtain ⟨r1, r2, r3, r4, new, r5, r6, r7⟩ := hres
     simp only [List.nil_append] at r5 r1 r2 r3 r4
@@ -652,7 +632,7 @@ theorem telescope_noInt {C : Ctx} {sc : Scope} {bs : List Binder} {kind : String
     obtain ⟨tele, htele, h⟩ := bind_eq_ok.1 h
     simp only [pure, Except.pure, Except.ok.injEq] at h
     subst h
-    obtain ⟨r1, r2, r3, r4, new, r5, r6, r7⟩ := (telescope_go_noInt bs sc [] [] hsc hc).2 _ hgo
+    obtain ⟨r1, r2, r3, r4, new, r5, r6, r7⟩ := (telescope_go_noInt bs sc [] [] hsc).2 _ hgo
     simp only [List.nil_append] at r5 r1 r2 r3 r4
     subst r5
     obtain ⟨new', hnew', -, hids, -⟩ := telescope_go_shape bs sc [] [] hgo
@@ -733,14 +713,14 @@ theorem GivenOk.of_not_whole {S : Sigs} {n : Nat} {g : Given} (h : g.whole = fal
 /-- A telescope a `match` annotation or `sorry` stands for is well-formed over its environment, and has an entry. -/
 theorem annotation_noInt {C : Ctx} {sc : Scope} {g : Option Given} {ann : Tele} (hsc : ScOk C sc)
     (hg : ∀ g', g = some g' → GivenOk sc.sigs sc.Γ.length g')
-    (hc : ∀ bs, ann = .binders bs → bs ≠ [] ∧ ∀ b ∈ bs, b.ann.term.covered C.table) :
+    (hc : ∀ bs, ann = .binders bs → bs ≠ []) :
     NoInt (annotation C sc g ann) (fun te => te.1 ≠ [] ∧ (∀ u ∈ te.2, u.wf sc.sigs sc.Γ.length 0 = true) ∧
       Telescope.wf sc.sigs sc.Γ.length te.2.length te.1 = true) := by
   cases ann with
   | binders bs =>
-    obtain ⟨hne, hcov⟩ := hc bs rfl
+    have hne := hc bs rfl
     unfold annotation
-    refine NoInt.bind (telescope_noInt (n := sc.Γ.length) (outer := []) hsc hcov (Nat.le_refl _)
+    refine NoInt.bind (telescope_noInt (n := sc.Γ.length) (outer := []) hsc (Nat.le_refl _)
       (fun i en r _ hen hr => ((hsc.Γ i en hen).2 r hr).1) fun i h1 h2 => absurd h2 (by omega))
       fun out ⟨_, _, _, _, _, hl, hw⟩ => NoInt.pure ⟨fun h => hne (List.eq_nil_of_length_eq_zero (by
         simp only at h; rw [← hl, h]; rfl)), by simp, by simpa using hw⟩
@@ -792,19 +772,19 @@ theorem opened_ok {C : Ctx} {sc : Scope} {tele : Telescope} {env : List Term} {k
   obtain ⟨hΓ, -⟩ := openTele_wf mk hsc.Γ (Nat.le_refl _) ht he
   have hl := openTele_length sc.Γ tele env mk
   obtain ⟨Δ, hΔ, -, hids, -⟩ := openTele_shape sc.Γ tele env mk
-  refine ⟨hsc.grow hsc.holes rfl hΓ (by rw [hl]; omega) fun p hp => .inl hp, rfl, rfl, ⟨Δ, hΔ.symm⟩,
+  refine ⟨hsc.grow rfl hΓ (by rw [hl]; omega) fun p hp => .inl hp, rfl, rfl, ⟨Δ, hΔ.symm⟩,
     by simp [hids], fun r hr => ?_⟩
   simp only [List.mem_mapIdx] at hr
   obtain ⟨i, hi, rfl⟩ := hr
   simp only [hids, List.getElem_range'] at hi ⊢
   simp only [Term.wf, decide_eq_true_eq, hl]
-  simp [hids] at hi
+  simp at hi
   omega
 
 theorem ScOk.bind {C : Ctx} {sc : Scope} {ids : List Id} {rs : List Res} (hsc : ScOk C sc)
     (hr : ∀ r ∈ rs, r.term.wf sc.sigs sc.Γ.length 0 = true) : ScOk C (sc.bind ids rs) := by
   rw [Scope.bind_eq]
-  refine hsc.grow hsc.holes rfl hsc.Γ (Nat.le_refl _) fun p hp => ?_
+  refine hsc.grow rfl hsc.Γ (Nat.le_refl _) fun p hp => ?_
   rcases List.mem_append.1 hp with hp | hp
   · obtain ⟨i, hi⟩ := pushed_mem hp
     exact .inr (hr _ (List.mem_of_getElem? hi))
@@ -817,7 +797,6 @@ theorem typedBefore_noInt {untyped : List String} {ann : Ann} : NoInt (typedBefo
   · exact NoInt.pure trivial
 
 theorem letBinders_noInt {C : Ctx} {sc : Scope} {pos : Pos} {bs : List LetBinder} {rs : List Res} (hsc : ScOk C sc)
-    (hc : ∀ b ∈ bs, ∀ a, b.ann = some a → a.term.covered C.table)
     (hr : ∀ r ∈ rs, r.term.wf sc.sigs sc.Γ.length 0 = true) :
     NoInt (letBinders C sc pos bs rs) (fun _ => True) := by
   unfold letBinders
@@ -843,13 +822,12 @@ theorem letBinders_noInt {C : Ctx} {sc : Scope} {pos : Pos} {bs : List LetBinder
     | some a =>
       simp only
       refine NoInt.bind typedBefore_noInt fun _ _ => ?_
-      refine NoInt.bind (annotate_noInt hsc (hc b hb a ha)) fun _ _ => ?_
-      refine NoInt.bind (against_noInt (rs := [{ r with erased := b.mult == some .erased }]) hsc.holes hsc.Γ hsc.sigs
+      refine NoInt.bind (annotate_noInt hsc) fun _ _ => ?_
+      refine NoInt.bind (against_noInt (rs := [{ r with erased := b.mult == some .erased }]) hsc.Γ hsc.sigs
         (by simpa using hrw)) fun _ _ => ?_
       exact NoInt.bind (Q := fun _ => True) (NoInt.pure trivial) fun _ _ => next _
 
-theorem header_noInt {C : Ctx} {sc : Scope} {h : Header} (hsc : ScOk C sc)
-    (hc : ∀ b ∈ h.params.map (·.binder) ++ h.returns, b.ann.term.covered C.table) :
+theorem header_noInt {C : Ctx} {sc : Scope} {h : Header} (hsc : ScOk C sc) :
     NoInt (header C sc h) (fun pr => ScOk C pr.2.sc ∧ pr.2.sc.sigs = sc.sigs ∧ sc.Γ <+: pr.2.sc.Γ ∧
       pr.1.tele.length = h.params.length ∧ pr.2.tele.length = h.returns.length ∧
       Telescope.wf sc.sigs sc.Γ.length 0 pr.1.tele = true ∧
@@ -857,8 +835,7 @@ theorem header_noInt {C : Ctx} {sc : Scope} {h : Header} (hsc : ScOk C sc)
       pr.1.ids = List.range' sc.Γ.length h.params.length ∧ pr.1.sc.Γ.length = sc.Γ.length + h.params.length ∧
       ScOk C pr.1.sc ∧ pr.1.sc.sigs = sc.sigs ∧ sc.Γ <+: pr.1.sc.Γ) := by
   unfold header
-  refine NoInt.bind (telescope_noInt (n := sc.Γ.length) (outer := []) hsc
-    (fun b hb => hc b (List.mem_append_left _ hb)) (Nat.le_refl _)
+  refine NoInt.bind (telescope_noInt (n := sc.Γ.length) (outer := []) hsc (Nat.le_refl _)
     (fun i en r _ hen hr => ((hsc.Γ i en hen).2 r hr).1) fun i h1 h2 => absurd h2 (by omega))
     fun ps ⟨p1, p2, p3, p4, p5, p6, p7⟩ => ?_
   have hrule : ∀ i en r, i < sc.Γ.length → ps.sc.Γ[i]? = some en → en.rule = some r →
@@ -867,41 +844,40 @@ theorem header_noInt {C : Ctx} {sc : Scope} {h : Header} (hsc : ScOk C sc)
     obtain ⟨t, ht⟩ := p3
     rw [← ht, List.getElem?_append_left hi] at hen
     rw [p2]; exact ((hsc.Γ i en hen).2 r hr).1
-  refine NoInt.bind (telescope_noInt (n := sc.Γ.length) (outer := ps.ids) p1
-    (fun b hb => hc b (List.mem_append_right _ hb)) (by omega) hrule fun i h1 h2 => ?_)
+  refine NoInt.bind (telescope_noInt (n := sc.Γ.length) (outer := ps.ids) p1 (by omega) hrule fun i h1 h2 => ?_)
     fun rs ⟨r1, r2, r3, r4, r5, r6, r7⟩ => NoInt.pure ⟨r1, r2.trans p2, p3.trans r3, by simpa using p6, r6,
       by simpa using p7, ?_, by simpa using p5, by simpa using p4, p1, p2, p3⟩
   · have := p4; rw [p5]; simp [List.mem_range'_1] at this ⊢; omega
   · rw [p2] at r7; rw [p6]; rwa [p5, List.length_range'] at r7
 
 theorem letWants_go_noInt {C : Ctx} : ∀ (bs : List LetBinder) (sc : Scope) (untyped : List String)
-    (acc : List (Option Opening)), ScOk C sc → (∀ b ∈ bs, ∀ a, b.ann = some a → a.term.covered C.table) →
-    NoInt (letWants.go C false sc untyped acc bs) (fun res => ScOk C res.1 ∧ res.1.sigs = sc.sigs ∧
+    (acc : List (Option Opening)), ScOk C sc →
+    NoInt (letWants.go C sc untyped acc bs) (fun res => ScOk C res.1 ∧ res.1.sigs = sc.sigs ∧
       sc.Γ <+: res.1.Γ ∧ ∃ new, res.2 = acc ++ new ∧ new.length = bs.length ∧
       (∀ o ∈ new, ∀ o' : Opening, o = some o' → o'.type.wf sc.sigs res.1.Γ.length 0 = true ∧
         ∀ e, o'.is = some e → e.wf sc.sigs res.1.Γ.length 0 = true) ∧
       (bs.all (·.ann.isSome) = true → ∀ (j : Nat) o, new[j]? = some o → ∃ o' : Opening, o = some o' ∧
         o'.id = sc.Γ.length + j ∧ o'.type.wf sc.sigs (sc.Γ.length + j) 0 = true ∧
         ∀ e, o'.is = some e → e.wf sc.sigs (sc.Γ.length + j) 0 = true))
-  | [], sc, untyped, acc, hsc, _ => by
+  | [], sc, untyped, acc, hsc => by
     unfold letWants.go
     exact NoInt.pure ⟨hsc, rfl, List.prefix_refl _, [], by simp, rfl, by simp, by simp⟩
-  | b :: bs, sc, untyped, acc, hsc, hc => by
+  | b :: bs, sc, untyped, acc, hsc => by
     unfold letWants.go
     cases ha : b.ann with
     | none =>
       simp only
-      refine NoInt.imp (letWants_go_noInt bs sc _ _ hsc fun b' hb' => hc b' (List.mem_cons_of_mem _ hb'))
+      refine NoInt.imp (letWants_go_noInt bs sc _ _ hsc)
         fun res ⟨r1, r2, r3, new, r4, r5, r6, _⟩ => ⟨r1, r2, r3, none :: new, by simp [r4], by simp [r5],
           fun o ho o' he => ?_, fun hall => by simp [ha] at hall⟩
       rcases List.mem_cons.1 ho with rfl | ho
       · cases he
       · exact r6 o ho o' he
     | some a =>
-      simp only [Bool.false_eq_true, ↓reduceIte]
+      simp only
       refine NoInt.bind typedBefore_noInt fun _ _ => ?_
-      refine NoInt.bind (opening_noInt hsc (hc b List.mem_cons_self a ha)) fun o ⟨h1, h2, h3, h4, h5, h6, h7⟩ => ?_
-      refine NoInt.imp (letWants_go_noInt bs o.sc untyped _ h1 fun b' hb' => hc b' (List.mem_cons_of_mem _ hb'))
+      refine NoInt.bind (opening_noInt hsc) fun o ⟨h1, h2, h3, h4, h5, h6, h7⟩ => ?_
+      refine NoInt.imp (letWants_go_noInt bs o.sc untyped _ h1)
         fun res ⟨r1, r2, r3, new, r4, r5, r6, r7⟩ => ?_
       have hle : sc.Γ.length ≤ res.1.Γ.length := by
         have := r3.length_le; omega
@@ -925,17 +901,14 @@ theorem letWants_go_noInt {C : Ctx} : ∀ (bs : List LetBinder) (sc : Scope) (un
 
 /-- What a tuple `let` with no `_` in its binders gives its right-hand side is well-formed where `_` may stand for
 it. -/
-theorem letWants_noInt {C : Ctx} {sc : Scope} {bs : List LetBinder} (hsc : ScOk C sc)
-    (hc : ∀ b ∈ bs, ∀ a, b.ann = some a → a.term.covered C.table) (hf : bs.any (·.ann.any (·.term.holed)) = false) :
-    NoInt (letWants C sc bs) (fun ws => ws.2 = sc ∧ ws.1.length = bs.length ∧
-      (bs.all (·.ann.isSome) = true → Wants.wf sc.sigs sc.Γ.length 0 ws.1 ∧ ∀ w ∈ ws.1, w.type.isSome = true)) := by
+theorem letWants_noInt {C : Ctx} {sc : Scope} {bs : List LetBinder} (hsc : ScOk C sc) :
+    NoInt (letWants C sc bs) (fun ws => ws.length = bs.length ∧
+      (bs.all (·.ann.isSome) = true → Wants.wf sc.sigs sc.Γ.length 0 ws ∧ ∀ w ∈ ws, w.type.isSome = true)) := by
   unfold letWants
-  simp only [hf, Bool.false_eq_true, ↓reduceIte]
-  refine NoInt.bind (letWants_go_noInt bs sc [] [] hsc hc) fun ⟨sc', opens⟩ ⟨r1, r2, r3, new, r4, r5, r6, r7⟩ => ?_
+  refine NoInt.bind (letWants_go_noInt bs sc [] [] hsc) fun ⟨sc', opens⟩ ⟨r1, r2, r3, new, r4, r5, r6, r7⟩ => ?_
   simp only [List.nil_append] at r4 r1 r2 r3
   subst r4
-  refine ⟨(NoInt.bind (R := fun _ => True) (NoInt.mapM (R := fun _ => True) fun x hx => ?_)
-    fun _ _ => NoInt.pure trivial).1, fun ws h => ?_⟩
+  refine ⟨(NoInt.mapM (R := fun _ => True) fun x hx => ?_).1, fun ws h => ?_⟩
   · obtain ⟨b, o⟩ := x
     cases o with
     | none => exact NoInt.pure trivial
@@ -943,11 +916,8 @@ theorem letWants_noInt {C : Ctx} {sc : Scope} {bs : List LetBinder} (hsc : ScOk 
       obtain ⟨a, c⟩ := r6 _ (List.of_mem_zip hx).2 o rfl
       rw [← r2] at a c
       exact NoInt.bind (abstracted_noInt r1.Γ a c) fun _ _ => NoInt.pure trivial
-  · obtain ⟨ws', hws, h⟩ := bind_eq_ok.1 h
-    simp only [pure, Except.pure, Except.ok.injEq] at h
-    subst h
-    obtain ⟨hl, hi⟩ := mapM_ok hws
-    refine ⟨rfl, by simp [hl, r5], fun hall => ⟨fun j w hw => ?_, fun w hw => ?_⟩⟩
+  · obtain ⟨hl, hi⟩ := mapM_ok h
+    refine ⟨by simp [hl, r5], fun hall => ⟨fun j w hw => ?_, fun w hw => ?_⟩⟩
     · have hjl : j < bs.length := by have := (List.getElem?_eq_some_iff.1 hw).1; simp [hl, r5] at this; omega
       obtain ⟨x, hx⟩ : ∃ x, (bs.zip opens)[j]? = some x := ⟨_, List.getElem?_eq_getElem (by simp [r5]; omega)⟩
       have hx' := List.getElem?_zip_eq_some.1 hx
@@ -962,7 +932,7 @@ theorem letWants_noInt {C : Ctx} {sc : Scope} {bs : List LetBinder} (hsc : ScOk 
       subst hab
       have hids : opens.map (fun o => (o.map (·.id)).getD sc'.Γ.length) = List.range' sc.Γ.length bs.length := by
         refine List.ext_getElem? fun k => ?_
-        simp only [List.getElem?_map, List.getElem?_range']
+        simp only [List.getElem?_map]
         rcases Nat.lt_or_ge k bs.length with hk | hk
         · obtain ⟨o', ho', h1', -⟩ := r7 hall k (opens[k]'(by omega)) (List.getElem?_eq_getElem (by omega))
           rw [List.getElem?_eq_getElem (by omega : k < opens.length), ho']
@@ -1021,33 +991,13 @@ theorem produced_noInt {C : Ctx} {sc : Scope} {g : Option Given} {pos : Pos} {rs
   dsimp only
   cases g with
   | none => exact NoInt.pure ⟨rfl, rfl⟩
-  | some g => exact NoInt.bind (against_noInt hsc.holes hsc.Γ hsc.sigs hr) fun s hs => NoInt.pure ⟨hs, rfl⟩
+  | some g => exact NoInt.bind (against_noInt hsc.Γ hsc.sigs hr) fun _ _ => NoInt.pure ⟨rfl, rfl⟩
 
 theorem applied_noInt {C : Ctx} {sc : Scope} {g : Option Given} {pos : Pos} {rs : List Res} {tree : Expr}
-    {since : Option Nat} {snaps : List Snapshot} (hsc : ScOk C sc)
-    (hr : ∀ r ∈ rs, r.term.wf sc.sigs sc.Γ.length 0 = true) :
-    NoInt (applied sc g pos rs tree since snaps) (fun o => o.sc = sc ∧ o.res = rs) := by
+    {snaps : List Snapshot} (hsc : ScOk C sc) (hr : ∀ r ∈ rs, r.term.wf sc.sigs sc.Γ.length 0 = true) :
+    NoInt (applied sc g pos rs tree snaps) (fun o => o.sc = sc ∧ o.res = rs) := by
   unfold applied
-  refine NoInt.keep (NoInt.bind (produced_noInt hsc hr) fun o ⟨h1, h2⟩ => ?_)
-  dsimp only
-  cases since with
-  | none => exact NoInt.pure ⟨h1, h2⟩
-  | some n =>
-    simp only [close_nil (show o.sc.holes = [] by rw [h1]; exact hsc.holes), ok_bind]
-    exact NoInt.pure ⟨h1, h2⟩
-
-theorem closed_noInt {C : Ctx} {sc : Scope} {check : Scope → CheckM Out} (hh : sc.holes = [])
-    (hc : NoInt (check sc) (OutOk C sc)) : NoInt (closed sc check) (OutOk C sc) := by
-  have hs : ({ sc with holes := [] } : Scope) = sc := by cases sc; cases hh; rfl
-  unfold closed
-  rw [hs]
-  refine NoInt.bind hc fun o ho => ?_
-  rw [close_nil ho.ok.holes, keep]
-  simp only [ok_bind]
-  refine NoInt.pure ?_
-  have : ({ o.sc with holes := sc.holes } : Scope) = o.sc := by rw [hh, ← ho.ok.holes]
-  simp only [this]
-  exact ho
+  exact NoInt.keep (NoInt.bind (produced_noInt hsc hr) fun o ⟨h1, h2⟩ => NoInt.pure ⟨h1, h2⟩)
 
 theorem finish_noInt {C C₀ : Ctx} {whole : Bool} {g : Option Given} {e : Expr} {o : Out} {sc : Scope}
     (ho : OutOk C₀ sc o) : NoInt (finish C whole g e o) (OutOk C₀ sc) := by
@@ -1203,7 +1153,7 @@ theorem survivor_noInt {sc : Scope} {fs : List Forcing} {n : String} {pos : Pos}
 theorem ScOk.forced {C : Ctx} {sc : Scope} {Γ : Entries} {ids : List Nat} {t : Option Pos} {ns : List Id}
     (hsc : ScOk C sc) (hΓ : Entries.Wf sc.sigs Γ) (hl : sc.Γ.length ≤ Γ.length) (hi : ∀ i ∈ ids, i < Γ.length) :
     ScOk C (Scope.bind { sc with Γ, taintedBy := t } ns (fieldRes ids)) := by
-  refine ScOk.bind (hsc.grow hsc.holes rfl hΓ hl fun p hp => .inl hp) fun r hr => ?_
+  refine ScOk.bind (hsc.grow rfl hΓ hl fun p hp => .inl hp) fun r hr => ?_
   simp only [fieldRes, List.mem_map] at hr
   obtain ⟨i, hi', rfl⟩ := hr
   simpa [Term.wf] using hi i hi'
@@ -1224,53 +1174,46 @@ theorem patBind_noInt {C : Ctx} {sc : Scope} {r : Res} {rhsPos : Pos} {ct : Bool
     · exact NoInt.failAt_bind
     · exact fin
 
-def WTerm.cov (T : Table) (t : WTerm) : Bool := t.holes.all fun p => (T.lookup p).isSome
-
-theorem WTerm.covered_of_cov {T : Table} {t : WTerm} (h : t.cov T = true) : t.covered T :=
-  fun p hp => List.all_eq_true.1 h p hp
-
-def Tele.okFor (T : Table) : Tele → Bool
-  | .binders bs => !bs.isEmpty && bs.all (·.ann.term.cov T)
+def Tele.shaped : Tele → Bool
+  | .binders bs => !bs.isEmpty
   | .hole _ => true
 
 mutual
   /-- The program as the checking pass's internal checks are proved unreachable for it: no `removed`, no `comptime`
-  below the top level, at least one element, binder or annotation entry where the grammar has one, and every `_` in
-  the table `T`. -/
-  def Expr.okFor (T : Table) : Expr → Bool
-    | .var ⟨none, p⟩ => (T.lookup p).isSome
-    | .var ⟨some _, _⟩ => true
-    | .app _ args => Expr.okArgs T args
-    | .tuple _ es => !es.isEmpty && Expr.okList T es
-    | .block ss f => Expr.okStmts T ss && f.okFor T
-    | .match _ _ s ann bs => s.okFor T && Tele.okFor T ann && Expr.okBranches T bs
-    | .sorry _ t => Tele.okFor T t
+  below the top level, and at least one element, binder or annotation entry where the grammar has one. -/
+  def Expr.shaped : Expr → Bool
+    | .var _ => true
+    | .app _ args => Expr.shapedArgs args
+    | .tuple _ es => !es.isEmpty && Expr.shapedList es
+    | .block ss f => Expr.shapedStmts ss && f.shaped
+    | .match _ _ s ann bs => s.shaped && Tele.shaped ann && Expr.shapedBranches bs
+    | .sorry _ t => Tele.shaped t
     | .removed => false
-  def Expr.okList (T : Table) : List Expr → Bool
+  def Expr.shapedList : List Expr → Bool
     | [] => true
-    | e :: es => e.okFor T && Expr.okList T es
-  def Expr.okArgs (T : Table) : List Arg → Bool
+    | e :: es => e.shaped && Expr.shapedList es
+  def Expr.shapedArgs : List Arg → Bool
     | [] => true
-    | .mk _ e :: as => e.okFor T && Expr.okArgs T as
-  def Expr.okStmts (T : Table) : List Stmt → Bool
+    | .mk _ e :: as => e.shaped && Expr.shapedArgs as
+  def Expr.shapedStmts : List Stmt → Bool
     | [] => true
-    | s :: ss => Stmt.okFor T s && Expr.okStmts T ss
-  def Expr.okBranches (T : Table) : List Branch → Bool
+    | s :: ss => Stmt.shaped s && Expr.shapedStmts ss
+  def Expr.shapedBranches : List Branch → Bool
     | [] => true
-    | .mk _ b :: bs => b.okFor T && Expr.okBranches T bs
-  def Stmt.okFor (T : Table) : Stmt → Bool
-    | .let _ bs rhs => !bs.isEmpty && bs.all (·.ann.all (·.term.cov T)) && rhs.okFor T
-    | .patlet _ ct _ _ rhs => !ct && rhs.okFor T
+    | .mk _ b :: bs => b.shaped && Expr.shapedBranches bs
+  def Stmt.shaped : Stmt → Bool
+    | .let _ bs rhs => !bs.isEmpty && rhs.shaped
+    | .patlet _ ct _ _ rhs => !ct && rhs.shaped
     | .inspect _ => true
 end
 
 /-- `checkExpr` reports no internal error from a scope meeting `ScOk`, given what meets `GivenOk`. -/
 def ExprNI (e : Expr) : Prop :=
-  ∀ (C : Ctx) (sc : Scope) (g : Option Given), ScOk C sc → e.okFor C.table = true →
+  ∀ (C : Ctx) (sc : Scope) (g : Option Given), ScOk C sc → e.shaped = true →
     (∀ g', g = some g' → GivenOk sc.sigs sc.Γ.length g') → NoInt (checkExpr C sc g e) (OutOk C sc)
 
 def StmtNI (s : Stmt) : Prop :=
-  ∀ (C : Ctx) (sc : Scope), ScOk C sc → s.okFor C.table = true →
+  ∀ (C : Ctx) (sc : Scope), ScOk C sc → s.shaped = true →
     NoInt (checkStmt C sc s) (fun o => ScOk C o.sc ∧ o.sc.sigs = sc.sigs ∧ sc.Γ.length ≤ o.sc.Γ.length)
 
 theorem GivenOk.erase {S : Sigs} {n : Nat} {g : Given} (h : GivenOk S n g) : GivenOk S n g.erase := by
@@ -1295,11 +1238,8 @@ theorem NoInt.notValue {α β : Type} {C : Ctx} {sc : Scope} {n : Name} {f : α 
 theorem NoInt.notValue' {α : Type} {C : Ctx} {sc : Scope} {n : Name} {R : α → Prop} :
     NoInt (Pledge.notValue C sc n : CheckM α) R := by unfold Pledge.notValue; exact NoInt.failAt
 
-theorem Scope.holes_nil {sc : Scope} (h : sc.holes = []) : ({ sc with holes := [] } : Scope) = sc := by
-  cases sc; cases h; rfl
-
-theorem OutOk.ctx {C C' : Ctx} {sc : Scope} {o : Out} (h : OutOk C sc o) (hs : C'.solving = C.solving)
-    (hg : C'.globals = C.globals) : OutOk C' sc o := ⟨h.ok.ctx hs hg, h.sigs, h.len, h.res, h.ne⟩
+theorem OutOk.ctx {C C' : Ctx} {sc : Scope} {o : Out} (h : OutOk C sc o) (hg : C'.globals = C.globals) :
+    OutOk C' sc o := ⟨h.ok.ctx hg, h.sigs, h.len, h.res, h.ne⟩
 
 theorem given_erased {S : Sigs} {n : Nat} {g : Option Given} (hg : ∀ g', g = some g' → GivenOk S n g') (b : Bool) :
     ∀ g', (if b = true then g.map (·.erase) else g) = some g' → GivenOk S n g' := by
@@ -1335,11 +1275,10 @@ theorem sorry_noInt (p : Pos) (t : Tele) : ExprNI (.sorry p t) := by
   refine NoInt.bind ?_ fun o ho => finish_noInt ho
   have hg' := given_erased hg C.erased
   generalize (if C.erased = true then Option.map (fun x => x.erase) g else g) = g' at hg' ⊢
-  simp only [Expr.okFor] at hok
-  refine NoInt.bind (annotation_noInt (hsc.ctx rfl rfl) hg' fun bs he => ?_) fun ⟨tele, env⟩ ⟨h1, h2, h3⟩ => ?_
+  simp only [Expr.shaped] at hok
+  refine NoInt.bind (annotation_noInt (hsc.ctx rfl) hg' fun bs he => ?_) fun ⟨tele, env⟩ ⟨h1, h2, h3⟩ => ?_
   · subst he
-    simp only [Tele.okFor, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff, List.all_eq_true] at hok
-    exact ⟨hok.1, fun b hb => WTerm.covered_of_cov (hok.2 b hb)⟩
+    simpa [Tele.shaped] using hok
   obtain ⟨o1, o2, o3, o4, o5, o6⟩ := opened_ok (kind := "sorry") (pos := p) (taint := fun _ => true) hsc h3 h2
   refine NoInt.imp (produced_noInt o1 (by rw [o2]; exact o6)) fun o ⟨e1, e2⟩ => ?_
   obtain ⟨osc, ores, otree, osn⟩ := o
@@ -1349,10 +1288,10 @@ theorem sorry_noInt (p : Pos) (t : Tele) : ExprNI (.sorry p t) := by
 
 theorem removed_noInt : ExprNI .removed := by
   intro C sc g hsc hok hg
-  simp [Expr.okFor] at hok
+  simp [Expr.shaped] at hok
 
 theorem elems_noInt {es : List Expr} (ih : ∀ e ∈ es, ExprNI e) :
-    ∀ {C : Ctx} {sc : Scope} {g : Option Given} {prev : List Res}, ScOk C sc → Expr.okList C.table es = true →
+    ∀ {C : Ctx} {sc : Scope} {g : Option Given} {prev : List Res}, ScOk C sc → Expr.shapedList es = true →
       NoInt (checkElems C sc g prev es) (fun o => ScOk C o.sc ∧ o.sc.sigs = sc.sigs ∧
         sc.Γ.length ≤ o.sc.Γ.length ∧ o.res.length = es.length ∧
         ∀ r ∈ o.res, r.term.wf sc.sigs o.sc.Γ.length 0 = true) := by
@@ -1360,7 +1299,7 @@ theorem elems_noInt {es : List Expr} (ih : ∀ e ∈ es, ExprNI e) :
   | nil => intro C sc g prev hsc _; unfold checkElems; exact NoInt.pure ⟨hsc, rfl, Nat.le_refl _, rfl, by simp⟩
   | cons e es ihs =>
     intro C sc g prev hsc hok
-    simp only [Expr.okList, Bool.and_eq_true] at hok
+    simp only [Expr.shapedList, Bool.and_eq_true] at hok
     unfold checkElems
     refine NoInt.bind (ih e List.mem_cons_self C sc _ hsc hok.1 fun g' hg' => ?_) fun o ho => ?_
     · simp only [elemGiven, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hg'
@@ -1379,13 +1318,13 @@ theorem tuple_noInt (p : Pos) {es : List Expr} (ih : ∀ e ∈ es, ExprNI e) : E
   unfold checkExpr
   dsimp only
   refine NoInt.bind ?_ fun o ho => finish_noInt ho
-  simp only [Expr.okFor, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff] at hok
+  simp only [Expr.shaped, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff] at hok
   have rest : NoInt (do
       let o ← checkElems (C.enter (C.erased || Option.any (fun x => x.allErased) g)) sc
         (if C.erased = true then Option.map (fun x => x.erase) g else g) [] es
       pure (⟨o.sc, o.res, .tuple p o.trees, o.snaps⟩ : Out)) (OutOk C sc) :=
-    NoInt.bind (elems_noInt ih (hsc.ctx rfl rfl) hok.2) fun o ⟨h1, h2, h3, h4, h5⟩ =>
-      NoInt.pure (OutOk.of (h1.ctx rfl rfl) h2 h3 h5 (by
+    NoInt.bind (elems_noInt ih (hsc.ctx rfl) hok.2) fun o ⟨h1, h2, h3, h4, h5⟩ =>
+      NoInt.pure (OutOk.of (h1.ctx rfl) h2 h3 h5 (by
         intro h; rw [h] at h4; exact hok.1 (List.eq_nil_of_length_eq_zero h4.symm)))
   split
   · split
@@ -1394,13 +1333,13 @@ theorem tuple_noInt (p : Pos) {es : List Expr} (ih : ∀ e ∈ es, ExprNI e) : E
   · exact rest
 
 theorem stmts_noInt {ss : List Stmt} (ih : ∀ s ∈ ss, StmtNI s) :
-    ∀ {C : Ctx} {sc : Scope}, ScOk C sc → Expr.okStmts C.table ss = true →
+    ∀ {C : Ctx} {sc : Scope}, ScOk C sc → Expr.shapedStmts ss = true →
       NoInt (checkStmts C sc ss) (fun o => ScOk C o.sc ∧ o.sc.sigs = sc.sigs ∧ sc.Γ.length ≤ o.sc.Γ.length) := by
   induction ss with
   | nil => intro C sc hsc _; unfold checkStmts; exact NoInt.pure ⟨hsc, rfl, Nat.le_refl _⟩
   | cons s ss ihs =>
     intro C sc hsc hok
-    simp only [Expr.okStmts, Bool.and_eq_true] at hok
+    simp only [Expr.shapedStmts, Bool.and_eq_true] at hok
     unfold checkStmts
     refine NoInt.bind (ih s List.mem_cons_self C sc hsc hok.1) fun o ⟨h1, h2, h3⟩ => ?_
     refine NoInt.bind (NoInt.keep (ihs (fun s' hs' => ih s' (List.mem_cons_of_mem _ hs')) h1 hok.2))
@@ -1414,19 +1353,17 @@ theorem block_noInt {ss : List Stmt} {f : Expr} (ihs : ∀ s ∈ ss, StmtNI s) (
   refine NoInt.bind ?_ fun o ho => finish_noInt ho
   have hg' := given_erased hg C.erased
   generalize (if C.erased = true then Option.map (fun x => x.erase) g else g) = g' at hg' ⊢
-  simp only [Expr.okFor, Bool.and_eq_true] at hok
-  rw [Scope.holes_nil hsc.holes]
-  refine NoInt.bind (stmts_noInt ihs (hsc.ctx rfl rfl) hok.1) fun s ⟨s1, s2, s3⟩ => ?_
-  rw [hsc.holes, Scope.holes_nil s1.holes]
+  simp only [Expr.shaped, Bool.and_eq_true] at hok
+  refine NoInt.bind (stmts_noInt ihs (hsc.ctx rfl) hok.1) fun s ⟨s1, s2, s3⟩ => ?_
   refine NoInt.bind (NoInt.keep (ihf _ s.sc g' s1 hok.2 fun g'' h => by rw [s2]; exact (hg' g'' h).mono s3))
     fun o ho => NoInt.pure ?_
-  exact OutOk.of (hsc.grow (sc' := { o.sc with names := sc.names }) ho.ok.holes (ho.sigs.trans s2) ho.ok.Γ
+  exact OutOk.of (hsc.grow (sc' := { o.sc with names := sc.names }) (ho.sigs.trans s2) ho.ok.Γ
     (Nat.le_trans s3 ho.len) fun p hp => .inl hp) (ho.sigs.trans s2) (Nat.le_trans s3 ho.len)
     (by rw [← s2]; exact ho.res) ho.ne
 
 theorem args_noInt {args : List Arg} (ih : ∀ a ∈ args, ExprNI a.expr) :
     ∀ {C : Ctx} {sc : Scope} {owner role : String} {erased : Bool} {params : Telescope} {prev : List Res},
-      ScOk C sc → Expr.okArgs C.table args = true → params.length = args.length →
+      ScOk C sc → Expr.shapedArgs args = true → params.length = args.length →
       NoInt (checkArgs C sc owner role erased params prev args) (fun a => ScOk C a.sc ∧ a.sc.sigs = sc.sigs ∧
         sc.Γ.length ≤ a.sc.Γ.length ∧ a.res.length = args.length ∧
         ∀ r ∈ a.res, r.term.wf sc.sigs a.sc.Γ.length 0 = true) := by
@@ -1438,7 +1375,7 @@ theorem args_noInt {args : List Arg} (ih : ∀ a ∈ args, ExprNI a.expr) :
     cases params with
     | nil => simp at hl
     | cons p ps =>
-      simp only [Expr.okArgs, Bool.and_eq_true] at hok
+      simp only [Expr.shapedArgs, Bool.and_eq_true] at hok
       unfold checkArgs
       dsimp only
       have cont : ∀ o : Out, (ScOk C o.sc ∧ o.sc.sigs = sc.sigs ∧ sc.Γ.length ≤ o.sc.Γ.length ∧
@@ -1468,8 +1405,7 @@ theorem args_noInt {args : List Arg} (ih : ∀ a ∈ args, ExprNI a.expr) :
             | none => exact ⟨pp, rfl⟩
             | some => simp [isHole] at hh
           | _ => simp [isHole] at hh
-        simp only [Expr.okFor] at hok
-        exact NoInt.bind (holeArg_noInt hok.1) fun o ⟨e1, r, e2, e3⟩ => cont o
+        exact NoInt.bind holeArg_noInt fun o ⟨e1, r, e2, e3⟩ => cont o
           ⟨e1 ▸ hsc, by rw [e1], by rw [e1]; exact Nat.le_refl _, by
             rw [e2, e1]; intro r' hr'; rw [List.mem_singleton.1 hr']; exact e3⟩
       · exact NoInt.bind (ih (.mk m e) List.mem_cons_self C sc _ hsc hok.1 fun g' hg' => by
@@ -1493,8 +1429,8 @@ theorem app_noInt (hd : Name) {args : List Arg} (ih : ∀ a ∈ args, ExprNI a.e
   have hg' := given_erased hg C.erased
   generalize (if C.erased = true then Option.map (fun x => x.erase) g else g) = g' at hg' ⊢
   generalize (C.erased || Option.any (fun x => x.allErased) g) = w
-  simp only [Expr.okFor] at hok
-  have hsc' : ScOk (C.enter w) sc := hsc.ctx rfl rfl
+  simp only [Expr.shaped] at hok
+  have hsc' : ScOk (C.enter w) sc := hsc.ctx rfl
   cases hgl : (C.enter w).global hd.name with
   | none => unfold notApplied; exact NoInt.failAt
   | some gl =>
@@ -1519,11 +1455,11 @@ theorem app_noInt (hd : Name) {args : List Arg} (ih : ∀ a ∈ args, ExprNI a.e
                   applied (opened a.sc sig.returns (a.res.map (·.term)) hd.name hd.pos fun _ =>
                       sig.tainted || a.res.any (·.tainted)).1 g' hd.pos
                     (opened a.sc sig.returns (a.res.map (·.term)) hd.name hd.pos fun _ =>
-                      sig.tainted || a.res.any (·.tainted)).2 (.app hd a.trees) (some sc.holes.length) a.snaps
+                      sig.tainted || a.res.any (·.tainted)).2 (.app hd a.trees) a.snaps
                 | _ => applied (opened a.sc sig.returns (a.res.map (·.term)) hd.name hd.pos fun _ =>
                       sig.tainted || a.res.any (·.tainted)).1 g' hd.pos
                     (opened a.sc sig.returns (a.res.map (·.term)) hd.name hd.pos fun _ =>
-                      sig.tainted || a.res.any (·.tainted)).2 (.app hd a.trees) (some sc.holes.length) a.snaps))
+                      sig.tainted || a.res.any (·.tainted)).2 (.app hd a.trees) a.snaps))
               (OutOk C sc) := by
           intro plan hplan
           refine NoInt.bind NoInt.arity fun _ har => ?_
@@ -1536,12 +1472,12 @@ theorem app_noInt (hd : Name) {args : List Arg} (ih : ∀ a ∈ args, ExprNI a.e
             (env := a.res.map (·.term)) (kind := hd.name) (pos := hd.pos)
             (taint := fun _ => sig.tainted || a.res.any (·.tainted)) a1
             (by rw [a2]; simpa [a4, har] using hrw') (by simpa [a2] using a5)
-          have tail : NoInt (applied _ g' hd.pos _ (.app hd a.trees) (some sc.holes.length) a.snaps) (OutOk C sc) :=
+          have tail : NoInt (applied _ g' hd.pos _ (.app hd a.trees) a.snaps) (OutOk C sc) :=
             NoInt.imp (applied_noInt (rs := (opened a.sc sig.returns (a.res.map (·.term)) hd.name hd.pos fun _ =>
               sig.tainted || a.res.any (·.tainted)).2) o1 (by rw [o2]; exact o6)) fun o ⟨e1, e2⟩ => by
               obtain ⟨osc, ores, otree, osn⟩ := o
               simp only at e1 e2; subst e1 e2
-              exact OutOk.of (o1.ctx rfl rfl) (o2.trans a2) (Nat.le_trans a3 o4.length_le)
+              exact OutOk.of (o1.ctx rfl) (o2.trans a2) (Nat.le_trans a3 o4.length_le)
                 (by rw [← a2, ← o2]; exact o6) (by
                   intro h; rw [← List.length_eq_zero_iff, o5] at h; exact hrne (List.eq_nil_of_length_eq_zero h))
           refine NoInt.keep ?_
@@ -1571,50 +1507,40 @@ theorem app_noInt (hd : Name) {args : List Arg} (ih : ∀ a ∈ args, ExprNI a.e
       simp only [Global.name] at hn
       subst hn
       obtain ⟨⟨s, hs⟩, -⟩ := hsc.globals _ hm
-      simp only [hgl]
       refine NoInt.bind unmarked_noInt fun _ _ => ?_
       refine NoInt.bind (sig_noInt hs) fun s' ⟨hss, _⟩ => ?_
       subst hss
       refine NoInt.bind NoInt.arity fun _ har => ?_
-      refine NoInt.bind (args_noInt ih (hsc'.ctx rfl rfl) hok har.symm) fun a ⟨a1, a2, a3, a4, a5⟩ => ?_
-      refine NoInt.imp (applied_noInt (a1.ctx rfl rfl) ?_) ?_
+      refine NoInt.bind (args_noInt ih (hsc'.ctx rfl) hok har.symm) fun a ⟨a1, a2, a3, a4, a5⟩ => ?_
+      refine NoInt.imp (applied_noInt (a1.ctx rfl) ?_) ?_
       · intro r hr
         rw [List.mem_singleton.1 hr, a2]
         exact Term.wf_app.2 ⟨⟨s', by rw [Sigs.find_head hs]; exact hs, by simp [a4, har]⟩, by simpa using a5⟩
       · intro o ⟨e1, e2⟩
         obtain ⟨osc, ores, otree, osn⟩ := o
         simp only at e1 e2; subst e1 e2
-        refine OutOk.of (a1.ctx rfl rfl) a2 a3 (fun r hr => ?_) (by simp)
+        refine OutOk.of (a1.ctx rfl) a2 a3 (fun r hr => ?_) (by simp)
         rw [List.mem_singleton.1 hr]
         exact Term.wf_app.2 ⟨⟨s', by rw [Sigs.find_head hs]; exact hs, by simp [a4, har]⟩, by simpa using a5⟩
     | ctor nm =>
       simp only [Global.name] at hn
       subst hn
       obtain ⟨s, hs⟩ := hsc.globals _ hm
-      simp only [hgl]
       refine NoInt.bind unmarked_noInt fun _ _ => ?_
       refine NoInt.bind (sig_noInt hs) fun s' ⟨hss, _⟩ => ?_
       subst hss
       refine NoInt.bind NoInt.arity fun _ har => ?_
-      refine NoInt.bind (args_noInt ih (hsc'.ctx rfl rfl) hok har.symm) fun a ⟨a1, a2, a3, a4, a5⟩ => ?_
-      refine NoInt.imp (applied_noInt (a1.ctx rfl rfl) ?_) ?_
+      refine NoInt.bind (args_noInt ih (hsc'.ctx rfl) hok har.symm) fun a ⟨a1, a2, a3, a4, a5⟩ => ?_
+      refine NoInt.imp (applied_noInt (a1.ctx rfl) ?_) ?_
       · intro r hr
         rw [List.mem_singleton.1 hr, a2]
         exact Term.wf_app.2 ⟨⟨s', by rw [Sigs.find_head hs]; exact hs, by simp [a4, har]⟩, by simpa using a5⟩
       · intro o ⟨e1, e2⟩
         obtain ⟨osc, ores, otree, osn⟩ := o
         simp only at e1 e2; subst e1 e2
-        refine OutOk.of (a1.ctx rfl rfl) a2 a3 (fun r hr => ?_) (by simp)
+        refine OutOk.of (a1.ctx rfl) a2 a3 (fun r hr => ?_) (by simp)
         rw [List.mem_singleton.1 hr]
         exact Term.wf_app.2 ⟨⟨s', by rw [Sigs.find_head hs]; exact hs, by simp [a4, har]⟩, by simpa using a5⟩
-
-theorem ScOk.branch {C : Ctx} {sc : Scope} {Γ : Entries} {ids : List Nat} {t : Option Pos} {ns : List Id}
-    (hsc : ScOk C sc) (hΓ : Entries.Wf sc.sigs Γ) (hl : sc.Γ.length ≤ Γ.length) (hi : ∀ i ∈ ids, i < Γ.length) :
-    ScOk C (Scope.bind { sc with Γ, taintedBy := t, holes := [] } ns (fieldRes ids)) := by
-  have : ({ sc with Γ, taintedBy := t, holes := [] } : Scope) = { sc with Γ, taintedBy := t } := by
-    rw [← hsc.holes]
-  rw [this]
-  exact hsc.forced hΓ hl hi
 
 theorem Telescope.entriesBelow_of_wf {S : Sigs} {n : Nat} :
     ∀ {k : Nat} {tele : Telescope}, Telescope.wf S n k tele = true → tele.all (·.entriesBelow n) = true
@@ -1628,23 +1554,23 @@ theorem Telescope.entriesBelow_of_wf {S : Sigs} {n : Nat} :
 theorem branches_noInt {bs : List Branch} (ih : ∀ b ∈ bs, ExprNI b.body) :
     ∀ {C : Ctx} {inner : Scope} {r : Res} {sp : Pos} {fs : List Forcing} {g : Given}, ScOk C inner →
       FsOk inner.sigs inner.Γ.length fs → (∀ b ∈ bs, ∃ f ∈ fs, f.name = b.pat.ctor.name) →
-      GivenOk inner.sigs inner.Γ.length g → Expr.okBranches C.table bs = true →
+      GivenOk inner.sigs inner.Γ.length g → Expr.shapedBranches bs = true →
       NoInt (checkBranches C inner r sp fs g bs) (fun _ => True) := by
   induction bs with
   | nil => intro C inner r sp fs g _ _ _ _ _; unfold checkBranches; exact NoInt.pure trivial
   | cons b bs ihs =>
     intro C inner r sp fs g hsc hfs hn hg hok
     obtain ⟨pat, body⟩ := b
-    simp only [Expr.okBranches, Bool.and_eq_true] at hok
+    simp only [Expr.shapedBranches, Bool.and_eq_true] at hok
     unfold checkBranches
     refine NoInt.bind (survivor_noInt hfs (hn _ List.mem_cons_self)) fun ⟨Γ, ids⟩ ⟨h1, h2, h3⟩ => ?_
-    have hb := hsc.branch (t := reach inner r sp) (ns := pat.fields) h1 h2 h3
-    have hbs : (Scope.bind { inner with Γ, taintedBy := reach inner r sp, holes := [] } pat.fields
+    have hb := hsc.forced (t := reach inner r sp) (ns := pat.fields) h1 h2 h3
+    have hbs : (Scope.bind { inner with Γ, taintedBy := reach inner r sp } pat.fields
         (fieldRes ids)).sigs = inner.sigs := by rw [Scope.bind_eq]
-    have hbl : inner.Γ.length ≤ (Scope.bind { inner with Γ, taintedBy := reach inner r sp, holes := [] } pat.fields
+    have hbl : inner.Γ.length ≤ (Scope.bind { inner with Γ, taintedBy := reach inner r sp } pat.fields
         (fieldRes ids)).Γ.length := by rw [Scope.bind_eq]; exact h2
-    refine NoInt.bind (closed_noInt hb.holes (ih _ List.mem_cons_self C _ _ hb hok.1 fun g' hg' => by
-      cases hg'; rw [hbs]; exact hg.mono hbl)) fun o _ => ?_
+    refine NoInt.bind (ih _ List.mem_cons_self C _ _ hb hok.1 fun g' hg' => by
+      cases hg'; rw [hbs]; exact hg.mono hbl) fun o _ => ?_
     exact NoInt.bind (NoInt.keep (ihs (fun b hb => ih b (List.mem_cons_of_mem _ hb)) hsc hfs
       (fun b hb => hn b (List.mem_cons_of_mem _ hb)) hg hok.2)) fun _ _ => NoInt.pure trivial
 
@@ -1657,19 +1583,18 @@ theorem match_noInt (p : Pos) (m : Option Mult) {s : Expr} (ann : Tele) {bs : Li
   have hg' := given_erased hg C.erased
   generalize (if C.erased = true then Option.map (fun x => x.erase) g else g) = g' at hg' ⊢
   generalize (C.erased || Option.any (fun x => x.allErased) g) = w
-  simp only [Expr.okFor, Bool.and_eq_true] at hok
+  simp only [Expr.shaped, Bool.and_eq_true] at hok
   obtain ⟨⟨hoks, hokt⟩, hokb⟩ := hok
-  refine NoInt.bind (closed_noInt hsc.holes (NoInt.imp (ihs _ sc none (hsc.ctx rfl rfl) hoks (by simp))
-    fun o h => h.ctx rfl rfl)) fun so hso => NoInt.keep ?_
-  have hsc' : ScOk (C.enter w) so.sc := hso.ok.ctx rfl rfl
+  refine NoInt.bind (NoInt.imp (ihs _ sc none (hsc.ctx rfl) hoks (by simp))
+    fun o h => h.ctx rfl) fun so hso => NoInt.keep ?_
+  have hsc' : ScOk (C.enter w) so.sc := hso.ok.ctx rfl
   refine NoInt.bind NoInt.single fun r hr => ?_
   have hrw : r.term.wf so.sc.sigs so.sc.Γ.length 0 = true := by
     rw [hso.sigs]; exact hso.res r (by rw [hr]; exact List.mem_cons_self)
   refine NoInt.bind (annotation_noInt hsc' (fun g'' h => by rw [hso.sigs]; exact (hg' g'' h).mono hso.len)
     fun bs' he => ?_) fun ⟨tele, env⟩ ⟨t1, t2, t3⟩ => ?_
   · subst he
-    simp only [Tele.okFor, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff, List.all_eq_true] at hokt
-    exact ⟨hokt.1, fun b hb => WTerm.covered_of_cov (hokt.2 b hb)⟩
+    simpa [Tele.shaped] using hokt
   refine NoInt.bind (forcings_noInt hsc' hrw) fun fs ⟨f1, f2⟩ => ?_
   refine NoInt.bind (NoInt.forM fun b hb => NoInt.bind (survivor_noInt f1 (f2 _ (List.mem_map_of_mem hb)))
     fun _ _ => freshAll_noInt) fun _ _ => ?_
@@ -1719,7 +1644,7 @@ theorem match_noInt (p : Pos) (m : Option Mult) {s : Expr} (ann : Tele) {bs : Li
       NoInt.pure ?_
     obtain ⟨osc, ores, otree, osn⟩ := o
     simp only at e1 e2; subst e1 e2
-    exact OutOk.of (o1.ctx rfl rfl) (o2.trans hso.sigs) (Nat.le_trans hso.len o4.length_le)
+    exact OutOk.of (o1.ctx rfl) (o2.trans hso.sigs) (Nat.le_trans hso.len o4.length_le)
       (by rw [← hso.sigs, ← o2]; exact o6) (by
         intro h; rw [← List.length_eq_zero_iff, o5] at h; exact t1 (List.eq_nil_of_length_eq_zero h))
   split
@@ -1737,11 +1662,8 @@ theorem inspect_noInt (p : Pos) : StmtNI (.inspect p) := by
 
 theorem let_noInt (p : Pos) {bs : List LetBinder} {rhs : Expr} (ih : ExprNI rhs) : StmtNI (.let p bs rhs) := by
   intro C sc hsc hok
-  simp only [Stmt.okFor, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff, List.all_eq_true,
-    Option.all_eq_true] at hok
-  obtain ⟨⟨hne, hcov⟩, hokr⟩ := hok
-  have hc : ∀ b ∈ bs, ∀ a, b.ann = some a → a.term.covered C.table :=
-    fun b hb a ha => WTerm.covered_of_cov (hcov b hb a ha)
+  simp only [Stmt.shaped, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff] at hok
+  obtain ⟨hne, hokr⟩ := hok
   unfold checkStmt
   dsimp only
   refine NoInt.bind freshAll_noInt fun _ _ => ?_
@@ -1755,49 +1677,37 @@ theorem let_noInt (p : Pos) {bs : List LetBinder} {rhs : Expr} (ih : ExprNI rhs)
     simp only [List.mem_map] at hr
     obtain ⟨x, hx, rfl⟩ := hr
     rw [ho.sigs]; exact ho.res x.2 (List.of_mem_zip hx).2
-  have hrf : rhsFirst C bs = bs.any (·.ann.any (·.term.holed)) := by simp [rhsFirst, hsc.solving]
   split
   · rename_i hr
-    rw [hrf] at hr
-    have hw : (letGiven bs (bs.map fun b => ({ name := b.name.name, type := none, mult := b.mult.getD .many } :
-        Want))).whole = false := by
-      simp only [letGiven, List.all_eq_false]
-      simp only [List.any_eq_true, Option.any_eq_true] at hr
+    have hw : (anyGiven bs).whole = false := by
+      simp only [anyGiven, letGiven, List.all_eq_false]
+      simp only [holedLet, List.any_eq_true, Option.any_eq_true] at hr
       obtain ⟨b, hb, t, ht, hh⟩ := hr
       exact ⟨b, hb, by simp [ht, hh]⟩
     refine NoInt.bind (ih C sc _ hsc hokr fun g h => by cases h; exact GivenOk.of_not_whole hw) fun o ho => ?_
-    rw [close_nil ho.ok.holes, keep]
-    simp only [ok_bind]
-    refine NoInt.bind (NoInt.keep (letBinders_noInt ho.ok hc (by rw [ho.sigs]; exact ho.res))) fun _ _ => ?_
+    refine NoInt.bind (NoInt.keep (letBinders_noInt ho.ok (by rw [ho.sigs]; exact ho.res))) fun _ _ => ?_
+    simp only [pure, Except.pure, ok_bind]
     exact fin o ho
-  · rename_i hr
-    rw [hrf] at hr
-    simp only [Bool.not_eq_true] at hr
-    refine NoInt.bind (letWants_noInt hsc hc hr) fun ⟨ws, sc'⟩ ⟨w1, w2, w3⟩ => ?_
-    simp only at w1 w2 w3
-    subst sc'
-    refine NoInt.bind (ih C sc _ hsc hokr fun g h => ?_) fun o ho => ?_
-    · cases h
-      refine ⟨fun _ => by simp [letGiven], fun hw => ?_, fun hw => ?_⟩
-      · have hall : bs.all (·.ann.isSome) = true := by
-          simp only [letGiven, List.all_eq_true, Option.any_eq_true] at hw ⊢
-          intro b hb; obtain ⟨a, ha, -⟩ := hw b hb; simp [ha]
-        simpa [letGiven] using (w3 hall).1
-      · have hall : bs.all (·.ann.isSome) = true := by
-          simp only [letGiven, List.all_eq_true, Option.any_eq_true] at hw ⊢
-          intro b hb; obtain ⟨a, ha, -⟩ := hw b hb; simp [ha]
-        refine ⟨fun h => hne ?_, (w3 hall).2⟩
-        simp only [letGiven] at h
-        rw [h] at w2
-        exact List.eq_nil_of_length_eq_zero w2.symm
-    rw [close_nil ho.ok.holes, keep]
-    simp only [ok_bind]
-    exact fin o ho
+  · refine NoInt.bind (letWants_noInt hsc) fun ws ⟨w2, w3⟩ => ?_
+    refine NoInt.bind (ih C sc _ hsc hokr fun g h => ?_) fun o ho => fin o ho
+    cases h
+    refine ⟨fun _ => by simp [letGiven], fun hw => ?_, fun hw => ?_⟩
+    · have hall : bs.all (·.ann.isSome) = true := by
+        simp only [letGiven, List.all_eq_true, Option.any_eq_true] at hw ⊢
+        intro b hb; obtain ⟨a, ha, -⟩ := hw b hb; simp [ha]
+      simpa [letGiven] using (w3 hall).1
+    · have hall : bs.all (·.ann.isSome) = true := by
+        simp only [letGiven, List.all_eq_true, Option.any_eq_true] at hw ⊢
+        intro b hb; obtain ⟨a, ha, -⟩ := hw b hb; simp [ha]
+      refine ⟨fun h => hne ?_, (w3 hall).2⟩
+      simp only [letGiven] at h
+      rw [h] at w2
+      exact List.eq_nil_of_length_eq_zero w2.symm
 
 theorem patlet_noInt (p : Pos) (ct : Bool) (m : Option Mult) (pat : Pattern) {rhs : Expr} (ih : ExprNI rhs) :
     StmtNI (.patlet p ct m pat rhs) := by
   intro C sc hsc hok
-  simp only [Stmt.okFor, Bool.and_eq_true, Bool.not_eq_true'] at hok
+  simp only [Stmt.shaped, Bool.and_eq_true, Bool.not_eq_true'] at hok
   obtain ⟨hct, hokr⟩ := hok
   subst hct
   unfold checkStmt
@@ -1805,8 +1715,8 @@ theorem patlet_noInt (p : Pos) (ct : Bool) (m : Option Mult) (pat : Pattern) {rh
   simp only [Bool.false_and, Bool.false_eq_true, ↓reduceIte]
   refine NoInt.bind (NoInt.ensure rfl) fun _ _ => ?_
   refine NoInt.bind freshAll_noInt fun _ _ => ?_
-  refine NoInt.bind (closed_noInt (C := C) hsc.holes (NoInt.imp (ih _ sc none (hsc.ctx rfl rfl) hokr (by simp))
-    fun o h => h.ctx rfl rfl)) fun o ho => NoInt.keep ?_
+  refine NoInt.bind (NoInt.imp (ih _ sc none (hsc.ctx rfl) hokr (by simp))
+    fun o h => h.ctx (C' := C) rfl) fun o ho => NoInt.keep ?_
   refine NoInt.bind NoInt.single fun r hr => ?_
   have hrw : r.term.wf o.sc.sigs o.sc.Γ.length 0 = true := by
     rw [ho.sigs]; exact ho.res r (by rw [hr]; exact List.mem_cons_self)

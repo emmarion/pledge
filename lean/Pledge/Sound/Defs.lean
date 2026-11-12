@@ -137,7 +137,6 @@ def ResOks (S : Sigs) : List Res → List Value → Prop
 `ρ` is the ideal valuation of the scope's entries, agreeing with the world on the top-level ones; every name has an
 ideal value, as `ResOk` says. -/
 structure Inv (C : Ctx) (sc : Scope) (n0 : Nat) (W : World) (ρ : List Value) (act : Act) : Prop where
-  holes : sc.holes = []
   untainted : sc.taintedBy = none
   sat : Sat W.Sc sc.Γ ρ
   n0_world : n0 ≤ W.ρ.length
@@ -148,7 +147,6 @@ structure Inv (C : Ctx) (sc : Scope) (n0 : Nat) (W : World) (ρ : List Value) (a
   names : ∀ n r, sc.lookup n = some r → ∃ v, r.term.eval ρ [] = some v ∧ ResOk W.Sc r v
   globals : GlobalsOk n0 C.phase C.globals C.fn sc.sigs W act
   act : ActOk C.fn ρ act
-  solving : C.solving = false
   typeHeads : TypeHeads W.Sc
 
 /-- The multiplicity a name bound to `r` has in `sc`, as `checkExpr` reads it at a variable. -/
@@ -173,7 +171,8 @@ def ResRel (S : Sigs) (phase : Nat) (mult : Nat → Mult) (rs : List Res) (ideal
 /-- What checking an expression in an untainted scope is meant to guarantee (§12, §16): if the scope after it is
 untainted, its results have ideal values under an extension of the valuation satisfying that scope (`ResOk`: the
 untainted ones typed), all meeting what the position is given; and, outside a type constructor's argument, which is
-never evaluated, for every run-time environment related to the ideal valuation, its tree evaluates to run-time values related to the ideal values of its untainted results. -/
+never evaluated, for every run-time environment related to the ideal valuation, its tree evaluates to run-time values
+related to the ideal values of its untainted results. -/
 def ExprPost (C : Ctx) (sc : Scope) (g : Option Given) (n0 : Nat) (W : World) (ρ : List Value) (act : Act)
     (o : Out) : Prop :=
   o.sc.taintedBy = none → ∃ ρ' vs, Inv C o.sc n0 W (ρ ++ ρ') act ∧
@@ -241,7 +240,6 @@ proved (§12). -/
 structure TopInv (st : TopState) (ρ : List Value) : Prop where
   len : ρ.length = st.sc.Γ.length
   noRemoved : ∀ v ∈ ρ, v.noRemoved = true
-  holes : st.sc.holes = []
   sigsOk : SigsOk st.sc.Γ.length st.sc.sigs
   noJunk : st.sc.sigs.find junkHead = none
   rets : ∀ sig ∈ st.sc.sigs, ∃ hd args, sig.ret = .app hd args ∧ hd.kind = .type ∧ ∃ s, st.sc.sigs.find hd = some s
@@ -254,7 +252,6 @@ structure TopInv (st : TopState) (ρ : List Value) : Prop where
       ∀ W', (st.world ρ).Le W' → GoalTyped W' g)
   proved : st.proved = true → ∃ g, st.goal = some g ∧ ∀ W', (st.world ρ).Le W' → GoalHolds W' st.phase g st.qedFn
   live : st.sc.taintedBy = none → TopLive st ρ
-  solving : st.solving = false
   typeHeads : ∀ sig ∈ st.sc.sigs, (∃ args, sig.ret = .app Head.Type args) → sig.head.kind = .type
 
 end Pledge

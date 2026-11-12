@@ -15,3 +15,4 @@ open Pledge
 #print axioms reached_qed
 #print axioms checkItems_noInternal
 #print axioms runProgramWith_noInternal
+#print axioms runProgram_noInternal

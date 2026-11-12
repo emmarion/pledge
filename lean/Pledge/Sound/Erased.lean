@@ -11,7 +11,7 @@ theorem scrut {s : Expr} (ihs : ExprSound s) (ihss : ExprShape s) {C : Ctx} {sc 
     so.tree = .removed ∧ so.sc.names = sc.names ∧ sc.Γ.eraseRules <+: so.sc.Γ.eraseRules ∧
       ∃ ρ₁ v, Inv C so.sc n0 W (ρ ++ ρ₁) act ∧ r.term.eval (ρ ++ ρ₁) [] = some v ∧ ResOk W.Sc r v := by
   have htree := (checkExpr_removed h).2.2.1 rfl
-  obtain ⟨-, hn, -, hpre, -⟩ := ihss _ _ _ _ (by exact hI.solving) hI.holes h
+  obtain ⟨-, hn, hpre, -⟩ := ihss _ _ _ _ h
   obtain ⟨ρ₁, vs, hI₁, hvs, hres, -, -⟩ := (ihs { C with erased := true, place := pl, inType := it } _ _ _ _ _ _ _
     (hI.congr_ctx rfl rfl rfl) (by simp) h).1 ht
   rw [single_ok hr] at hvs hres
@@ -21,14 +21,14 @@ theorem scrut {s : Expr} (ihs : ExprSound s) (ihss : ExprShape s) {C : Ctx} {sc 
 /-- Binding an erased pattern's fields to `removed` (§16) keeps the run-time environment related. -/
 theorem envRel_erased {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {act : Act} {env : Env}
     {c : String} {ws : List Value} {sig : Sig} {Γ' : Entries} {ids : List Nat} {pat : Pattern} {tb : Option Pos}
-    {hs : List Hole} (hI : Inv C sc n0 W ρ act) (hE : EnvRel W.Sc C.phase sc ρ env)
+    (hI : Inv C sc n0 W ρ act) (hE : EnvRel W.Sc C.phase sc ρ env)
     (hsig : sc.sigs.find ⟨.ctor, c⟩ = some sig) (hpre : sc.Γ.eraseRules <+: Γ'.eraseRules)
     (hids : ids = List.range' sc.Γ.length ws.length) (hfl : pat.fields.length = ws.length)
     (hent : ∀ (k : Nat) (b : TBinder), sig.params[k]? = some b → ∃ en, Γ'[sc.Γ.length + k]? = some en ∧
       en.tainted = false ∧ en.erased = (b.mult == .erased || true)) (hpat : pat.ctor.name = c)
     (hwl : ws.length = sig.params.length) :
     ∃ env', bindPattern env (some .erased) pat .removed = .ok env' ∧
-      EnvRel W.Sc C.phase (Scope.bind { sc with Γ := Γ', taintedBy := tb, holes := hs } pat.fields (fieldRes ids))
+      EnvRel W.Sc C.phase (Scope.bind { sc with Γ := Γ', taintedBy := tb } pat.fields (fieldRes ids))
         (ρ ++ ws) env' := by
   obtain ⟨sig', hsig', hm⟩ := (hI.sigsClose []).mults hsig
   have hl := congrArg List.length hm
@@ -52,7 +52,6 @@ theorem patlet {p : Pos} {ct : Bool} {pat : Pattern} {rhs : Expr} (ih : ExprSoun
   obtain ⟨u', -, h⟩ := bind_eq_ok.1 h
   obtain ⟨so, hso, h⟩ := bind_eq_ok.1 h
   rw [keep_ok] at h
-  rw [closed_eq hI.holes fun o h => (ihs _ sc none o (by exact hI.solving) hI.holes h).2.2.1] at hso
   obtain ⟨r, hr, h⟩ := bind_eq_ok.1 h
   obtain ⟨fs, hfs, h⟩ := bind_eq_ok.1 h
   obtain ⟨sc', hsc', h⟩ := bind_eq_ok.1 h
@@ -73,10 +72,10 @@ theorem patlet {p : Pos} {ct : Bool} {pat : Pattern} {rhs : Expr} (ih : ExprSoun
   obtain ⟨rfl, rfl⟩ := hf2
   have hfl := forcings_fields hfs (List.mem_singleton_self _) hsig hws
   refine ⟨ρ₁ ++ ws, by simpa using hI₁.pattern hsat hids hws (tb := reach so.sc r rhs.pos) (by
-    simp [reach, ht₁, hrt]) hI₁.holes, fun _ _ env hE => ?_⟩
+    simp [reach, ht₁, hrt]), fun _ _ env hE => ?_⟩
   obtain ⟨env', hb, hE'⟩ := envRel_erased hI₁ (hE.extend ρ₁ hn hpre₁ hI.sat.1.1) hsig hpre hids hfl hent rfl
     hws.length_eq
-    (tb := reach so.sc r rhs.pos) (hs := so.sc.holes)
+    (tb := reach so.sc r rhs.pos)
   exact ⟨env', .patlet (by rw [htree]; exact .removed) rfl hb, by simpa using hE'⟩
 
 theorem filterMap_none {α β : Type} (Q : α → Bool) {xs : List α} (ys : List β)
@@ -149,7 +148,7 @@ theorem mapIdx_wants (tele : Telescope) (f : Nat → TBinder → Mult) :
   exact ⟨rfl, rfl⟩
 
 theorem «match» {p : Pos} {s : Expr} {ann : Tele} {bs : List Branch}
-    (ihs : ExprSound s) (ihss : ExprShape s) (ihb : ∀ b ∈ bs, ExprSound b.body) (ihbs : ∀ b ∈ bs, ExprShape b.body) :
+    (ihs : ExprSound s) (ihss : ExprShape s) (ihb : ∀ b ∈ bs, ExprSound b.body) :
     ExprSound (.match p (some .erased) s ann bs) := by
   intro C sc g n0 W ρ act o hI hg hc
   unfold checkExpr at hc
@@ -159,7 +158,6 @@ theorem «match» {p : Pos} {s : Expr} {ann : Tele} {bs : List Branch}
   simp only [he, Bool.or_true, ↓reduceIte, Bool.true_and] at h₀
   obtain ⟨so, hso, h₀⟩ := bind_eq_ok.1 h₀
   rw [keep_ok] at h₀
-  rw [closed_eq hI.holes fun o h => (ihss _ sc none o (by exact hI.solving) hI.holes h).2.2.1] at hso
   obtain ⟨r, hr, h₀⟩ := bind_eq_ok.1 h₀
   obtain ⟨⟨tele, tenv⟩, hann, h₀⟩ := bind_eq_ok.1 h₀
   obtain ⟨fs, hfs, h₀⟩ := bind_eq_ok.1 h₀
@@ -189,9 +187,9 @@ theorem «match» {p : Pos} {s : Expr} {ann : Tele} {bs : List Branch}
     have hens := ensure_ok hens
     simp only [Bool.and_eq_true, List.all_eq_true] at hens
     rw [keep_ok] at ho₁
-    obtain ⟨-, hn, hsoh, hpre₁, -⟩ := ihss _ _ _ _ (by exact hI.solving) hI.holes hso
+    obtain ⟨-, hn, hpre₁, -⟩ := ihss _ _ _ _ hso
     have hprod := ho₁
-    obtain rfl := produced_eq (show (opened so.sc tele tenv "match" p _).1.holes = [] from hsoh) ho₁
+    obtain rfl := produced_eq ho₁
     obtain ⟨hne, hsc, -, hres, htree, herase⟩ := finish_spec hf
     simp only at hne hsc hres htree herase
     generalize htaint : (fun i : Nat => r.tainted ||
@@ -203,7 +201,7 @@ theorem «match» {p : Pos} {s : Expr} {ann : Tele} {bs : List Branch}
       rw [hres, opened_fst]; simp [hut]
     obtain ⟨htree_s, -, -, ρ₁, v, hI₁, hv, hrv⟩ := scrut ihs ihss hI hso hr hut
     obtain ⟨envv, henv, hcons⟩ := annotation_cons hI₁.termInv.weak
-      (fun g' h => MatchMany.givenOk_frame (MatchMany.given_erased (C := C) hg g' h).1 ρ₁) (by exact hI₁.solving) hann
+      (fun g' h => MatchMany.givenOk_frame (MatchMany.given_erased (C := C) hg g' h).1 ρ₁) hann
     obtain ⟨-, -, hrsl, hrs⟩ := opened_shape so.sc tele tenv "match" p t
     have hlen : ∀ G, g = some G → o.res.length = G.wants.length := fun G hG => by
       obtain ⟨G', hG', -, hl, -⟩ := erase_some (C := C) hG
@@ -223,18 +221,14 @@ theorem «match» {p : Pos} {s : Expr} {ann : Tele} {bs : List Branch}
         rw [(hrs i b hb).1] at hr'
         cases hr'
         exact ⟨h1, h2, fun ht => h3 (by simpa using ht)⟩
-      have hI₂ := hI₁.extend hsat' (sc' := (opened so.sc tele tenv "match" p t).1) rfl rfl hsoh hut
+      have hI₂ := hI₁.extend hsat' (sc' := (opened so.sc tele tenv "match" p t).1) rfl rfl hut
       refine ⟨ρ₁ ++ vsb, vsb, by rw [hsc, ← List.append_assoc]; exact hI₂,
         by rw [hores, ← List.append_assoc]; exact hevs, by rw [hores]; exact hresok, ?_, hrun⟩
       intro G hG envG henvG
       obtain ⟨G', hG', henvG', hl, hw⟩ := erase_some (C := C) hG
       rw [hG'] at hprod
       have hok' := ResOks.of_getElem (by rw [Term.length_evalList hevs, List.length_map]) hresok
-      obtain ⟨-, hwG⟩ := produced_sound hsat'.1 (hI₁.sigsClose vsb) hI₁.noJunk hsoh hevs hok'
-        (fun g'' h'' => by
-          cases h''
-          obtain ⟨envv', he'⟩ := (hg G hG).env
-          exact ⟨envv', by rw [henvG', List.append_assoc]; exact Term.evalList_frame_ρ _ he'⟩) hprod
+      obtain ⟨-, hwG⟩ := produced_sound hsat'.1 (hI₁.sigsClose vsb) hI₁.noJunk hevs hok' hprod
       rw [hores, ← List.append_assoc]
       exact MatchMany.wantsSat_congr hl hw
         (hwG G' rfl envG (by rw [henvG', List.append_assoc]; exact Term.evalList_frame_ρ _ henvG)).2
@@ -285,8 +279,6 @@ theorem «match» {p : Pos} {s : Expr} {ann : Tele} {bs : List Branch}
     have hzj : (bs.zip bo.outs)[j]? = some (b, ob) := List.getElem?_zip_eq_some.2 ⟨hbj, hobj⟩
     have htrj : bo.trees[j]? = some (.mk b.pat ob.tree) := by simp [htr, hzj]
     obtain ⟨Γb, idsb, hsurv, hcheck⟩ := hbr b ob (List.mem_of_getElem? hzj)
-    rw [closed_eq (by rw [Scope.bind_eq]) fun o h =>
-      (ihbs b hb _ _ _ o (by exact hI.solving) (by rw [Scope.bind_eq]) h).2.2.1] at hcheck
     obtain ⟨f, hf1, hf2⟩ := survivor_spec hsurv
     rw [hbn, hfc] at hf1
     cases hf1
@@ -295,7 +287,7 @@ theorem «match» {p : Pos} {s : Expr} {ann : Tele} {bs : List Branch}
     have hsig' : so.sc.sigs.find ⟨.ctor, b.pat.ctor.name⟩ = some sig := by rw [hbn]; exact hsig
     have hfl := forcings_fields hfs (List.mem_map_of_mem hb) hsig' hws
     have hreach : reach so.sc r s.pos = none := by simp [reach, hut, hrt]
-    have hIb := (hI₁.pattern hsat hids hws hreach (hs := []) (fields := b.pat.fields) rfl).congr_ctx
+    have hIb := (hI₁.pattern hsat hids hws hreach (fields := b.pat.fields)).congr_ctx
       (C' := C.enter (C.erased || g.any (·.allErased))) rfl rfl rfl
     obtain ⟨hpostb, habsb⟩ := ihb b hb _ _ _ n0 W _ act ob hIb (by
       rintro g'' ⟨⟩
@@ -364,7 +356,7 @@ theorem «match» {p : Pos} {s : Expr} {ann : Tele} {bs : List Branch}
         exact hga (by simpa using allErased_of (hGl ▸ hpos) fun k hk => by simpa using hgk k (hGl ▸ hk))
     rw [filterMap_live (fun b : Branch => b.body.absurd) htl.symm (hlive hmany) hbj htrj hnab]
     obtain ⟨env', hbind, hE'⟩ := envRel_erased hI₁ (hE.extend ρ₁ hn hpre₁ hI.sat.1.1) hsig' hpre hids hfl hent
-      rfl hws.length_eq (tb := reach so.sc r s.pos) (hs := [])
+      rfl hws.length_eq (tb := reach so.sc r s.pos)
     obtain ⟨us, hev, us', htake, hrel⟩ := hrunb hit env' hE'
     rw [hobl] at htake
     obtain ⟨us₂, hat, htake₂⟩ := annotation_annTake hann htake

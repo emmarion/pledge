@@ -33,44 +33,39 @@ structure TopState where
   prints : List (Pos × String) := []
   snaps : List Snapshot := []
   table : Table := []
-  solving : Bool := false
 
-def TopState.init (phase : Nat) (table : Table := []) (solving : Bool := false) : TopState :=
-  { phase, sc := { sigs := [⟨.Type, [], .TYPE⟩], Γ := [] }, globals := [.type "Type" none true], table, solving }
+def TopState.init (phase : Nat) (table : Table := []) : TopState :=
+  { phase, sc := { sigs := [⟨.Type, [], .TYPE⟩], Γ := [] }, globals := [.type "Type" none true], table }
 
 def TopState.ctx (st : TopState) (inDecl : Bool := false) : Ctx :=
   { phase := st.phase, globals := st.globals,
-    decl := if inDecl then some (st.sc.Γ.length, st.sc.names.length) else none, table := st.table,
-    solving := st.solving }
+    decl := if inDecl then some (st.sc.Γ.length, st.sc.names.length) else none, table := st.table }
 
 /-- The evaluator's view of the program at the top level. -/
 def TopState.prog (st : TopState) : Prog := ⟨st.fns, kindOf st.globals⟩
 
-/-- What evaluating at the top level needs, outside the solving pass (§20): each tree it evaluates has an
-evaluation. -/
+/-- What evaluating at the top level needs: each tree it evaluates has an evaluation. -/
 structure TopState.Runs (st : TopState) : Prop where
-  expr : st.solving = false → ∀ pl e o r, closed st.sc (checkExpr { st.ctx with place := pl } · none e) = .ok o →
+  expr : ∀ pl e o r, checkExpr { st.ctx with place := pl } st.sc none e = .ok o →
     single e.pos o.res = .ok r → r.tainted = false → ∃ v, Eval st.prog st.env o.tree [v]
-  stmt : st.solving = false → ∀ s o, checkStmt st.ctx st.sc s = .ok o → o.sc.taintedBy = none →
-    ∃ env, EvalStmt st.prog st.env o.tree env
+  stmt : ∀ s o, checkStmt st.ctx st.sc s = .ok o → o.sc.taintedBy = none → ∃ env, EvalStmt st.prog st.env o.tree env
 
-/-- Evaluates a checked tree that has an evaluation to one value (§11); nothing while solving `_` (§20) or for a
-tainted result (§12). -/
+/-- Evaluates a checked tree that has an evaluation to one value (§11); nothing for a tainted result (§12). -/
 def TopState.eval (st : TopState) (tree : Expr) (tainted : Bool)
-    (h : st.solving = false → tainted = false → ∃ v, Eval st.prog st.env tree [v]) : Option Value :=
-  if hs : st.solving || tainted then none
-  else (evalExpr st.prog st.env tree ((h (by simp_all) (by simp_all)).elim fun _ hv => ⟨_, hv⟩)).1.head?
+    (h : tainted = false → ∃ v, Eval st.prog st.env tree [v]) : Option Value :=
+  if ht : tainted then none
+  else (evalExpr st.prog st.env tree ((h (by simpa using ht)).elim fun _ hv => ⟨_, hv⟩)).1.head?
 
-/-- Runs a checked statement that has a run (§11); nothing while solving `_` (§20). -/
-def TopState.run (st : TopState) (s : Stmt) (h : st.solving = false → ∃ env, EvalStmt st.prog st.env s env) : Env :=
-  if hs : st.solving then st.env else (evalStmt st.prog st.env s (h (by simpa using hs))).1
+/-- Runs a checked statement that has a run (§11). -/
+def TopState.run (st : TopState) (s : Stmt) (h : ∃ env, EvalStmt st.prog st.env s env) : Env :=
+  (evalStmt st.prog st.env s h).1
 
-/-- `TopState.eval` returns the value `Eval` relates the tree to, unless solving or tainted. -/
+/-- `TopState.eval` returns the value `Eval` relates the tree to, unless tainted. -/
 theorem TopState.eval_spec {st : TopState} {tree : Expr} {tainted : Bool}
-    {h : st.solving = false → tainted = false → ∃ v, Eval st.prog st.env tree [v]} :
-    (st.solving || tainted) = false → ∃ v, st.eval tree tainted h = some v ∧ Eval st.prog st.env tree [v] := by
+    {h : tainted = false → ∃ v, Eval st.prog st.env tree [v]} :
+    tainted = false → ∃ v, st.eval tree tainted h = some v ∧ Eval st.prog st.env tree [v] := by
   intro hs
-  obtain ⟨v, hv⟩ := h (by simp_all) (by simp_all)
+  obtain ⟨v, hv⟩ := h hs
   refine ⟨v, ?_, hv⟩
   simp only [TopState.eval, hs, Bool.false_eq_true, ↓reduceDIte]
   generalize evalExpr st.prog st.env tree _ = r
@@ -78,22 +73,21 @@ theorem TopState.eval_spec {st : TopState} {tree : Expr} {tainted : Bool}
   rfl
 
 theorem TopState.eval_some {st : TopState} {tree : Expr} {tainted : Bool}
-    {h : st.solving = false → tainted = false → ∃ v, Eval st.prog st.env tree [v]} {v : Value}
-    (hv : st.eval tree tainted h = some v) : (st.solving || tainted) = false ∧ Eval st.prog st.env tree [v] := by
-  cases hs : (st.solving || tainted)
+    {h : tainted = false → ∃ v, Eval st.prog st.env tree [v]} {v : Value}
+    (hv : st.eval tree tainted h = some v) : tainted = false ∧ Eval st.prog st.env tree [v] := by
+  cases hs : tainted
   · obtain ⟨w, hw, he⟩ := eval_spec (h := h) hs
     rw [hv] at hw
     cases hw
     exact ⟨rfl, he⟩
   · simp [TopState.eval, hs] at hv
 
-/-- `TopState.run` gives the environment `EvalStmt` relates the statement to, unless solving. -/
-theorem TopState.run_cert {st : TopState} {s : Stmt} {h : st.solving = false → ∃ env, EvalStmt st.prog st.env s env}
-    (hs : st.solving = false) : EvalStmt st.prog st.env s (st.run s h) := by
-  simp only [TopState.run, hs, Bool.false_eq_true, ↓reduceDIte]
-  exact (evalStmt _ _ _ _).2
+/-- `TopState.run` gives the environment `EvalStmt` relates the statement to. -/
+theorem TopState.run_cert {st : TopState} {s : Stmt} {h : ∃ env, EvalStmt st.prog st.env s env} :
+    EvalStmt st.prog st.env s (st.run s h) :=
+  (evalStmt _ _ _ _).2
 
-/-- An error found by evaluating (§11), which the solving pass (§20), evaluating nothing, does not meet. -/
+/-- An error found by evaluating (§11). -/
 def evalFail (pos : Pos) (msg : Unit → String) : CheckM α := throw { pos, msg, evaluated := true }
 
 def addSig (st : TopState) (s : Sig) (g : Global) : TopState :=
@@ -221,7 +215,7 @@ def fnGroup (st : TopState) (fs : List Fn) : CheckM TopState := do
     pure (st, hs ++ [h])) (st0, [])
   let body (taint : List Bool) (h : FnHead) : CheckM Out :=
     let C := { C with globals := setSigs st1.globals heads taint, fn := some h.fn }
-    closed h.sc (checkExpr C · (some (returnsGiven h)) h.f.body)
+    checkExpr C h.sc (some (returnsGiven h)) h.f.body
   let step (taint : List Bool) : CheckM (List Out) := checkAll (body taint) heads
   let (taint, bodies) ← fixTaint step (heads.map fun _ => false)
   let pad := (heads.map fun h => h.fn.subterms.length).foldr max 0
@@ -242,11 +236,11 @@ def comptimeLet (st : TopState) (hw : st.Runs) (p : Pos) (m : Option Mult) (pat 
   if m == some .erased then failAt p fun _ =>
     "a `comptime` pattern `let` evaluates its right-hand side (§11), so it cannot be erased (§16)"
   freshAll C st.sc pat.fields
-  let ⟨o, ho⟩ ← certify (closed st.sc (checkExpr C · none rhs))
+  let ⟨o, ho⟩ ← certify (checkExpr C st.sc none rhs)
   keep o.snaps do
   let ⟨r, hr⟩ ← certify (single rhs.pos o.res)
   let fs ← forcings C o.sc r.term rhs.pos [pat] p false
-  let v := st.eval o.tree r.tainted fun hs => hw.expr hs _ rhs o r ho hr
+  let v := st.eval o.tree r.tainted (hw.expr _ rhs o r ho hr)
   if let some v := v then
     if v.headName != pat.ctor.name then evalFail rhs.pos fun _ =>
       s!"this evaluates to {code (showValue v)}, which is not headed by {code pat.ctor.name} (§11)"
@@ -263,7 +257,7 @@ is tainted (§12). -/
 def topStmt (st : TopState) (hw : st.Runs) (s : Stmt) : CheckM TopState := do
   let ⟨o, ho⟩ ← certify (checkStmt st.ctx st.sc s)
   let env := if ht : o.sc.taintedBy.isSome then st.env
-    else st.run o.tree fun hs => hw.stmt hs s o ho (by simpa using ht)
+    else st.run o.tree (hw.stmt s o ho (by simpa using ht))
   pure { st with sc := o.sc, env := env, snaps := st.snaps ++ o.snaps }
 
 def qedFnGoal (st : TopState) (ps rs : Telescope) (e : Expr) : CheckM TopState := do
@@ -300,9 +294,9 @@ def topItem (st : TopState) (hw : st.Runs) : Top → CheckM TopState
   | .stmt (.patlet p true m pat rhs) => comptimeLet st hw p m pat rhs
   | .stmt s => topStmt st hw s
   | .print p e => do
-    let ⟨o, ho⟩ ← certify (closed st.sc (checkExpr { st.ctx with place := printPlace } · none e))
+    let ⟨o, ho⟩ ← certify (checkExpr { st.ctx with place := printPlace } st.sc none e)
     let ⟨r, hr⟩ ← keep o.snaps (certify (single e.pos o.res))
-    let v := st.eval o.tree r.tainted fun hs => hw.expr hs _ e o r ho hr
+    let v := st.eval o.tree r.tainted (hw.expr _ e o r ho hr)
     let prints := st.prints ++ [(p, (v.map showValue).getD "sorry")]
     pure { st with sc := o.sc, prints := prints, snaps := st.snaps ++ o.snaps }
   | .goal p g => do
@@ -328,7 +322,7 @@ def topItem (st : TopState) (hw : st.Runs) : Top → CheckM TopState
           if let some (.fn ..) := st.ctx.global n then failAt e.pos fun _ =>
             s!"{code n} is a function, and naming a function proves only a function goal, " ++
             "`goal fn (...) -> (...);`; this goal is a type"
-        let o ← closed st.sc (checkExpr st.ctx · (some goal.given) e)
+        let o ← checkExpr st.ctx st.sc (some goal.given) e
         pure { st with sc := o.sc, proved := !o.res.any (·.tainted), snaps := st.snaps ++ o.snaps }
     pure { st with qedChecks := true, proved := st.proved && st.sc.taintedBy.isNone && !goal.tainted }
 
@@ -388,11 +382,10 @@ structure Outcome where
 /-- The first error checking meets: the error, its item and the number of items after it. -/
 abbrev Stop := CheckError × Top × Nat
 
-/-- The outcome of checking that stopped at `st`, after `failed` if checking failed, whose error is reported as
-`text` gives it. -/
-def outcome (has : String → Bool) (st : TopState) (failed : Option Stop) (syntaxError : Option (Pos × String))
-    (text : Stop → Pos × String := fun (e, _) => (e.pos, e.msg ())) : Outcome :=
-  let error := (failed.map text).orElse fun _ => syntaxError
+/-- The outcome of checking that stopped at `st`, after `failed` if checking failed. -/
+def outcome (has : String → Bool) (st : TopState) (failed : Option Stop) (syntaxError : Option (Pos × String)) :
+    Outcome :=
+  let error := (failed.map fun (e, _) => (e.pos, e.msg ())).orElse fun _ => syntaxError
   let qed := if !has "qed" then "none"
     else if failed.any fun (_, t, _) => t matches .qed .. then "fails"
     else if st.qedChecks then "checks" else "unreached"
@@ -401,52 +394,5 @@ def outcome (has : String → Bool) (st : TopState) (failed : Option Stop) (synt
     containsSorry := has "sorry",
     sigs := st.sc.sigs, entries := st.sc.Γ, fns := st.fns, env := st.env, goal := st.goal, qedFn := st.qedFn,
     tainted := st.sc.taintedBy.isSome }
-
-mutual
-  def Expr.holes : Expr → List Pos
-    | .var ⟨none, p⟩ => [p]
-    | .var _ | .removed => []
-    | .app _ args => Arg.holesList args
-    | .tuple _ es => Expr.holesList es
-    | .block ss f => Stmt.holesList ss ++ f.holes
-    | .match _ _ s ann bs => s.holes ++ Tele.holesOf ann ++ Branch.holesList bs
-    | .sorry _ t => Tele.holesOf t
-  def Expr.holesList : List Expr → List Pos
-    | [] => []
-    | e :: es => e.holes ++ Expr.holesList es
-  def Arg.holesList : List Arg → List Pos
-    | [] => []
-    | .mk _ e :: as => e.holes ++ Arg.holesList as
-  def Stmt.holesList : List Stmt → List Pos
-    | [] => []
-    | .let _ bs rhs :: ss => bs.flatMap (·.ann.elim [] (·.term.holes)) ++ rhs.holes ++ Stmt.holesList ss
-    | .patlet _ _ _ _ rhs :: ss => rhs.holes ++ Stmt.holesList ss
-    | .inspect _ :: ss => Stmt.holesList ss
-  def Branch.holesList : List Branch → List Pos
-    | [] => []
-    | .mk _ body :: bs => body.holes ++ Branch.holesList bs
-  def Tele.holesOf : Tele → List Pos
-    | .binders bs => bs.flatMap (·.ann.term.holes)
-    | .hole _ => []
-end
-
-def Header.holes (h : Header) : List Pos :=
-  (h.params.map (·.binder) ++ h.returns).flatMap (·.ann.term.holes)
-
-def Data.holes (d : Data) : List Pos :=
-  d.params.flatMap (·.ann.term.holes) ++ d.ctors.flatMap fun k => k.fields.flatMap (·.ann.term.holes) ++ k.ret.holes
-
-def Top.holes : Top → List Pos
-  | .data d => d.holes
-  | .mutualData _ ds => ds.flatMap Data.holes
-  | .fn f => f.header.holes ++ f.body.holes
-  | .mutualFn _ fs => fs.flatMap fun f => f.header.holes ++ f.body.holes
-  | .stmt s => Stmt.holesList [s]
-  | .print _ e | .qed _ e => e.holes
-  | .goal _ (.type t) => t.holes
-  | .goal _ (.fn h) => h.holes
-
-def unsolved (prog : Program) (table : Table) : Nat :=
-  ((prog.flatMap Top.holes).filter fun p => (table.lookup p).isNone).length
 
 end Pledge

@@ -1,4 +1,5 @@
 import Pledge.Sound.Item
+import Pledge.Solve
 
 namespace Pledge
 
@@ -13,37 +14,41 @@ def topItems (st : TopState) (h : TopOk st) : List Top → TopState × Option St
 
 /-- Checks the items of a program under a phase from the initial state, given a table for its `_` (§20). -/
 abbrev checkItems (phase : Nat) (table : Table) (prog : Program) : TopState × Option Stop :=
-  topItems (.init phase table) (.init phase table false) prog
+  topItems (.init phase table) (.init phase table) prog
 
 def runProgramWith (phase : Nat) (table : Table) (prog : Program) (has : String → Bool)
     (syntaxError : Option (Pos × String) := none) : Outcome :=
   let (st, failed) := checkItems phase table prog
   outcome has st failed syntaxError
 
-def solveFrom (phase : Nat) (prog : Program) (table : Table) : Table × Option Stop :=
-  match topItems (.init phase table true) (.init phase table true) prog with
-  | (_, some (e, t, n)) =>
-    if e.solved.isEmpty then (table, some (e, t, n))
-    else if _h : unsolved prog (table ++ e.solved) < unsolved prog table then solveFrom phase prog (table ++ e.solved)
-    else
-      let msg (_ : Unit) := "internal: a `_` was solved again; the checker rejects the program"
-      (table, some ({ e with msg, internal := true }, t, n))
-  | (_, none) => (table, none)
+/-- The error reported when checking stops at `(e, t, n)` at the state `st` before `t`: the solver's, when `e` was not
+found by evaluating and the solver, solving `t` from `st`, stops at an error that is not internal; otherwise `e`. -/
+def report (st : TopState) : Stop → Stop
+  | (e, t, n) => (if e.evaluated then e else match Solve.item st t with
+    | .error (.failed e') => if e'.internal then e else e'
+    | _ => e, t, n)
+
+/-- Extends the table until checking with it needs no more (§20): when checking stops at an error not found by
+evaluating, the solver solves the item it stopped at, from the state before it, and the terms it finds for `_` the
+table had none for are added. -/
+def solveTable (phase : Nat) (prog : Program) (table : Table) : Table :=
+  match checkItems phase table prog with
+  | (st, some (e, t, _)) =>
+    match e.evaluated, Solve.item st t with
+    | false, .error (.solved new) =>
+      if _h : unsolved prog (table ++ new) < unsolved prog table then solveTable phase prog (table ++ new) else table
+    | _, _ => table
+  | (_, none) => table
 termination_by unsolved prog table
 
-def solution (phase : Nat) (prog : Program) : Table := (solveFrom phase prog []).1
+/-- The table for the program's `_` that solving ends with. -/
+def solution (phase : Nat) (prog : Program) : Table := solveTable phase prog []
 
-/-- Checks and evaluates a parsed program: finds the solutions of its `_` (§20), which evaluates nothing, then checks
-and evaluates it with them, reporting what that reports. Solving gives only the text of an error, when it failed at
-the same item with an error not found by evaluating; an error it did not meet there is reported as internal. -/
+/-- Checks and evaluates a parsed program with the table solving ends with, its error as `report` gives it. -/
 def runProgram (phase : Nat) (prog : Program) (has : String → Bool)
     (syntaxError : Option (Pos × String) := none) : Outcome :=
-  let (table, solving) := solveFrom phase prog []
-  let (st, failed) := checkItems phase table prog
-  outcome has st failed syntaxError fun (e, _, n) =>
-    if e.evaluated then (e.pos, e.msg ()) else match solving.filter (·.2.2 == n) with
-      | some (e', _) => (e'.pos, e'.msg ())
-      | none => (e.pos, s!"internal: the solutions found for `_` do not check: {e.msg ()}")
+  let (st, failed) := checkItems phase (solution phase prog) prog
+  outcome has st (failed.map (report st)) syntaxError
 
 /-- Parses, checks and evaluates a program under a phase. -/
 def run (source : String) (phase : Nat) : Outcome :=

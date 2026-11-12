@@ -1,5 +1,5 @@
 import Pledge.Sound.Internal
-import Pledge.Run
+import Pledge.Sound.Top
 
 namespace Pledge
 
@@ -48,13 +48,12 @@ theorem Sigs.Wf.append {S : Sigs} {n : Nat} {s : Sig} (h : Sigs.Wf S n) (hs : s.
 
 /-- The top level's state, as the internal-check proof needs it: its scope meets `ScOk`, `Type` has a signature, the
 global named by each name of a group being declared is the first with that name, and a type goal is well-formed. -/
-structure TopWf (T : Table) (st : TopState) : Prop where
-  table : st.table = T
+structure TopWf (st : TopState) : Prop where
   ok : ScOk st.ctx st.sc
   typeSig : ∃ s, st.sc.sigs.find Head.Type = some s ∧ s.params = []
   goal : ∀ g, st.goal = some g → ∀ t, g.kind = .type t → t.wf st.sc.sigs st.sc.Γ.length 0 = true
 
-theorem ScOk.top {st : TopState} (h : ScOk st.ctx st.sc) (b : Bool) : ScOk (st.ctx b) st.sc := h.ctx rfl rfl
+theorem ScOk.top {st : TopState} (h : ScOk st.ctx st.sc) (b : Bool) : ScOk (st.ctx b) st.sc := h.ctx rfl
 
 theorem TYPE_wf {S : Sigs} {n k : Nat} (h : ∃ s, S.find Head.Type = some s ∧ s.params = []) :
     Term.TYPE.wf S n k = true := by
@@ -93,11 +92,11 @@ theorem fresh_none {C : Ctx} {sc : Scope} {seen : List String} {n : String} {pos
 /-- The name `n` is a type constructor's at the top level. -/
 def TopState.HasType (st : TopState) (n : String) : Prop := ∃ cs b, st.ctx.global n = some (.type n cs b)
 
-theorem TopWf.addSig {T : Table} {st : TopState} {s : Sig} {g : Global} (hst : TopWf T st)
+theorem TopWf.addSig {st : TopState} {s : Sig} {g : Global} (hst : TopWf st)
     (hs : s.wf (st.sc.sigs ++ [s]) st.sc.Γ.length = true) (hg : GlobOk [g] (st.sc.sigs ++ [s]) st.sc.Γ.length) :
-    TopWf T (addSig st s g) := by
+    TopWf (addSig st s g) := by
   have hS := fun hd sig (h : st.sc.sigs.find hd = some sig) => Sigs.find_append_of (s := s) h
-  refine ⟨hst.table, ⟨hst.ok.solving, hst.ok.holes, hst.ok.Γ.sigs hS, hst.ok.sigs.append hs, fun p hp => ?_, ?_⟩, ?_,
+  refine ⟨⟨hst.ok.Γ.sigs hS, hst.ok.sigs.append hs, fun p hp => ?_, ?_⟩, ?_,
     ?_⟩
   · exact Term.wf_mono hS (Nat.le_refl _) (Nat.le_refl _) _ (hst.ok.names p hp)
   · intro g' hg'
@@ -108,14 +107,13 @@ theorem TopWf.addSig {T : Table} {st : TopState} {s : Sig} {g : Global} (hst : T
   · intro gl hgl t ht
     exact Term.wf_mono hS (Nat.le_refl _) (Nat.le_refl _) _ (hst.goal gl hgl t ht)
 
-theorem declType_noInt {T : Table} {st : TopState} {d : Data} (hst : TopWf T st) (hname : d.name.name ≠ "sorry")
-    (hc : ∀ b ∈ d.params, b.ann.term.covered st.table) :
-    NoInt (declType st d) (fun st' => TopWf T st' ∧ st'.globals = st.globals ++ [.type d.name.name (some []) false] ∧
+theorem declType_noInt {st : TopState} {d : Data} (hst : TopWf st) (hname : d.name.name ≠ "sorry") :
+    NoInt (declType st d) (fun st' => TopWf st' ∧ st'.globals = st.globals ++ [.type d.name.name (some []) false] ∧
       st.ctx.global d.name.name = none ∧ st'.sc.Γ = st.sc.Γ) := by
   unfold declType
   refine NoInt.bind fresh_none fun _ hn => ?_
   refine NoInt.bind (NoInt.ensure (by simpa [junkHead] using hname)) fun _ _ => ?_
-  refine NoInt.bind (telescope_noInt (n := st.sc.Γ.length) (outer := []) (hst.ok.top true) hc (Nat.le_refl _)
+  refine NoInt.bind (telescope_noInt (n := st.sc.Γ.length) (outer := []) (hst.ok.top true) (Nat.le_refl _)
     (fun i en r _ hen hr => ((hst.ok.Γ i en hen).2 r hr).1) fun i h1 h2 => absurd h2 (by omega))
     fun ps ⟨p1, p2, p3, p4, p5, p6, p7⟩ => ?_
   refine NoInt.bind (topLevel_noInt (k := 0) (by simpa using p7)) fun _ _ => NoInt.pure ⟨?_, rfl, hn, rfl⟩
@@ -151,38 +149,31 @@ theorem find?_map_type {l : List Global} {f : Global → Global} {n : String} {c
   obtain ⟨cs', h'⟩ := ht n cs b
   exact ⟨cs', b, by simp [h']⟩
 
-theorem declCtor_noInt {T : Table} {owner : String} {st : TopState} {k : Ctor} (hst : TopWf T st)
-    (hname : k.name.name ≠ "sorry")
-    (hc : (∀ b ∈ k.fields, b.ann.term.covered st.table) ∧ k.ret.covered st.table) (hown : st.HasType owner) :
-    NoInt (declCtor owner st k) (fun st' => TopWf T st' ∧ ∀ n, st.HasType n → st'.HasType n) := by
+theorem declCtor_noInt {owner : String} {st : TopState} {k : Ctor} (hst : TopWf st)
+    (hname : k.name.name ≠ "sorry") (hown : st.HasType owner) :
+    NoInt (declCtor owner st k) (fun st' => TopWf st' ∧ ∀ n, st.HasType n → st'.HasType n) := by
   obtain ⟨ocs, ob, hown⟩ := hown
   unfold declCtor
   refine NoInt.bind fresh_none fun _ hn => ?_
   refine NoInt.bind (NoInt.ensure (by simpa [junkHead] using hname)) fun _ _ => ?_
-  refine NoInt.bind (telescope_noInt (n := st.sc.Γ.length) (outer := []) (hst.ok.top true) hc.1 (Nat.le_refl _)
+  refine NoInt.bind (telescope_noInt (n := st.sc.Γ.length) (outer := []) (hst.ok.top true) (Nat.le_refl _)
     (fun i en r _ hen hr => ((hst.ok.Γ i en hen).2 r hr).1) fun i h1 h2 => absurd h2 (by omega))
     fun fs ⟨p1, p2, p3, p4, p5, p6, p7⟩ => ?_
   dsimp only
-  have hc2 := hc.2
   rcases hret : k.ret with x | ⟨hh, args⟩ | pp
   · exact NoInt.failAt_bind
   rotate_left
   · exact NoInt.failAt_bind
-  rw [hret] at hc2
   simp only
   split
   case isFalse => exact NoInt.failAt_bind
   rename_i hm
   have hhn : hh.name = owner := by simpa using hm
   refine NoInt.bind (NoInt.of_ok (P := fun r : Res => r.term.wf fs.sc.sigs fs.sc.Γ.length 0 = true ∧
-    ∃ as, r.term = .app ⟨.type, hh.name⟩ as) (NoInt.imp (term_noInt (whole := false) p1 hc2) fun _ _ => trivial)
+    ∃ as, r.term = .app ⟨.type, hh.name⟩ as) (NoInt.imp (term_noInt (whole := false) p1) fun _ _ => trivial)
     fun r h => ?_) fun r ⟨hrw, hh'⟩ => ?_
-  · have hw := (term_noInt (whole := false) p1 hc2).2 r h
+  · have hw := (term_noInt (whole := false) p1).2 r h
     refine ⟨hw, ?_⟩
-    have : term (st.ctx true) fs.sc (.app hh args) false =
-        checkTerm { st.ctx true with erased := (st.ctx true).erased || decide (2 ≤ (st.ctx true).phase) } fs.sc false
-          (.app hh args) := by simp [term, p1.solving]
-    rw [this] at h
     exact checkTerm_type_head (by rw [hhn]; exact hown) h
   obtain ⟨as, has⟩ := hh'
   refine NoInt.bind (abstractChecked_noInt p1.Γ hrw) fun ret hret' => ?_
@@ -214,8 +205,7 @@ theorem declCtor_noInt {T : Table} {owner : String} {st : TopState} {k : Ctor} (
       (fun g hg => by
         simp only [List.mem_singleton] at hg; subst hg
         exact Sigs.find_append_isSome rfl)
-    refine ⟨hw.table, ⟨hw.ok.solving, hw.ok.holes, hw.ok.Γ, hw.ok.sigs, hw.ok.names, fun g hg => ?_⟩, hw.typeSig,
-      hw.goal⟩
+    refine ⟨⟨hw.ok.Γ, hw.ok.sigs, hw.ok.names, fun g hg => ?_⟩, hw.typeSig, hw.goal⟩
     obtain ⟨g0, hg0, rfl⟩ := List.mem_map.1 hg
     have := hw.ok.globals g0 hg0
     cases g0 with
@@ -251,29 +241,21 @@ theorem NoInt.foldlM_pre {γ δ : Type} {f : δ → γ → CheckM δ} {I : List 
     exact NoInt.bind (hf pre a init (hl a List.mem_cons_self) hi) fun s hs => by
       simpa using NoInt.foldlM_pre hf l (pre ++ [a]) s (fun b hb => hl b (List.mem_cons_of_mem _ hb)) hs
 
-/-- A `data` declaration as the internal-check proof needs it: no type constructor or value constructor named `sorry`,
-and every `_` in the table `T`. -/
-def Data.okFor (T : Table) (d : Data) : Bool :=
-  d.name.name != "sorry" && d.params.all (·.ann.term.cov T) &&
-    d.ctors.all fun k => k.name.name != "sorry" && k.fields.all (·.ann.term.cov T) && k.ret.cov T
+/-- A `data` declaration as the internal-check proof needs it: no type constructor or value constructor named
+`sorry`. -/
+def Data.shaped (d : Data) : Bool := d.name.name != "sorry" && d.ctors.all (·.name.name != "sorry")
 
-theorem dataGroup_noInt {T : Table} {st : TopState} {ds : List Data} (hst : TopWf T st)
-    (hok : ∀ d ∈ ds, d.okFor T = true) : NoInt (dataGroup st ds) (TopWf T) := by
+theorem dataGroup_noInt {st : TopState} {ds : List Data} (hst : TopWf st)
+    (hok : ∀ d ∈ ds, d.shaped = true) : NoInt (dataGroup st ds) (TopWf) := by
   unfold dataGroup
-  have hcov : ∀ d ∈ ds, d.name.name ≠ "sorry" ∧ (∀ b ∈ d.params, b.ann.term.covered T) ∧ ∀ k ∈ d.ctors,
-      k.name.name ≠ "sorry" ∧ (∀ b ∈ k.fields, b.ann.term.covered T) ∧ k.ret.covered T := by
+  have hcov : ∀ d ∈ ds, d.name.name ≠ "sorry" ∧ ∀ k ∈ d.ctors, k.name.name ≠ "sorry" := by
     intro d hd
-    have := hok d hd
-    simp only [Data.okFor, Bool.and_eq_true, bne_iff_ne, ne_eq, List.all_eq_true] at this
-    obtain ⟨⟨h1, h2⟩, h3⟩ := this
-    refine ⟨h1, fun b hb => WTerm.covered_of_cov (h2 b hb), fun k hk => ?_⟩
-    obtain ⟨⟨k1, k2⟩, k3⟩ := h3 k hk
-    exact ⟨k1, fun b hb => WTerm.covered_of_cov (k2 b hb), WTerm.covered_of_cov k3⟩
-  refine NoInt.bind (NoInt.foldlM_pre (I := fun pre st' => TopWf T st' ∧ (∀ n, st.HasType n → st'.HasType n) ∧
+    simpa [Data.shaped] using hok d hd
+  refine NoInt.bind (NoInt.foldlM_pre (I := fun pre st' => TopWf st' ∧ (∀ n, st.HasType n → st'.HasType n) ∧
     ∀ d ∈ pre, st'.HasType d.name.name) (L := ds) (fun pre d s hd ⟨h1, h2, h3⟩ => ?_) ds [] st (fun _ h => h)
     ⟨hst, fun _ h => h, by simp⟩) fun st1 ⟨a1, _, a3⟩ => ?_
-  · obtain ⟨hn, hp, -⟩ := hcov d hd
-    refine NoInt.imp (declType_noInt h1 hn (by rw [h1.table]; exact hp)) fun s' ⟨e1, e2, e3, _⟩ => ?_
+  · obtain ⟨hn, -⟩ := hcov d hd
+    refine NoInt.imp (declType_noInt h1 hn) fun s' ⟨e1, e2, e3, _⟩ => ?_
     have keep : ∀ n, s.HasType n → s'.HasType n := by
       intro n ⟨cs, b, hn⟩
       refine ⟨cs, b, ?_⟩
@@ -287,15 +269,14 @@ theorem dataGroup_noInt {T : Table} {st : TopState} {ds : List Data} (hst : TopW
       simp only [TopState.ctx, Ctx.global] at e3 ⊢
       rw [e2, List.find?_append, e3]
       simp [Global.name]
-  · refine NoInt.bind (NoInt.foldlM_pre (I := fun _ s => TopWf T s ∧ ∀ d ∈ ds, s.HasType d.name.name) (L := ds)
+  · refine NoInt.bind (NoInt.foldlM_pre (I := fun _ s => TopWf s ∧ ∀ d ∈ ds, s.HasType d.name.name) (L := ds)
       (fun _ d s hd ⟨h1, h2⟩ => ?_) ds [] st1 (fun _ h => h) ⟨a1, by simpa using a3⟩) fun st2 ⟨b1, _⟩ => ?_
-    · obtain ⟨-, -, hk⟩ := hcov d hd
-      refine NoInt.foldlM_pre (I := fun _ s => TopWf T s ∧ ∀ d ∈ ds, s.HasType d.name.name) (L := d.ctors)
+    · obtain ⟨-, hk⟩ := hcov d hd
+      refine NoInt.foldlM_pre (I := fun _ s => TopWf s ∧ ∀ d ∈ ds, s.HasType d.name.name) (L := d.ctors)
         (fun _ k s hk' ⟨g1, g2⟩ => ?_) d.ctors [] s (fun _ h => h) ⟨h1, h2⟩
-      obtain ⟨k1, k2, k3⟩ := hk k hk'
-      exact NoInt.imp (declCtor_noInt g1 k1 (by rw [g1.table]; exact ⟨k2, k3⟩) (g2 d hd)) fun s' ⟨c1, c2⟩ =>
+      exact NoInt.imp (declCtor_noInt g1 (hk k hk') (g2 d hd)) fun s' ⟨c1, c2⟩ =>
         ⟨c1, fun d' hd' => c2 _ (g2 d' hd')⟩
-    · refine NoInt.pure ⟨b1.table, ⟨b1.ok.solving, b1.ok.holes, b1.ok.Γ, b1.ok.sigs, b1.ok.names, fun g hg => ?_⟩,
+    · refine NoInt.pure ⟨⟨b1.ok.Γ, b1.ok.sigs, b1.ok.names, fun g hg => ?_⟩,
         b1.typeSig, b1.goal⟩
       obtain ⟨g0, hg0, rfl⟩ := List.mem_map.1 hg
       have := b1.ok.globals g0 hg0
@@ -325,8 +306,7 @@ theorem checkAll_noInt {γ : Type} {step : γ → CheckM Out} :
 
 /-- A function's checked header, as the internal-check proof needs it: its parameters' scope well-formed, its
 signature well-formed with the top level's entries, and what its body is given. -/
-structure FnHeadOk (S : Sigs) (n : Nat) (T : Table) (h : FnHead) : Prop where
-  holes : h.sc.holes = []
+structure FnHeadOk (S : Sigs) (n : Nat) (h : FnHead) : Prop where
   Γ : Entries.Wf S h.sc.Γ
   sigsWf : Sigs.Wf S h.sc.Γ.length
   names : ∀ p ∈ h.sc.names, p.2.term.wf S h.sc.Γ.length 0 = true
@@ -338,12 +318,10 @@ structure FnHeadOk (S : Sigs) (n : Nat) (T : Table) (h : FnHead) : Prop where
   ne : h.sig.returns ≠ []
   env : ∀ u ∈ h.env, u.wf S h.sc.Γ.length 0 = true
   envLen : h.env.length = h.sig.params.length
-  body : h.f.body.okFor T = true
+  body : h.f.body.shaped = true
 
-/-- A function as the internal-check proof needs it: at least one return, and every `_` in the table. -/
-def Fn.okFor (T : Table) (f : Fn) : Bool :=
-  !f.header.returns.isEmpty && (f.header.params.map (·.binder) ++ f.header.returns).all (·.ann.term.cov T) &&
-    f.body.okFor T
+/-- A function as the internal-check proof needs it: at least one return. -/
+def Fn.shaped (f : Fn) : Bool := !f.header.returns.isEmpty && f.body.shaped
 
 theorem GlobOk.fnSig {gs : List Global} {S : Sigs} {n : Nat} {name : String} {sig : FnSig} (h : GlobOk gs S n)
     (hs : Telescope.wf S n 0 sig.params = true ∧ Telescope.wf S n sig.params.length sig.returns = true ∧
@@ -363,16 +341,15 @@ theorem Telescope.wf_append {S : Sigs} {n : Nat} : ∀ {k : Nat} {a b : Telescop
     exact ⟨ha.1, Telescope.wf_append ha.2 (by
       rw [show k + 1 + a.length = k + (x :: a).length by simp; omega]; exact hb)⟩
 
-theorem fnHead_noInt {T : Table} {names : List String} {st : TopState} {f : Fn} (hst : TopWf T st)
-    (hok : f.okFor T = true) :
-    NoInt (fnHead names st f) (fun r => TopWf T r.1 ∧ r.1.sc = st.sc ∧ FnHeadOk st.sc.sigs st.sc.Γ.length T r.2 ∧
+theorem fnHead_noInt {names : List String} {st : TopState} {f : Fn} (hst : TopWf st)
+    (hok : f.shaped = true) :
+    NoInt (fnHead names st f) (fun r => TopWf r.1 ∧ r.1.sc = st.sc ∧ FnHeadOk st.sc.sigs st.sc.Γ.length r.2 ∧
       r.2.fn.name = f.name.name) := by
-  simp only [Fn.okFor, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff, List.all_eq_true] at hok
-  obtain ⟨⟨hne, hcov⟩, hbody⟩ := hok
+  simp only [Fn.shaped, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff] at hok
+  obtain ⟨hne, hbody⟩ := hok
   unfold fnHead
   dsimp only
-  refine NoInt.bind (header_noInt (hst.ok.ctx rfl rfl)
-    fun b hb => by rw [TopState.ctx, hst.table]; exact WTerm.covered_of_cov (hcov b hb))
+  refine NoInt.bind (header_noInt (hst.ok.ctx rfl))
     fun ⟨ps, rs⟩ ⟨r1, r2, r3, r4, r5, r6, r7, r8, r9, q1, q2, q3⟩ => ?_
   simp only at r1 r2 r3 r4 r5 r6 r7 r8 r9 q1 q2 q3
   try simp only [List.length_map] at r4 r8 r9
@@ -381,9 +358,9 @@ theorem fnHead_noInt {T : Table} {names : List String} {st : TopState} {f : Fn} 
       Telescope.wf st.sc.sigs st.sc.Γ.length ps.tele.length rs.tele = true ∧
       (f.header.params.map (·.subterm)).length = ps.tele.length ∧ rs.tele ≠ [] :=
     ⟨r6, r7, by simp [r4], fun h => hne (List.eq_nil_of_length_eq_zero (by rw [← r5, h]; rfl))⟩
-  refine ⟨⟨hst.table, ⟨hst.ok.solving, hst.ok.holes, hst.ok.Γ, hst.ok.sigs, hst.ok.names,
+  refine ⟨⟨⟨hst.ok.Γ, hst.ok.sigs, hst.ok.names,
     hst.ok.globals.fnSig hsig⟩, hst.typeSig, hst.goal⟩, rfl, ?_, rfl⟩
-  refine ⟨q1.holes, q2 ▸ q1.Γ, q2 ▸ q1.sigs, q2 ▸ q1.names, q2, (by show st.sc.Γ.length ≤ ps.sc.Γ.length; omega),
+  refine ⟨q2 ▸ q1.Γ, q2 ▸ q1.sigs, q2 ▸ q1.names, q2, (by show st.sc.Γ.length ≤ ps.sc.Γ.length; omega),
     r6, r7, hsig.2.2.1, hsig.2.2.2, fun u hu => ?_, by simp [r8, r4], hbody⟩
   simp only [List.mem_map, r8, List.mem_range'_1] at hu
   obtain ⟨i, hi, rfl⟩ := hu
@@ -408,22 +385,22 @@ theorem GlobOk.set {gs : List Global} {S : Sigs} {n : Nat} {heads : List FnHead}
   | type => exact this
   | ctor => exact this
 
-theorem FnHeadOk.scOk {T : Table} {S : Sigs} {n : Nat} {hd : FnHead} {C : Ctx} (h : FnHeadOk S n T hd)
-    (hs : C.solving = false) (hg : GlobOk C.globals S n) : ScOk C hd.sc :=
-  ⟨hs, h.holes, h.sigs ▸ h.Γ, h.sigs ▸ h.sigsWf, h.sigs ▸ h.names, h.sigs ▸ hg.mono h.len⟩
+theorem FnHeadOk.scOk {S : Sigs} {n : Nat} {hd : FnHead} {C : Ctx} (h : FnHeadOk S n hd)
+    (hg : GlobOk C.globals S n) : ScOk C hd.sc :=
+  ⟨h.sigs ▸ h.Γ, h.sigs ▸ h.sigsWf, h.sigs ▸ h.names, h.sigs ▸ hg.mono h.len⟩
 
-theorem fnGroup_noInt {T : Table} {st : TopState} {fs : List Fn} (hst : TopWf T st) (hok : ∀ f ∈ fs, f.okFor T = true) :
-    NoInt (fnGroup st fs) (TopWf T) := by
+theorem fnGroup_noInt {st : TopState} {fs : List Fn} (hst : TopWf st) (hok : ∀ f ∈ fs, f.shaped = true) :
+    NoInt (fnGroup st fs) (TopWf) := by
   unfold fnGroup
   dsimp only
-  refine NoInt.bind (NoInt.foldlM (I := fun s => TopWf T s ∧ s.sc = st.sc) ⟨hst, rfl⟩
-    fun s ⟨h1, h2⟩ f _ => NoInt.bind fresh_noInt fun _ _ => NoInt.pure ⟨⟨h1.table, ⟨h1.ok.solving, h1.ok.holes,
+  refine NoInt.bind (NoInt.foldlM (I := fun s => TopWf s ∧ s.sc = st.sc) ⟨hst, rfl⟩
+    fun s ⟨h1, h2⟩ f _ => NoInt.bind fresh_noInt fun _ _ => NoInt.pure ⟨⟨⟨
       h1.ok.Γ, h1.ok.sigs, h1.ok.names, fun g hg => ?_⟩, h1.typeSig, h1.goal⟩, h2⟩) fun st0 ⟨s1, s2⟩ => ?_
   · rcases List.mem_append.1 hg with hg | hg
     · exact h1.ok.globals g hg
     · simp only [List.mem_singleton] at hg; subst hg; trivial
-  refine NoInt.bind (NoInt.foldlM_pre (I := fun _ p => TopWf T p.1 ∧ p.1.sc = st.sc ∧
-    ∀ hd ∈ p.2, FnHeadOk st.sc.sigs st.sc.Γ.length T hd) (L := fs) (fun _ f p hf hI => ?_) fs [] (st0, [])
+  refine NoInt.bind (NoInt.foldlM_pre (I := fun _ p => TopWf p.1 ∧ p.1.sc = st.sc ∧
+    ∀ hd ∈ p.2, FnHeadOk st.sc.sigs st.sc.Γ.length hd) (L := fs) (fun _ f p hf hI => ?_) fs [] (st0, [])
     (fun _ h => h) ⟨s1, s2, by simp⟩) fun r hr => ?_
   · obtain ⟨h1, h2, h3⟩ := hI
     obtain ⟨s, hs⟩ := p
@@ -446,9 +423,8 @@ theorem fnGroup_noInt {T : Table} {st : TopState} {fs : List Fn} (hst : TopWf T 
   refine NoInt.bind (fixTaint_noInt (fun taint => checkAll_noInt fun hd hm => ?_) _ _ rfl) fun _ _ => NoInt.pure ?_
   · have hok' := t3 hd hm
     have hsc := hok'.scOk (C := { st.ctx true with globals := setSigs st1.globals heads taint, fn := some hd.fn })
-      hst.ok.solving (hglob taint)
-    refine NoInt.imp (closed_noInt hok'.holes (Expr.noInt _ _ _ _ hsc (by rw [TopState.ctx, hst.table]; exact hok'.body)
-      fun g hg => ?_)) fun _ _ => trivial
+      (hglob taint)
+    refine NoInt.imp (Expr.noInt _ _ _ _ hsc hok'.body fun g hg => ?_) fun _ _ => trivial
     cases hg
     rw [hok'.sigs]
     have hret : Telescope.wf st.sc.sigs hd.sc.Γ.length hd.env.length hd.sig.returns = true := by
@@ -460,7 +436,7 @@ theorem fnGroup_noInt {T : Table} {st : TopState} {fs : List Fn} (hst : TopWf T 
     · simp only [returnsGiven, List.mem_map] at hw
       obtain ⟨b, -, rfl⟩ := hw; rfl
   · rw [← t2] at hglob
-    exact ⟨t1.table, ⟨t1.ok.solving, t1.ok.holes, t1.ok.Γ, t1.ok.sigs, t1.ok.names, hglob _⟩, t1.typeSig, t1.goal⟩
+    exact ⟨⟨t1.ok.Γ, t1.ok.sigs, t1.ok.names, hglob _⟩, t1.typeSig, t1.goal⟩
 
 theorem NoInt.evalFail {α : Type} {pos : Pos} {m : Unit → String} {P : α → Prop} :
     NoInt (Pledge.evalFail pos m : CheckM α) P :=
@@ -471,24 +447,22 @@ theorem NoInt.evalFail_bind {α β : Type} {pos : Pos} {m : Unit → String} {f 
     NoInt (Pledge.evalFail pos m >>= f) R := NoInt.bind (Q := fun _ => False) NoInt.evalFail fun _ h => h.elim
 
 /-- A later top-level scope with the same signatures keeps `TopWf`. -/
-theorem TopWf.scope {T : Table} {st : TopState} {sc : Scope} (hst : TopWf T st) (h : ScOk st.ctx sc)
-    (hs : sc.sigs = st.sc.sigs) (hl : st.sc.Γ.length ≤ sc.Γ.length) {st' : TopState} (h1 : st'.table = st.table)
-    (h2 : st'.sc = sc) (h3 : st'.globals = st.globals) (h4 : st'.solving = st.solving)
-    (h5 : st'.goal = st.goal) : TopWf T st' := by
-  refine ⟨h1.trans hst.table, ?_, by rw [h2, hs]; exact hst.typeSig, fun g hg t ht => ?_⟩
-  · rw [h2]; exact h.ctx (by simp [TopState.ctx, h4]) (by simp [TopState.ctx, h3])
+theorem TopWf.scope {st : TopState} {sc : Scope} (hst : TopWf st) (h : ScOk st.ctx sc)
+    (hs : sc.sigs = st.sc.sigs) (hl : st.sc.Γ.length ≤ sc.Γ.length) {st' : TopState}
+    (h2 : st'.sc = sc) (h3 : st'.globals = st.globals) (h5 : st'.goal = st.goal) : TopWf st' := by
+  refine ⟨?_, by rw [h2, hs]; exact hst.typeSig, fun g hg t ht => ?_⟩
+  · rw [h2]; exact h.ctx (by simp [TopState.ctx, h3])
   · rw [h2, hs]; exact Term.wf_le hl (Nat.le_refl _) (hst.goal g (h5 ▸ hg) t ht)
 
-theorem comptimeLet_noInt {T : Table} {st : TopState} {hw : st.Runs} {p : Pos} {m : Option Mult} {pat : Pattern}
-    {rhs : Expr} (hst : TopWf T st) (hok : rhs.okFor T = true) :
-    NoInt (comptimeLet st hw p m pat rhs) (TopWf T) := by
+theorem comptimeLet_noInt {st : TopState} {hw : st.Runs} {p : Pos} {m : Option Mult} {pat : Pattern}
+    {rhs : Expr} (hst : TopWf st) (hok : rhs.shaped = true) :
+    NoInt (comptimeLet st hw p m pat rhs) (TopWf) := by
   unfold comptimeLet
   dsimp only
   split
   · exact NoInt.failAt_bind
   refine NoInt.bind freshAll_noInt fun _ _ => ?_
-  refine NoInt.bind (NoInt.certify (closed_noInt (C := st.ctx) hst.ok.holes (Expr.noInt _ _ _ _ hst.ok
-    (by rw [TopState.ctx, hst.table]; exact hok) (by simp)))) fun ⟨o, _⟩ ho => NoInt.keep ?_
+  refine NoInt.bind (NoInt.certify (Expr.noInt _ _ _ _ hst.ok hok (by simp))) fun ⟨o, _⟩ ho => NoInt.keep ?_
   refine NoInt.bind (NoInt.certify NoInt.single) fun ⟨r, _⟩ hr => ?_
   simp only at ho hr ⊢
   have hrw : r.term.wf o.sc.sigs o.sc.Γ.length 0 = true := by
@@ -496,12 +470,12 @@ theorem comptimeLet_noInt {T : Table} {st : TopState} {hw : st.Runs} {p : Pos} {
   refine NoInt.bind (forcings_noInt ho.ok hrw) fun fs ⟨f1, f2⟩ => ?_
   generalize TopState.eval st o.tree r.tainted _ = v
   have pb := fun (k : Scope → CheckM TopState) (hk : ∀ sc', ScOk st.ctx sc' ∧ sc'.sigs = st.sc.sigs ∧
-      st.sc.Γ.length ≤ sc'.Γ.length → NoInt (k sc') (TopWf T)) =>
+      st.sc.Γ.length ≤ sc'.Γ.length → NoInt (k sc') (TopWf)) =>
     NoInt.bind (patBind_noInt (r := r) (rhsPos := rhs.pos) (ct := true) ho.ok f1 (f2 pat List.mem_cons_self))
       fun sc' ⟨h1, h2, h3⟩ => hk sc' ⟨h1, h2.trans ho.sigs, Nat.le_trans ho.len h3⟩
   have tail : ∀ sc', ScOk st.ctx sc' ∧ sc'.sigs = st.sc.sigs ∧ st.sc.Γ.length ≤ sc'.Γ.length → ∀ env snaps,
-      NoInt (pure ({ st with sc := sc', env := env, snaps := snaps } : TopState) : CheckM TopState) (TopWf T) :=
-    fun sc' ⟨h1, h2, h3⟩ env snaps => NoInt.pure (TopWf.scope hst h1 h2 h3 rfl rfl rfl rfl rfl)
+      NoInt (pure ({ st with sc := sc', env := env, snaps := snaps } : TopState) : CheckM TopState) (TopWf) :=
+    fun sc' ⟨h1, h2, h3⟩ env snaps => NoInt.pure (TopWf.scope hst h1 h2 h3 rfl rfl rfl)
   cases v with
   | none =>
     simp only
@@ -520,63 +494,57 @@ theorem comptimeLet_noInt {T : Table} {st : TopState} {hw : st.Runs} {p : Pos} {
         · exact tail sc' hsc' _ _
         · exact NoInt.evalFail_bind
 
-theorem topStmt_noInt {T : Table} {st : TopState} {hw : st.Runs} {s : Stmt} (hst : TopWf T st)
-    (hok : s.okFor T = true) : NoInt (topStmt st hw s) (TopWf T) := by
+theorem topStmt_noInt {st : TopState} {hw : st.Runs} {s : Stmt} (hst : TopWf st)
+    (hok : s.shaped = true) : NoInt (topStmt st hw s) (TopWf) := by
   unfold topStmt
-  refine NoInt.bind (NoInt.certify (Stmt.noInt s _ _ hst.ok (by rw [TopState.ctx, hst.table]; exact hok)))
-    fun ⟨o, _⟩ ⟨h1, h2, h3⟩ => NoInt.pure (TopWf.scope hst h1 h2 h3 rfl rfl rfl rfl rfl)
+  refine NoInt.bind (NoInt.certify (Stmt.noInt s _ _ hst.ok hok))
+    fun ⟨o, _⟩ ⟨h1, h2, h3⟩ => NoInt.pure (TopWf.scope hst h1 h2 h3 rfl rfl rfl)
 
-theorem print_noInt {T : Table} {st : TopState} {hw : st.Runs} {p : Pos} {e : Expr} (hst : TopWf T st)
-    (hok : e.okFor T = true) : NoInt (topItem st hw (.print p e)) (TopWf T) := by
+theorem print_noInt {st : TopState} {hw : st.Runs} {p : Pos} {e : Expr} (hst : TopWf st)
+    (hok : e.shaped = true) : NoInt (topItem st hw (.print p e)) (TopWf) := by
   unfold topItem
-  refine NoInt.bind (NoInt.certify (closed_noInt (C := st.ctx) hst.ok.holes (NoInt.imp (Expr.noInt _ _ _ _
-    (hst.ok.ctx rfl rfl) (by show e.okFor st.table = true; rw [hst.table]; exact hok) (by simp))
-      fun o h => h.ctx rfl rfl))) fun ⟨o, _⟩ ho => ?_
+  refine NoInt.bind (NoInt.certify (NoInt.imp (Expr.noInt _ _ _ _ (hst.ok.ctx rfl) hok (by simp))
+      fun o h => h.ctx (C' := st.ctx) rfl)) fun ⟨o, _⟩ ho => ?_
   refine NoInt.bind (NoInt.keep (NoInt.certify NoInt.single)) fun _ _ => NoInt.pure ?_
-  exact TopWf.scope hst ho.ok ho.sigs ho.len rfl rfl rfl rfl rfl
+  exact TopWf.scope hst ho.ok ho.sigs ho.len rfl rfl rfl
 
-theorem goal_noInt {T : Table} {st : TopState} {hw : st.Runs} {p : Pos} {g : Goal} (hst : TopWf T st)
-    (hok : match g with
-      | .type t => t.cov T = true
-      | .fn h => (h.params.map (·.binder) ++ h.returns).all (·.ann.term.cov T) = true) :
-    NoInt (topItem st hw (.goal p g)) (TopWf T) := by
+theorem goal_noInt {st : TopState} {hw : st.Runs} {p : Pos} {g : Goal} (hst : TopWf st) :
+    NoInt (topItem st hw (.goal p g)) (TopWf) := by
   unfold topItem
   dsimp only
   have fin : ∀ goal : CheckedGoal, (∀ t, goal.kind = .type t → t.wf st.sc.sigs st.sc.Γ.length 0 = true) →
-      NoInt (pure ({ st with goal := some goal } : TopState) : CheckM TopState) (TopWf T) := fun goal hg =>
-    NoInt.pure ⟨hst.table, hst.ok, hst.typeSig, fun g' hg' t ht => by cases hg'; exact hg t ht⟩
+      NoInt (pure ({ st with goal := some goal } : TopState) : CheckM TopState) (TopWf) := fun goal hg =>
+    NoInt.pure ⟨hst.ok, hst.typeSig, fun g' hg' t ht => by cases hg'; exact hg t ht⟩
   split
   · exact NoInt.failAt_bind
   cases g with
   | fn h =>
-    simp only [List.all_eq_true] at hok
-    refine NoInt.bind (header_noInt (hst.ok.ctx rfl rfl) fun b hb => by
-      rw [TopState.ctx, hst.table]; exact WTerm.covered_of_cov (hok b hb)) fun ⟨ps, rs⟩ ⟨_, _, _, _, _, r6, r7, _⟩ => ?_
+    refine NoInt.bind (header_noInt (hst.ok.ctx rfl)) fun ⟨ps, rs⟩ ⟨_, _, _, _, _, r6, r7, _⟩ => ?_
     exact NoInt.bind (topLevel_noInt (k := 0) (Telescope.wf_append r6 (by simpa using r7))) fun _ _ =>
       fin _ fun t ht => by cases ht
   | type t =>
-    refine NoInt.bind (annotate_noInt hst.ok (by rw [TopState.ctx, hst.table]; exact WTerm.covered_of_cov hok))
+    refine NoInt.bind (annotate_noInt hst.ok)
       fun ⟨ty, is, tn⟩ ⟨h1, _⟩ => ?_
     exact NoInt.bind (NoInt.ensure (Term.entriesBelow_of_wf h1)) fun _ _ => fin _ fun t' ht => by
       cases ht; exact h1
 
-theorem qedFnGoal_noInt {T : Table} {st : TopState} {ps rs : Telescope} {e : Expr} (hst : TopWf T st) :
-    NoInt (qedFnGoal st ps rs e) (TopWf T) := by
+theorem qedFnGoal_noInt {st : TopState} {ps rs : Telescope} {e : Expr} (hst : TopWf st) :
+    NoInt (qedFnGoal st ps rs e) (TopWf) := by
   unfold qedFnGoal
   dsimp only
   repeat (first
     | exact NoInt.failAt
     | exact NoInt.failAt_bind
-    | exact NoInt.pure ⟨hst.table, hst.ok, hst.typeSig, hst.goal⟩
+    | exact NoInt.pure ⟨hst.ok, hst.typeSig, hst.goal⟩
     | split)
 
-theorem qed_noInt {T : Table} {st : TopState} {hw : st.Runs} {p : Pos} {e : Expr} (hst : TopWf T st)
-    (hok : e.okFor T = true) : NoInt (topItem st hw (.qed p e)) (TopWf T) := by
+theorem qed_noInt {st : TopState} {hw : st.Runs} {p : Pos} {e : Expr} (hst : TopWf st)
+    (hok : e.shaped = true) : NoInt (topItem st hw (.qed p e)) (TopWf) := by
   unfold topItem
   dsimp only
-  have fin : ∀ st' : TopState, TopWf T st' → ∀ b : Bool,
-      NoInt (pure ({ st' with qedChecks := true, proved := b } : TopState) : CheckM TopState) (TopWf T) :=
-    fun st' h b => NoInt.pure ⟨h.table, h.ok, h.typeSig, h.goal⟩
+  have fin : ∀ st' : TopState, TopWf st' → ∀ b : Bool,
+      NoInt (pure ({ st' with qedChecks := true, proved := b } : TopState) : CheckM TopState) (TopWf) :=
+    fun st' h b => NoInt.pure ⟨h.ok, h.typeSig, h.goal⟩
   split
   · exact NoInt.failAt_bind
   split
@@ -592,52 +560,47 @@ theorem qed_noInt {T : Table} {st : TopState} {hw : st.Runs} {p : Pos} {e : Expr
         | zero => simp only [List.getElem?_cons_zero, Option.some.injEq] at hj; subst hj; exact
             ⟨fun t' h => by cases h; simpa using ht, fun e h => by cases h⟩
         | succ => simp at hj
-      have hc := closed_noInt (C := st.ctx) (check := fun x => checkExpr st.ctx x (some goal.given) e) hst.ok.holes
-        (Expr.noInt e st.ctx st.sc (some goal.given) hst.ok
-        (by rw [TopState.ctx, hst.table]; exact hok) fun g h => by
-          simp only [Option.some.injEq] at h; subst h; exact hgiven)
+      have hc := Expr.noInt e st.ctx st.sc (some goal.given) hst.ok hok fun g h => by
+          simp only [Option.some.injEq] at h; subst h; exact hgiven
       let mk (o : Out) : TopState :=
         { st with sc := o.sc, proved := !o.res.any (·.tainted), snaps := st.snaps ++ o.snaps }
       repeat (first
         | exact NoInt.failAt_bind
-        | exact NoInt.bind hc fun o ho => fin (mk o) (TopWf.scope hst ho.ok ho.sigs ho.len rfl rfl rfl rfl rfl) _
+        | exact NoInt.bind hc fun o ho => fin (mk o) (TopWf.scope hst ho.ok ho.sigs ho.len rfl rfl rfl) _
         | split)
   · exact NoInt.failAt
 
-/-- A top-level item as the internal-check proof needs it (`Expr.okFor`, `Data.okFor`, `Fn.okFor`), every `_` in the
-table `T`. -/
-def Top.okFor (T : Table) : Top → Bool
-  | .data d => d.okFor T
-  | .mutualData _ ds => ds.all (·.okFor T)
-  | .fn f => f.okFor T
-  | .mutualFn _ fs => fs.all (·.okFor T)
-  | .stmt (.patlet _ true _ _ rhs) => rhs.okFor T
-  | .stmt s => s.okFor T
-  | .print _ e | .qed _ e => e.okFor T
-  | .goal _ (.type t) => t.cov T
-  | .goal _ (.fn h) => (h.params.map (·.binder) ++ h.returns).all (·.ann.term.cov T)
+/-- A top-level item as the internal-check proof needs it (`Expr.shaped`, `Data.shaped`, `Fn.shaped`). -/
+def Top.shaped : Top → Bool
+  | .data d => d.shaped
+  | .mutualData _ ds => ds.all (·.shaped)
+  | .fn f => f.shaped
+  | .mutualFn _ fs => fs.all (·.shaped)
+  | .stmt (.patlet _ true _ _ rhs) => rhs.shaped
+  | .stmt s => s.shaped
+  | .print _ e | .qed _ e => e.shaped
+  | .goal _ _ => true
 
-theorem topItem_noInt {T : Table} {st : TopState} {hw : st.Runs} {t : Top} (hst : TopWf T st)
-    (hok : t.okFor T = true) : NoInt (topItem st hw t) (TopWf T) := by
+theorem topItem_noInt {st : TopState} {hw : st.Runs} {t : Top} (hst : TopWf st)
+    (hok : t.shaped = true) : NoInt (topItem st hw t) (TopWf) := by
   match t, hok with
-  | .data d, hok => unfold topItem; exact dataGroup_noInt hst (by simpa [Top.okFor] using hok)
+  | .data d, hok => unfold topItem; exact dataGroup_noInt hst (by simpa [Top.shaped] using hok)
   | .mutualData _ ds, hok =>
-    unfold topItem; exact dataGroup_noInt hst (by simpa [Top.okFor, List.all_eq_true] using hok)
-  | .fn f, hok => unfold topItem; exact fnGroup_noInt hst (by simpa [Top.okFor] using hok)
+    unfold topItem; exact dataGroup_noInt hst (by simpa [Top.shaped, List.all_eq_true] using hok)
+  | .fn f, hok => unfold topItem; exact fnGroup_noInt hst (by simpa [Top.shaped] using hok)
   | .mutualFn _ fs, hok =>
-    unfold topItem; exact fnGroup_noInt hst (by simpa [Top.okFor, List.all_eq_true] using hok)
+    unfold topItem; exact fnGroup_noInt hst (by simpa [Top.shaped, List.all_eq_true] using hok)
   | .stmt (.patlet p true m pat rhs), hok =>
-    unfold topItem; exact comptimeLet_noInt hst (by simpa [Top.okFor] using hok)
-  | .stmt (.patlet p false m pat rhs), hok => unfold topItem; exact topStmt_noInt hst (by simpa [Top.okFor] using hok)
-  | .stmt (.let p bs rhs), hok => unfold topItem; exact topStmt_noInt hst (by simpa [Top.okFor] using hok)
-  | .stmt (.inspect p), hok => unfold topItem; exact topStmt_noInt hst (by simpa [Top.okFor] using hok)
-  | .print p e, hok => exact print_noInt hst (by simpa [Top.okFor] using hok)
-  | .goal p (.type t), hok => exact goal_noInt hst (by simpa [Top.okFor] using hok)
-  | .goal p (.fn h), hok => exact goal_noInt hst (by simpa [Top.okFor] using hok)
-  | .qed p e, hok => exact qed_noInt hst (by simpa [Top.okFor] using hok)
+    unfold topItem; exact comptimeLet_noInt hst (by simpa [Top.shaped] using hok)
+  | .stmt (.patlet p false m pat rhs), hok => unfold topItem; exact topStmt_noInt hst (by simpa [Top.shaped] using hok)
+  | .stmt (.let p bs rhs), hok => unfold topItem; exact topStmt_noInt hst (by simpa [Top.shaped] using hok)
+  | .stmt (.inspect p), hok => unfold topItem; exact topStmt_noInt hst (by simpa [Top.shaped] using hok)
+  | .print p e, hok => exact print_noInt hst (by simpa [Top.shaped] using hok)
+  | .goal p g, _ => exact goal_noInt hst
+  | .qed p e, hok => exact qed_noInt hst (by simpa [Top.shaped] using hok)
 
-theorem topItems_noInt {T : Table} : ∀ (prog : Program) (st : TopState) (h : TopOk st), TopWf T st →
-    (∀ t ∈ prog, t.okFor T = true) → ∀ e t n, (topItems st h prog).2 = some (e, t, n) → e.internal = false
+theorem topItems_noInt : ∀ (prog : Program) (st : TopState) (h : TopOk st), TopWf st →
+    (∀ t ∈ prog, t.shaped = true) → ∀ e t n, (topItems st h prog).2 = some (e, t, n) → e.internal = false
   | [], _, _, _, _, e, t, n, he => by simp [topItems] at he
   | t :: ts, st, h, hst, hok, e, t', n, he => by
     have hn := topItem_noInt (hw := h.runs) hst (hok t List.mem_cons_self)
@@ -654,9 +617,9 @@ theorem topItems_noInt {T : Table} : ∀ (prog : Program) (st : TopState) (h : T
       subst he'
       exact hn.1 _ hc
 
-theorem TopWf.init (phase : Nat) (table : Table) : TopWf table (TopState.init phase table) := by
+theorem TopWf.init (phase : Nat) (table : Table) : TopWf (TopState.init phase table) := by
   have hT : Sigs.find [⟨.Type, [], .TYPE⟩] Head.Type = some ⟨.Type, [], .TYPE⟩ := by simp [Sigs.find]
-  refine ⟨rfl, ⟨rfl, rfl, fun i en h => by simp [TopState.init] at h, fun sig hs => ?_,
+  refine ⟨⟨fun i en h => by simp [TopState.init] at h, fun sig hs => ?_,
     fun p hp => by simp [TopState.init] at hp, fun g hg => ?_⟩, ⟨_, hT, rfl⟩, fun g h => by simp [TopState.init] at h⟩
   · simp only [TopState.init, List.mem_singleton] at hs; subst hs
     simp only [Sig.wf, Telescope.wf, Bool.true_and]
@@ -664,18 +627,18 @@ theorem TopWf.init (phase : Nat) (table : Table) : TopWf table (TopState.init ph
   · simp only [TopState.ctx, TopState.init, List.mem_singleton] at hg; subst hg
     exact ⟨⟨_, hT⟩, fun cs h => by cases h⟩
 
-/-- Checking a program (`checkItems`, which `runProgramWith` reports from) with a table holding every `_` of the
-program reports no internal error, when the program has no `removed` node, no `comptime` below the top level, no type
-or value constructor named `sorry`, and the grammar's non-empty lists (`Top.okFor`). -/
+/-- Checking a program with any table reports no internal error, when the program has no `removed` node, no
+`comptime` below the top level, no type or value constructor named `sorry`, and the grammar's non-empty lists
+(`Top.shaped`). -/
 theorem checkItems_noInternal (phase : Nat) (table : Table) (prog : Program)
-    (hok : ∀ t ∈ prog, t.okFor table = true) :
+    (hok : ∀ t ∈ prog, t.shaped = true) :
     ∀ e t n, (checkItems phase table prog).2 = some (e, t, n) → e.internal = false :=
   topItems_noInt prog _ _ (TopWf.init phase table) hok
 
 /-- `checkItems_noInternal` for what `runProgramWith` reports: an error it reports with no syntax error is that of an
 item, and is not internal. -/
 theorem runProgramWith_noInternal (phase : Nat) (table : Table) (prog : Program) (has : String → Bool)
-    (hok : ∀ t ∈ prog, t.okFor table = true) {err : Pos × String}
+    (hok : ∀ t ∈ prog, t.shaped = true) {err : Pos × String}
     (h : (runProgramWith phase table prog has).error = some err) :
     ∃ e t n, (checkItems phase table prog).2 = some (e, t, n) ∧ err = (e.pos, e.msg ()) ∧ e.internal = false := by
   simp only [runProgramWith, outcome] at h
@@ -685,5 +648,27 @@ theorem runProgramWith_noInternal (phase : Nat) (table : Table) (prog : Program)
     obtain ⟨e, t, n⟩ := et
     simp only [hc, Option.map_some, Option.orElse_some, Option.some.injEq] at h
     exact ⟨e, t, n, rfl, h.symm, checkItems_noInternal phase table prog hok e t n hc⟩
+
+/-- What `runProgram` reports with no syntax error is the error of an item, and is not internal: the checking pass's
+by `checkItems_noInternal`, or one the solver meets that is not internal (`report`). -/
+theorem runProgram_noInternal (phase : Nat) (prog : Program) (has : String → Bool)
+    (hok : ∀ t ∈ prog, t.shaped = true) {err : Pos × String}
+    (h : (runProgram phase prog has).error = some err) :
+    ∃ e t n, (checkItems phase (solution phase prog) prog).2.map
+        (report (checkItems phase (solution phase prog) prog).1) = some (e, t, n) ∧
+      err = (e.pos, e.msg ()) ∧ e.internal = false := by
+  simp only [runProgram, outcome] at h
+  cases hc : (checkItems phase (solution phase prog) prog).2 with
+  | none => simp [hc] at h
+  | some s =>
+    have hi := checkItems_noInternal phase (solution phase prog) prog hok s.1 s.2.1 s.2.2 hc
+    obtain ⟨-, hr⟩ := report_spec (checkItems phase (solution phase prog) prog).1 s
+    simp only [hc, Option.map_some, Option.orElse_some, Option.some.injEq] at h
+    refine ⟨(report (checkItems phase (solution phase prog) prog).1 s).1,
+      (report (checkItems phase (solution phase prog) prog).1 s).2.1,
+      (report (checkItems phase (solution phase prog) prog).1 s).2.2, rfl, h.symm, ?_⟩
+    rcases hr with hr | ⟨-, hr, -⟩
+    · rw [hr]; exact hi
+    · exact hr
 
 end Pledge

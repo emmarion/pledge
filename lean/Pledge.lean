@@ -11,6 +11,7 @@ import Pledge.Parser
 import Pledge.Check.Basic
 import Pledge.Check.Expr
 import Pledge.Check.Top
+import Pledge.Solve
 import Pledge.SolveTest
 import Pledge.Sound.Measure
 import Pledge.Sound.Defs

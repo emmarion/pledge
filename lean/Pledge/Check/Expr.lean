@@ -37,9 +37,8 @@ def letGiven (bs : List LetBinder) (wants : List Want) : Given :=
   { wants, whole := bs.all (·.ann.any (!·.term.holed)),
     label := some fun i => labelled "binder" ((bs[i]?).bind (·.name.name)) i }
 
-def rhsFirst (C : Ctx) (bs : List LetBinder) : Bool :=
-  bs.any (·.ann.any (·.term.holed)) &&
-    !(C.solving && bs.any (·.ann.any fun a => a.term.holes.any (C.table.lookup · |>.isNone)))
+/-- What a tuple `let` whose binders have `_` gives its right-hand side: only their multiplicities (§20). -/
+def anyGiven (bs : List LetBinder) : Given := letGiven bs (bs.map fun b => ⟨b.name.name, none, none, b.mult.getD .many⟩)
 
 def isHole : Expr → Bool
   | .var ⟨none, _⟩ => true
@@ -78,7 +77,7 @@ mutual
           if let (some fn, some (subs, k)) := (fn, plan) then decrease a.sc h.pos args a.res fn subs k
           let tainted := sig.tainted || a.res.any (·.tainted)
           let (sc', rs) := opened a.sc sig.returns (a.res.map (·.term)) h.name h.pos fun _ => tainted
-          applied sc' g h.pos rs (.app h a.trees) (some sc.holes.length) a.snaps
+          applied sc' g h.pos rs (.app h a.trees) a.snaps
       | some (.type ..) | some (.ctor _) => do
         let kind := if (C.global h.name) matches some (.type ..) then HeadKind.type else .ctor
         unmarked args fun _ => s!"{code h.name} is not a function"
@@ -88,7 +87,7 @@ mutual
         let a ← checkArgs { C with inType := C.inType || kind == .type } sc h.name role (kind = .type && C.phase ≥ 2)
           sig.params [] args
         applied a.sc g h.pos [⟨.app sig.head (a.res.map (·.term)), a.res.any (·.tainted), false⟩]
-          (if kind = .type then .removed else .app h a.trees) none a.snaps
+          (if kind = .type then .removed else .app h a.trees) a.snaps
       | _ => notApplied sc h
     | .tuple p es => do
       if let some g := g then
@@ -96,13 +95,13 @@ mutual
       let o ← checkElems C sc g [] es
       pure ⟨o.sc, o.res, .tuple p o.trees, o.snaps⟩
     | .block ss f => do
-      let s ← checkStmts C { sc with holes := [] } ss
-      let o ← keep s.snaps (checkExpr C { s.sc with holes := sc.holes } g f)
+      let s ← checkStmts C sc ss
+      let o ← keep s.snaps (checkExpr C s.sc g f)
       pure ⟨{ o.sc with names := sc.names }, o.res, .block s.trees o.tree, s.snaps ++ o.snaps⟩
     | .match p m s ann bs => do
       let erased := m == some .erased
       let place := if erased then C.place else "the scrutinee of a `many` match"
-      let so ← closed sc (checkExpr { C with erased := C.erased || erased, place } · none s)
+      let so ← checkExpr { C with erased := C.erased || erased, place } sc none s
       keep so.snaps do
         let r ← single s.pos so.res
         let inner := so.sc
@@ -163,8 +162,8 @@ mutual
     | [] => pure ⟨[], [], []⟩
     | .mk pat body :: bs => do
       let (Γ, ids) ← survivor inner fs pat.ctor.name pat.ctor.pos ""
-      let sc := Scope.bind { inner with Γ, taintedBy := reach inner r scrutPos, holes := [] } pat.fields (fieldRes ids)
-      let o ← closed sc (checkExpr C · (some g) body)
+      let sc := Scope.bind { inner with Γ, taintedBy := reach inner r scrutPos } pat.fields (fieldRes ids)
+      let o ← checkExpr C sc (some g) body
       let rest ← keep o.snaps (checkBranches C inner r scrutPos fs g bs)
       pure ⟨o :: rest.outs, .mk pat o.tree :: rest.trees, o.snaps ++ rest.snaps⟩
   def checkStmts (C : Ctx) (sc : Scope) : List Stmt → CheckM StmtsOut
@@ -178,16 +177,13 @@ mutual
     | .inspect p => pure ⟨sc, .inspect p, [⟨p, sc, none, C.fn, C.decl⟩]⟩
     | .let p bs rhs => do
       freshAll C sc (bs.map (·.name))
-      let o ← if rhsFirst C bs then do
-          let any (b : LetBinder) : Want := ⟨b.name.name, none, none, b.mult.getD .many⟩
-          let o ← checkExpr C sc (some (letGiven bs (bs.map any))) rhs
-          let o ← keep o.snaps (close o 0)
+      let o ← if holedLet bs then do
+          let o ← checkExpr C sc (some (anyGiven bs)) rhs
           keep o.snaps (letBinders C o.sc rhs.pos bs o.res)
           pure o
         else do
-          let (ws, sc') ← letWants C sc bs
-          let o ← checkExpr C sc' (some (letGiven bs ws)) rhs
-          keep o.snaps (close o 0)
+          let ws ← letWants C sc bs
+          checkExpr C sc (some (letGiven bs ws)) rhs
       let rs := (bs.zip o.res).map fun (b, r) => { r with erased := b.mult == some .erased }
       pure ⟨o.sc.bind (bs.map (·.name)) rs, .let p bs o.tree, o.snaps⟩
     | .patlet p ct m pat rhs => do
@@ -197,7 +193,7 @@ mutual
       ensure (!ct) p "a `comptime` pattern `let` below the top level"
       freshAll C sc pat.fields
       let place := if erased then C.place else "the right-hand side of a `many` pattern `let`"
-      let o ← closed sc (checkExpr { C with erased := C.erased || erased, place } · none rhs)
+      let o ← checkExpr { C with erased := C.erased || erased, place } sc none rhs
       keep o.snaps do
         let r ← single rhs.pos o.res
         let fs ← forcings C o.sc r.term rhs.pos [pat] p erased

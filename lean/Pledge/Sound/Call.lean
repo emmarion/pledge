@@ -24,8 +24,8 @@ theorem arg_sound {e : Expr} (ih : ExprSound e) (ihs : ExprShape e) {C : Ctx} {s
       (C.inType = false → ∀ env, EnvRel W.Sc C.phase sc ρ env → ∃ ws u, Eval W.P env o.tree ws ∧ one ws = .ok u ∧
         (r.tainted = false → MultRel W.Sc C.phase (argMult C er p) u v)) := by
   split at h
-  · obtain ⟨hc, hsc, htr, -⟩ := holeArg_spec hI.solving h
-    obtain ⟨r', v, A, hres, hv, hA, hnr, hw, hty, his⟩ := holeArg_value hI.solving hI.sat.1 (hI.sigs ρ hI.agree)
+  · obtain ⟨hc, hsc, htr, -⟩ := holeArg_spec h
+    obtain ⟨r', v, A, hres, hv, hA, hnr, hw, hty, his⟩ := holeArg_value hI.sat.1 (hI.sigs ρ hI.agree)
       hI.noJunk hI.sigsOk hI.length hprev h
     rw [hr] at hres
     obtain rfl : r = r' := by simpa using hres
@@ -50,7 +50,7 @@ theorem arg_sound {e : Expr} (ih : ExprSound e) (ihs : ExprShape e) {C : Ctx} {s
         subst hTA
         exact removed_rel_type hI.typeHeads (hty hI.sat hrt)
     · exact MultRel.removed
-  · obtain ⟨-, hnames, -, hpre, -⟩ := ihs C sc _ o hI.solving hI.holes h
+  · obtain ⟨-, hnames, hpre, -⟩ := ihs C sc _ o h
     have hgok : ∀ g', some (argGiven p prev role owner er) = some g' → g'.Ok W.Sc ρ := by
       rintro g' ⟨⟩
       exact ⟨⟨prevv, by simpa [argGiven] using hprev⟩, fun h => by cases h⟩
@@ -98,14 +98,14 @@ theorem args_sound {args : List Arg} (ih : ∀ a ∈ args, ExprSound a.expr) (ih
       have ihs' := fun a ha => ihs a (List.mem_cons_of_mem _ ha)
       have hg₁ : ShapeFill.Grows sc o.sc := by
         split at ho
-        · rw [(holeArg_spec hI.solving ho).2.1]; exact ShapeFill.Grows.refl hI.holes
-        · exact ihs _ List.mem_cons_self C sc _ o hI.solving hI.holes ho
-      obtain ⟨-, hnames₁, hh₁, hpre₁, -⟩ := hg₁
+        · rw [(holeArg_spec ho).2.1]; exact ShapeFill.Grows.refl _
+        · exact ihs _ List.mem_cons_self C sc _ o ho
+      obtain ⟨-, hnames₁, hpre₁, -⟩ := hg₁
       have ht₁ : o.sc.taintedBy = none := by
         cases h₁ : o.sc.taintedBy with
         | none => rfl
         | some _ =>
-          have := (ShapeFill.args_grows ihs' hh₁ hrest hI.solving).2.2.2.2 (by simp [h₁])
+          have := (ShapeFill.args_grows ihs' hrest).2.2.2 (by simp [h₁])
           simp [ht'] at this
       obtain ⟨ρ₁, v, hI₁, hv, hok₁, hb, hrun₁⟩ := arg_sound (ih _ List.mem_cons_self) (ihs _ List.mem_cons_self) hI
         hprev ho hr ht₁
@@ -199,7 +199,7 @@ theorem post {C : Ctx} {sc : Scope} {g g₁ : Option Given} {whole : Bool} {n0 :
       ∃ us, Eval W.P env (.app h a.trees) us ∧ MultsRel W.Sc C.phase (sig.returns.map (·.mult)) us rs)
     (happ : applied (opened a.sc sig.returns (a.res.map (·.term)) h.name h.pos fun _ => tainted).1 g₁ h.pos
       (opened a.sc sig.returns (a.res.map (·.term)) h.name h.pos fun _ => tainted).2 (.app h a.trees)
-      (some sc.holes.length) a.snaps = .ok o₀)
+      a.snaps = .ok o₀)
     (hf : finish (C.enter whole) whole g₁ (.app h args) o₀ = .ok o) :
     ExprPost C sc g n0 W ρ act o := by
   generalize hop : opened a.sc sig.returns (a.res.map (·.term)) h.name h.pos (fun _ => tainted) = op at happ
@@ -207,15 +207,14 @@ theorem post {C : Ctx} {sc : Scope} {g g₁ : Option Given} {whole : Bool} {n0 :
   rw [hop] at hlen
   have hfst := opened_fst a.sc sig.returns (a.res.map (·.term)) h.name h.pos fun _ => tainted
   rw [hop] at hfst
-  have hholes : op.1.holes = [] := by rw [hfst]; exact hIa.holes
   have hunt : op.1.taintedBy = none := by rw [hfst]; exact hIa.untainted
-  obtain ⟨rfl, hprod⟩ := applied_eq hholes happ
+  obtain ⟨rfl, hprod⟩ := applied_eq happ
   obtain ⟨-, hsc, -, hres, htree, herase⟩ := finish_spec hf
   simp only [hunt, Option.isSome_none, Bool.false_eq_true, ↓reduceIte] at hres
   intro _
   obtain ⟨hsat, hrv⟩ := opened_sound (kind := h.name) (pos := h.pos) (taint := fun _ => tainted) hIa.sat hvs hrs
   rw [hop] at hsat hrv
-  have hI' : Inv C op.1 n0 W (ρ ++ ρ₁ ++ rs) act := hIa.extend hsat (by rw [hfst]) (by rw [hfst]) hholes hunt
+  have hI' : Inv C op.1 n0 W (ρ ++ ρ₁ ++ rs) act := hIa.extend hsat (by rw [hfst]) (by rw [hfst]) hunt
   have hok : ∀ (i : Nat) (r : Res) (v : Value), op.2[i]? = some r → rs[i]? = some v → ResOk W.Sc r v := by
     intro i r v hr hv
     obtain ⟨b, -, hrt, -⟩ := opened_res (hop ▸ hr)
@@ -225,13 +224,7 @@ theorem post {C : Ctx} {sc : Scope} {g g₁ : Option Given} {whole : Bool} {n0 :
       Term.evalList (ρ ++ ρ₁ ++ rs) [] t = some us := by
     rw [List.append_assoc]; exact Term.evalList_frame_ρ _ he
   have hrl : rs.length = op.2.length := by rw [hrs.length_eq, hlen]
-  have hpr := produced_sound hsat.1 (hI'.sigs _ hI'.agree) hI'.noJunk hholes hrv (ResOks.of_getElem hrl.symm hok)
-    (fun g'' hg'' => by
-      subst hg₁
-      cases hce : C.erased <;> simp only [hce, Bool.false_eq_true, ↓reduceIte] at hg''
-      · obtain ⟨envv, he⟩ := (hg g'' hg'').env; exact ⟨envv, hframe he⟩
-      · obtain ⟨g', rfl, rfl⟩ := Option.map_eq_some_iff.1 hg''
-        obtain ⟨envv, he⟩ := (hg g' rfl).env; exact ⟨envv, hframe he⟩) hprod
+  have hpr := produced_sound hsat.1 (hI'.sigs _ hI'.agree) hI'.noJunk hrv (ResOks.of_getElem hrl.symm hok) hprod
   refine ⟨ρ₁ ++ rs, rs, by rw [hsc, ← List.append_assoc]; exact hI', by rw [hres, ← List.append_assoc]; exact hrv,
     fun i r v hr hv => hok i r v (hres ▸ hr) hv, fun g' hg' envv henv => ?_, fun hit env hE => ?_⟩
   · rw [hres, ← List.append_assoc]
@@ -290,16 +283,15 @@ theorem core {h : Name} {args : List Arg} (ih : ∀ a ∈ args, ExprSound a.expr
     (happ : applied (opened a.sc sig.returns (a.res.map (·.term)) h.name h.pos
         fun _ => sig.tainted || a.res.any (·.tainted)).1 (if C.erased then g.map (·.erase) else g) h.pos
       (opened a.sc sig.returns (a.res.map (·.term)) h.name h.pos fun _ => sig.tainted || a.res.any (·.tainted)).2
-      (.app h a.trees) (some sc.holes.length) a.snaps = .ok o₀)
+      (.app h a.trees) a.snaps = .ok o₀)
     (hf : finish (C.enter (C.erased || g.any (·.allErased))) (C.erased || g.any (·.allErased))
       (if C.erased then g.map (·.erase) else g) (.app h args) o₀ = .ok o) :
     ExprPost C sc g n0 W ρ act o := by
   intro hnt
   have hI₁ : Inv (C.enter (C.erased || g.any (·.allErased))) sc n0 W ρ act := hI.congr_ctx rfl rfl rfl
-  obtain ⟨-, -, hah, -, -⟩ := ShapeFill.args_grows ihs hI.holes ha hI.solving
   have hopf := opened_fst a.sc sig.returns (a.res.map (·.term)) h.name h.pos
     fun _ => sig.tainted || a.res.any (·.tainted)
-  obtain ⟨ho₀, -⟩ := applied_eq (by rw [hopf]; exact hah) happ
+  obtain ⟨ho₀, -⟩ := applied_eq happ
   obtain ⟨-, hsc, -⟩ := finish_spec hf
   have hat : a.sc.taintedBy = none := by rw [hsc, ho₀, hopf] at hnt; exact hnt
   obtain ⟨ρ₁, vs, hIa, hvs, -, hw, hrun⟩ := args_sound ih ihs hI₁ har rfl ha hat
