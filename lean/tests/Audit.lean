@@ -14,6 +14,7 @@ open Pledge
 #print axioms reached_comptime
 #print axioms reached_qed
 #print axioms checkItems_noInternal
+#print axioms checkItems_evaluated
 #print axioms runProgramWith_noInternal
 #print axioms runProgram_noInternal
 #print axioms parse_shaped

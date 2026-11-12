@@ -248,7 +248,7 @@ def comptimeLet (st : TopState) (hw : st.Runs) (p : Pos) (m : Option Mult) (pat 
   let env ← if sc.taintedBy.isSome then pure st.env else match v with
     | some v => match bindPattern st.env m pat v with
       | .ok env => pure env
-      | .error msg => evalFail p fun _ => s!"evaluation stopped: {msg}"
+      | .error _ => internal p "binding a `comptime` pattern's fields failed"
     | none => pure st.env
   pure { st with sc := sc, env := env, snaps := st.snaps ++ o.snaps }
 

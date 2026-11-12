@@ -218,6 +218,73 @@ theorem forcings_prefix {C : Ctx} {sc : Scope} {t : Term} {sp at_ : Pos} {pats :
 
 end TopStmt
 
+/-- A `comptime` pattern `let` (§11), at a state with the top level's invariant, whose right-hand side evaluates to a
+run-time value `v` headed by the pattern's value constructor, in a scope its forcing leaves untainted: binding the
+pattern's fields to `v`'s succeeds (`bindPattern`), and the state after it keeps the invariant. -/
+theorem comptimeLet_bound {st : TopState} {ρ : List Value} {p : Pos} {m : Option Mult} {pat : Pattern} {rhs : Expr}
+    {o : Out} {r : Res} {fs : List Forcing} {sc : Scope} {v : Value} (hI : TopInv st ρ) (hm : m ≠ some .erased)
+    (ho : checkExpr st.ctx st.sc none rhs = .ok o) (hr : single rhs.pos o.res = .ok r)
+    (hfs : forcings st.ctx o.sc r.term rhs.pos [pat] p false = .ok fs)
+    (hsc : patBind o.sc r rhs.pos true pat fs = .ok sc) (hts : sc.taintedBy = none)
+    (hv : Eval st.prog st.env o.tree [v]) (hhead : v.headName = pat.ctor.name) :
+    ∃ env, bindPattern st.env m pat v = .ok env ∧
+      ∃ ρ', (st.world ρ).Le (({ st with sc, env, snaps := st.snaps ++ o.snaps } : TopState).world (ρ ++ ρ')) ∧
+        TopInv { st with sc, env, snaps := st.snaps ++ o.snaps } (ρ ++ ρ') := by
+  obtain ⟨hsig0, hnm, hpre0, htnt⟩ := Expr.shape rhs _ st.sc none o ho
+  obtain ⟨Γ, ids, ⟨f, hf, hfo⟩, -, rfl⟩ := patBind_spec hsc
+  obtain ⟨h1, -, h4⟩ := TopStmt.bind_fields { o.sc with Γ, taintedBy := reach o.sc r rhs.pos } pat.fields
+    (fieldRes ids)
+  have htb : reach o.sc r rhs.pos = none := h4.symm.trans hts
+  have hto : o.sc.taintedBy = none := by
+    cases h : o.sc.taintedBy
+    · rfl
+    · simp [reach, h] at htb
+  have hrt : r.tainted = false := by simpa [reach, hto] using htb
+  have ht := TopStmt.none_of htnt hto
+  obtain ⟨ρ₁, vs, hI₁, hvs, hres, -, hrun⟩ :=
+    (Expr.sound rhs _ _ _ _ _ _ _ _ (hI.inv ht rfl rfl rfl) (fun _ h => by cases h) ho).1 hto
+  have hor := single_ok hr
+  rw [hor] at hvs hres
+  obtain ⟨vi, hvi, rfl⟩ := Term.evalList_singleton.1 (by simpa using hvs)
+  obtain ⟨-, -, hV⟩ := hres 0 r vi rfl rfl
+  obtain ⟨V, hV⟩ := hV hrt
+  obtain ⟨us, hev, us', htk, hrel⟩ := hrun rfl st.env (hI.live ht).env
+  cases Eval.det hev hv
+  rw [take_of_length (by rw [hor]; rfl)] at htk
+  cases htk
+  have hR : Rel (st.world ρ).Sc st.phase v vi := by
+    have := hrel 0 r v vi (by rw [hor]; rfl) rfl rfl hrt
+    simpa [Ctx.posMult, TopState.ctx, MultRel] using this
+  obtain ⟨c, ws, sig, Γ', ids', pat', rfl, hfc, hsig, hws, hsat, hpre, -, hids, -, hent⟩ :=
+    forcings_value hI₁ hfs hvi hV
+  obtain ⟨as, rfl⟩ : ∃ as, v = .app ⟨.ctor, c⟩ as := by
+    cases hR with | type h => cases h | app => exact ⟨_, rfl⟩
+  simp only [Value.headName] at hhead
+  subst hhead
+  rw [hfc] at hf
+  cases hf
+  have hfo' : Γ' = Γ ∧ ids' = ids := by injection hfo with e1 e2; exact ⟨e1, e2⟩
+  rw [hfo'.1] at hsat hpre hent
+  rw [hfo'.2] at hids
+  have hI₃ := Inv.pattern (fields := pat.fields) hI₁ hsat hids hws htb
+  have hfl := forcings_fields hfs (List.mem_singleton_self _) hsig hws
+  obtain ⟨sig', hsig', hmult⟩ := SigsClose.mults (hI₁.sigs _ hI₁.agree) hsig
+  have hent' : ∀ (k : Nat) (b' : TBinder), sig'.params[k]? = some b' → ∃ en, Γ[o.sc.Γ.length + k]? = some en ∧
+      en.erased = (b'.mult == .erased || m == some .erased) := by
+    intro k b' hb'
+    have : (sig.params.map (·.mult))[k]? = some b'.mult := by rw [← hmult]; simp [hb']
+    simp only [List.getElem?_map, Option.map_eq_some_iff] at this
+    obtain ⟨b, hb, hbm⟩ := this
+    obtain ⟨en, hen, -, her⟩ := hent k b hb
+    refine ⟨en, hen, ?_⟩
+    rw [her, hbm, show (m == some .erased) = false by simpa using hm]
+  obtain ⟨env', hb, hE⟩ := EnvRel.pattern (tb := reach o.sc r rhs.pos)
+    (EnvRel.extend ρ₁ (hI.live ht).env hnm hpre0 hI.len) hI₁.sat.1.1 hpre hids hfl hsig' hent' (fun _ => hR) rfl
+    (by rw [hws.length_eq]; simpa using (congrArg List.length hmult).symm)
+  rw [List.append_assoc] at hI₃ hE
+  exact ⟨env', hb, TopStmt.stepInv hI (h1.trans hsig0) rfl rfl rfl rfl rfl (fun h => by simp [ht] at h)
+    (TopStmt.keepProved hI rfl rfl rfl rfl) hI₃ fun _ => hE⟩
+
 /-- A `comptime` pattern `let` (§11) keeps the invariant: with an untainted scrutinee, the run's value, related to
 the ideal one, is headed by the pattern's value constructor, so the ideal value is too and its forcing survived. -/
 theorem comptimeLet_sound {st st' : TopState} {ρ : List Value} {hw : st.Runs} {p : Pos} {m : Option Mult}
@@ -247,69 +314,6 @@ theorem comptimeLet_sound {st st' : TopState} {ρ : List Value} {hw : st.Runs} {
     exact TopStmt.tainted hI (h1.trans hsig0) rfl rfl rfl rfl rfl
       (by rw [h2]; exact hpre0.trans (TopStmt.forcings_prefix hfs (List.mem_of_find?_eq_some hf) hfo)) hts
       (TopStmt.keepProved hI rfl rfl rfl rfl)
-  have hU : ∀ sc v env, patBind o.sc r rhs.pos true pat fs = .ok sc → sc.taintedBy = none → v' = some v →
-      v.headName = pat.ctor.name → bindPattern st.env m pat v = .ok env →
-      ∃ ρ', (st.world ρ).Le (({ st with sc, env, snaps := st.snaps ++ o.snaps } : TopState).world (ρ ++ ρ')) ∧
-        TopInv { st with sc, env, snaps := st.snaps ++ o.snaps } (ρ ++ ρ') := by
-    intro sc v env hsc hts hv hhead henv
-    obtain ⟨Γ, ids, ⟨f, hf, hfo⟩, -, rfl⟩ := patBind_spec hsc
-    obtain ⟨h1, -, h4⟩ := TopStmt.bind_fields { o.sc with Γ, taintedBy := reach o.sc r rhs.pos } pat.fields
-      (fieldRes ids)
-    have htb : reach o.sc r rhs.pos = none := h4.symm.trans hts
-    have hto : o.sc.taintedBy = none := by
-      cases h : o.sc.taintedBy
-      · rfl
-      · simp [reach, h] at htb
-    have hrt : r.tainted = false := by simpa [reach, hto] using htb
-    have ht := TopStmt.none_of htnt hto
-    obtain ⟨ρ₁, vs, hI₁, hvs, hres, -, hrun⟩ :=
-      (Expr.sound rhs _ _ _ _ _ _ _ _ (hI.inv ht rfl rfl rfl) (fun _ h => by cases h) ho).1 hto
-    have hor := single_ok hr
-    rw [hor] at hvs hres
-    obtain ⟨vi, hvi, rfl⟩ := Term.evalList_singleton.1 (by simpa using hvs)
-    obtain ⟨-, -, hV⟩ := hres 0 r vi rfl rfl
-    obtain ⟨V, hV⟩ := hV hrt
-    subst hv
-    have hcert := (TopState.eval_some hv').2
-    obtain ⟨us, hev, us', htk, hrel⟩ := hrun rfl st.env (hI.live ht).env
-    cases Eval.det hev hcert
-    rw [take_of_length (by rw [hor]; rfl)] at htk
-    cases htk
-    have hR : Rel (st.world ρ).Sc st.phase v vi := by
-      have := hrel 0 r v vi (by rw [hor]; rfl) rfl rfl hrt
-      simpa [Ctx.posMult, TopState.ctx, MultRel] using this
-    obtain ⟨c, ws, sig, Γ', ids', pat', rfl, hfc, hsig, hws, hsat, hpre, -, hids, -, hent⟩ :=
-      forcings_value hI₁ hfs hvi hV
-    obtain ⟨as, rfl⟩ : ∃ as, v = .app ⟨.ctor, c⟩ as := by
-      cases hR with | type h => cases h | app => exact ⟨_, rfl⟩
-    simp only [Value.headName] at hhead
-    subst hhead
-    rw [hfc] at hf
-    cases hf
-    have hfo' : Γ' = Γ ∧ ids' = ids := by injection hfo with e1 e2; exact ⟨e1, e2⟩
-    rw [hfo'.1] at hsat hpre hent
-    rw [hfo'.2] at hids
-    have hI₃ := Inv.pattern (fields := pat.fields) hI₁ hsat hids hws htb
-    have hfl := forcings_fields hfs (List.mem_singleton_self _) hsig hws
-    obtain ⟨sig', hsig', hmult⟩ := SigsClose.mults (hI₁.sigs _ hI₁.agree) hsig
-    have hent' : ∀ (k : Nat) (b' : TBinder), sig'.params[k]? = some b' → ∃ en, Γ[o.sc.Γ.length + k]? = some en ∧
-        en.erased = (b'.mult == .erased || m == some .erased) := by
-      intro k b' hb'
-      have : (sig.params.map (·.mult))[k]? = some b'.mult := by rw [← hmult]; simp [hb']
-      simp only [List.getElem?_map, Option.map_eq_some_iff] at this
-      obtain ⟨b, hb, hbm⟩ := this
-      obtain ⟨en, hen, -, her⟩ := hent k b hb
-      refine ⟨en, hen, ?_⟩
-      simp only [Bool.not_eq_true] at hm
-      rw [her, hbm, hm]
-    obtain ⟨env', hb, hE⟩ := EnvRel.pattern (tb := reach o.sc r rhs.pos)
-      (EnvRel.extend ρ₁ (hI.live ht).env hnm hpre0 hI.len) hI₁.sat.1.1 hpre hids hfl hsig' hent' (fun _ => hR) rfl
-      (by rw [hws.length_eq]; simpa using (congrArg List.length hmult).symm)
-    rw [henv] at hb
-    cases hb
-    rw [List.append_assoc] at hI₃ hE
-    exact TopStmt.stepInv hI (h1.trans hsig0) rfl rfl rfl rfl rfl (fun h => by simp [ht] at h)
-      (TopStmt.keepProved hI rfl rfl rfl rfl) hI₃ fun _ => hE
   cases v' with
   | none =>
     simp only at h
@@ -340,8 +344,11 @@ theorem comptimeLet_sound {st st' : TopState} {ρ : List Value} {hw : st.Runs} {
       split at h
       · rename_i env henv
         cases h
-        exact hU sc v env hsc (by simpa using hts) rfl (by simpa using hhead) henv
-      · simp [evalFail_eq, bind, Except.bind] at h
+        obtain ⟨env', hb, hinv⟩ := comptimeLet_bound hI (by simpa using hm) ho₀ hr hfs hsc (by simpa using hts)
+          (TopState.eval_some hv').2 (by simpa using hhead)
+        cases henv.symm.trans hb
+        exact hinv
+      · simp [internal, failAt_eq, bind, Except.bind] at h
 
 /-- `print` keeps the invariant. -/
 theorem print_sound {st st' : TopState} {ρ : List Value} {hw : st.Runs} {p : Pos} {e : Expr} (hI : TopInv st ρ)

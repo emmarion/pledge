@@ -645,7 +645,7 @@ theorem reached_comptime (phase : Nat) (table : Table) {pre : Program} {p : Pos}
         simp only [pure, Except.pure, bind, Except.bind, Except.ok.injEq] at h'
         subst h'
         exact henv
-      · simp [evalFail_eq, bind, Except.bind] at h'
+      · simp [internal, failAt_eq, bind, Except.bind] at h'
   refine ⟨ρ, a, v, V, hsat, hev, hR, hV, heval, hpass, fun hw fs hm hfr hfs hhead => ?_⟩
   cases hres : topItem st hw (.stmt (.patlet p true m pat rhs)) with
   | ok st' => exact absurd (hpass hw st' hres).1 hhead

@@ -3,16 +3,20 @@ import Pledge.Sound.Shape
 
 namespace Pledge
 
-/-- `x` reports no internal error, and what it returns satisfies `P`. -/
-def NoInt {α : Type} (x : CheckM α) (P : α → Prop) : Prop :=
-  (∀ e, x = .error e → e.internal = false) ∧ ∀ a, x = .ok a → P a
+/-- `x` reports only errors meeting `E`, and what it returns satisfies `P`. -/
+def NoErr {α : Type} (E : CheckError → Prop) (x : CheckM α) (P : α → Prop) : Prop :=
+  (∀ e, x = .error e → E e) ∧ ∀ a, x = .ok a → P a
+
+/-- `x` reports no internal error and none found by evaluating, and what it returns satisfies `P`. -/
+abbrev NoInt {α : Type} (x : CheckM α) (P : α → Prop) : Prop :=
+  NoErr (fun e => e.internal = false ∧ e.evaluated = false) x P
 
 namespace NoInt
 
-variable {α β : Type} {x : CheckM α} {P Q : α → Prop}
+variable {α β : Type} {x : CheckM α} {P Q : α → Prop} {E E' : CheckError → Prop}
 
-theorem bind {f : α → CheckM β} {R : β → Prop} (hx : NoInt x Q) (hf : ∀ a, Q a → NoInt (f a) R) :
-    NoInt (x >>= f) R := by
+theorem bind {f : α → CheckM β} {R : β → Prop} (hx : NoErr E x Q) (hf : ∀ a, Q a → NoErr E (f a) R) :
+    NoErr E (x >>= f) R := by
   refine ⟨fun e h => ?_, fun b h => ?_⟩
   · cases hx' : x with
     | error e' => rw [hx'] at h; cases h; exact hx.1 _ hx'
@@ -20,17 +24,23 @@ theorem bind {f : α → CheckM β} {R : β → Prop} (hx : NoInt x Q) (hf : ∀
   · obtain ⟨a, ha, hb⟩ := bind_eq_ok.1 h
     exact (hf a (hx.2 a ha)).2 b hb
 
-theorem pure {a : α} (h : P a) : NoInt (Pure.pure a : CheckM α) P :=
+theorem pure {a : α} (h : P a) : NoErr E (Pure.pure a : CheckM α) P :=
   ⟨fun _ h => by simp [Pure.pure, Except.pure] at h, fun _ h' => by
     simp only [Pure.pure, Except.pure, Except.ok.injEq] at h'; subst h'; exact h⟩
 
 theorem ok {a : α} (hx : x = .ok a) (h : P a) : NoInt x P := hx ▸ NoInt.pure h
 
 theorem failAt {pos : Pos} {m : Unit → String} : NoInt (Pledge.failAt pos m : CheckM α) P :=
-  ⟨fun _ h => by simp only [failAt_eq, Except.error.injEq] at h; subst h; rfl, fun _ h => by
+  ⟨fun _ h => by simp only [failAt_eq, Except.error.injEq] at h; subst h; exact ⟨rfl, rfl⟩, fun _ h => by
     simp [failAt_eq] at h⟩
 
-theorem keep {s : List Snapshot} (h : NoInt x P) : NoInt (Pledge.keep s x) P := by
+theorem weaken (h : NoErr E x P) (hE : ∀ e, E e → E' e) : NoErr E' x P := ⟨fun e he => hE e (h.1 e he), h.2⟩
+
+/-- What `x` returns, with the fact that it returns it. -/
+theorem withEq (h : NoErr E x P) : NoErr E x (fun a => x = .ok a ∧ P a) := ⟨h.1, fun a ha => ⟨ha, h.2 a ha⟩⟩
+
+theorem keep {s : List Snapshot} (h : NoErr E x P)
+    (hE : ∀ e, E e → E { e with snaps := s ++ e.snaps } := by intro _ h; exact h) : NoErr E (Pledge.keep s x) P := by
   cases hx : x with
   | ok a =>
     rw [hx] at h
@@ -40,7 +50,7 @@ theorem keep {s : List Snapshot} (h : NoInt x P) : NoInt (Pledge.keep s x) P := 
     refine ⟨fun e' h' => ?_, fun _ h' => by simp [Pledge.keep] at h'⟩
     simp only [Pledge.keep, Except.error.injEq] at h'
     subst h'
-    exact h.1 e rfl
+    exact hE e (h.1 e rfl)
 
 theorem failAt_bind {f : α → CheckM β} {R : β → Prop} {pos : Pos} {m : Unit → String} :
     NoInt (Pledge.failAt pos m >>= f) R := NoInt.bind (Q := fun _ => False) failAt fun _ h => h.elim
@@ -66,7 +76,7 @@ theorem unless_fail {b : Bool} {pos : Pos} {m : Unit → String} :
   · exact failAt
   · exact NoInt.pure rfl
 
-theorem certify (h : NoInt x P) : NoInt (Pledge.certify x) (fun a => P a.1) := by
+theorem certify (h : NoErr E x P) : NoErr E (Pledge.certify x) (fun a => P a.1) := by
   cases hx : x with
   | ok a => rw [hx] at h; exact ⟨fun _ h' => by simp [Pledge.certify] at h', fun b h' => by
       simp only [Pledge.certify, Except.ok.injEq] at h'; subst h'; exact h.2 a rfl⟩
@@ -1008,7 +1018,7 @@ theorem finish_noInt {C C₀ : Ctx} {whole : Bool} {g : Option Given} {e : Expr}
     split at h
     · cases h
     · split at h
-      · simp only [failAt_eq, bind, Except.bind, Except.error.injEq] at h; subst h; rfl
+      · simp only [failAt_eq, bind, Except.bind, Except.error.injEq] at h; subst h; exact ⟨rfl, rfl⟩
       · cases h
   · obtain ⟨hne, hsc, -, hres, -⟩ := finish_spec h
     have hres' : ∀ r ∈ o'.res, ∃ r0 ∈ o.res, r0.term = r.term := by

@@ -303,7 +303,20 @@ no default, which `run` reads off the tokens) and any syntax error
   through the checking pass (`ScOk`, `TopWf` in `Sound/Internal.lean`
   and `Sound/InternalTop.lean`, over `Sound/Wf.lean`'s well-formed
   terms, telescopes, signatures and scopes, on which `solve` and
-  `force` are shown never to get stuck).
+  `force` are shown never to get stuck), and, for a `comptime` pattern
+  `let`, the top level's invariant, by which binding the fields of a
+  value headed by the pattern's value constructor succeeds
+  (`comptimeLet_bound`, `Sound/Stmt.lean`).
+- `checkItems_evaluated` (`Sound/InternalTop.lean`): for any phase and
+  any table, when every item of `prog` meets `Top.shaped` and checking
+  stops at an error found by evaluating (`CheckError.evaluated`), at
+  an item `t`, then `prog` is `pre ++ t :: post` with checking `pre`
+  stopping at no error, `t` is a `comptime` pattern
+  `let C(...) = rhs;`, and, at the state `pre` leaves, `rhs` checks
+  with one untainted result whose checked tree evaluates (`Eval`) to a
+  run-time value `a` not headed by `C`, and the error is at `rhs` and
+  shows `showValue a` (`HeadMiss`), as in `reached_comptime`. So that
+  is the only error for which `runProgram` does not consult the solver.
 - `runProgram_noInternal`: when every item of `prog` meets
   `Top.shaped`, the error `runProgram` reports for an item, whatever
   `err` is, is not internal, since `report` keeps the checking pass's
@@ -347,7 +360,7 @@ differential corpus, 45 report their goal proved.
   `Sigs.erasedArg`, `Rel`, `MultRel`, `MultsRel`, `Sig.close`,
   `GoalHolds`, `GoalBelow`, `ProvedAt`, `OutcomeSound`, `PrintsShown`,
   `PrintJust`, `typeOf`, `showValue`, `World`, `Top.shaped`,
-  `CheckError.internal`, the evaluation relation `Eval` and its
+  `CheckError.internal`, `CheckError.evaluated`, `HeadMiss`, the evaluation relation `Eval` and its
   companions, `CallRel` among them, `bindPattern`, and the meaning of
   `runProgram`, `report`, `runProgramWith`, `run`, `checkItems`,
   `topItems`,
@@ -395,7 +408,9 @@ items 69 to 75.
   not canonical, an entry not in scope, an equation no entry can take a
   rule from), a value constructor that was not forced, an annotation
   mentioning an entry created after the scrutinee, a `comptime` pattern
-  `let` below the top level, a `removed` expression being checked, and
+  `let` below the top level, failing to bind the fields of the value of
+  a `comptime` pattern `let` headed by its value constructor, a
+  `removed` expression being checked, and
   a telescope, value-constructor return or goal mentioning an entry
   below the top level, a value-constructor return that does not apply
   its type constructor, and a type constructor or value constructor
@@ -423,12 +438,9 @@ items 69 to 75.
   pass's own error is reported, which for a `_` with no term says only
   that the `_` cannot be inferred.
 - That only a `comptime` pattern `let` whose value has another head
-  meets an error found by evaluating: `reached_comptime` says that such
-  an item meets that error, not that no other error is marked as found
-  by evaluating, and nothing proves unreachable the error a `comptime`
-  pattern `let` reports when binding the value's fields fails. The
-  mark decides only whether `runProgram` consults the solver about an
-  error.
+  meets an error found by evaluating, for a program not meeting
+  `Top.shaped`: `checkItems_evaluated` rests on the proof of
+  `checkItems_noInternal`.
 - That the Lean checker implements DESIGN.md, that the parser reads
   the source as DESIGN.md means it (`parse_shaped` says only that its
   output has the shape above), and anything about the TypeScript code
