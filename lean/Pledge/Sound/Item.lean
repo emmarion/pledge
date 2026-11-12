@@ -129,14 +129,20 @@ end DataTop
 
 /-- At a state with the top level's invariant: an expression checked there as `print`, a `comptime` pattern `let` and
 `qed` against a type goal check theirs, with an untainted result, has an evaluation to one run-time value related to
-a typed ideal value under the invariant's valuation, which `TopState.eval` returns. -/
+the ideal value of its result, which has the type `typeOf` gives it, under a valuation extending the invariant's and
+meeting the main lemma's invariant after the expression; `TopState.eval` returns that run-time value. -/
 theorem TopInv.eval_ok {st : TopState} {ρ : List Value} (hI : TopInv st ρ) {pl : String} {g : Option Given}
     {e : Expr} {o : Out} {r : Res}
     (hg : g = none ∨ ∃ goal t, st.goal = some goal ∧ goal.kind = .type t ∧ g = some goal.given)
     (h : closed st.sc (checkExpr { st.ctx with place := pl } · g e) = .ok o) (hr : single e.pos o.res = .ok r)
     (hrt : r.tainted = false) :
-    ∃ a v V, Sat (st.world ρ).Sc st.sc.Γ ρ ∧ Eval st.prog st.env o.tree [a] ∧ Rel (st.world ρ).Sc st.phase a v ∧
-      HasType (st.world ρ).Sc v V ∧ ∀ hw, st.eval o.tree r.tainted hw = some a := by
+    ∃ ρ₁ a v V, Inv { st.ctx with place := pl } o.sc st.sc.Γ.length (st.world ρ) (ρ ++ ρ₁) (Act.top st.fns) ∧
+      Sat (st.world ρ).Sc st.sc.Γ ρ ∧ r.term.eval (ρ ++ ρ₁) [] = some v ∧ Eval st.prog st.env o.tree [a] ∧
+      Rel (st.world ρ).Sc st.phase a v ∧ HasType (st.world ρ).Sc v V ∧
+      (∀ T, typeOf o.sc.sigs o.sc.Γ r.term = some T → T.eval (ρ ++ ρ₁) [] = some V) ∧
+      (∀ g', g = some g' → ∀ envv, Term.evalList ρ [] g'.env = some envv →
+        WantsSat (st.world ρ).Sc (ρ ++ ρ₁) g'.wants envv [true] [v]) ∧
+      ∀ hw, st.eval o.tree r.tainted hw = some a := by
   rw [closed_eq hI.holes fun o h => (Expr.shape e _ _ _ o hI.solving hI.holes h).2.2.1] at h
   have hres := single_ok hr
   have ho : o.sc.taintedBy = none := by
@@ -152,9 +158,9 @@ theorem TopInv.eval_ok {st : TopState} {ρ : List Value} (hI : TopInv st ρ) {pl
     obtain ⟨goal, t, hgoal, hk, hg⟩ := hg.resolve_left (by simp)
     cases hg
     exact TopStmt.given_ok hI ht hgoal hk
-  obtain ⟨_, vs, -, hvs, hok, -, hrun⟩ := (Expr.sound e _ _ g _ _ ρ _ o (hI.inv ht rfl rfl rfl) hgok h).1 ho
-  rw [hres] at hvs hok
-  obtain ⟨v, -, rfl⟩ := Term.evalList_singleton.1 (by simpa using hvs)
+  obtain ⟨ρ₁, vs, hI₁, hvs, hok, hws, hrun⟩ := (Expr.sound e _ _ g _ _ ρ _ o (hI.inv ht rfl rfl rfl) hgok h).1 ho
+  rw [hres] at hvs hok hws
+  obtain ⟨v, hv, rfl⟩ := Term.evalList_singleton.1 (by simpa using hvs)
   obtain ⟨V, hV⟩ := (hok 0 r v rfl rfl).2.2 hrt
   obtain ⟨us, hev, us', htk, hrel⟩ := hrun rfl _ hL.env
   rw [hres] at htk hrel
@@ -166,16 +172,109 @@ theorem TopInv.eval_ok {st : TopState} {ρ : List Value} (hI : TopInv st ρ) {pl
     · simp [Ctx.posMult, TopState.ctx, TopStmt.given_eq hk, Given.erasedAt]
   have hR := hrel 0 r a v (by simp) rfl rfl hrt
   rw [hmult] at hR
-  refine ⟨a, v, V, hL.sat, hev, hR, hV, fun hw => ?_⟩
+  refine ⟨ρ₁, a, v, V, hI₁, hL.sat, hv, hev, hR, hV,
+    fun T hT => typeOf_sound hI₁.sat.1 (hI₁.sigs _ hI₁.agree) hI₁.noJunk hv hV hT,
+    fun g' hg' envv he => by simpa [hrt] using hws g' hg' envv he, fun hw => ?_⟩
   obtain ⟨w, hw', hcert⟩ := TopState.eval_spec (h := hw) (by simp [hI.solving, hrt])
   cases Eval.det hcert hev
   exact hw'
+
+/-- What a `print` of `e` checked at the state `st` shows, `s`, read in the world `W`: `sorry` for a tainted result
+(§12), and otherwise the run-time value its checked tree evaluates to, related to the ideal value of its result in
+`W`, which has the type `typeOf` gives the result in the scope after it. -/
+def PrintJust (W : World) (st : TopState) (e : Expr) (s : String) : Prop :=
+  ∃ o r, closed st.sc (checkExpr { st.ctx with place := printPlace } · none e) = .ok o ∧
+    single e.pos o.res = .ok r ∧ (r.tainted = true ∧ s = "sorry" ∨ r.tainted = false ∧
+      ∃ a v V, Eval st.prog st.env o.tree [a] ∧ s = showValue a ∧ r.term.eval W.ρ [] = some v ∧
+        Rel W.Sc st.phase a v ∧ HasType W.Sc v V ∧
+        ∀ T, typeOf o.sc.sigs o.sc.Γ r.term = some T → T.eval W.ρ [] = some V)
+
+theorem PrintJust.mono {W W' : World} {st : TopState} {e : Expr} {s : String} (hW : W.Le W')
+    (h : PrintJust W st e s) : PrintJust W' st e s := by
+  obtain ⟨o, r, ho, hr, h⟩ := h
+  refine ⟨o, r, ho, hr, h.imp_right fun ⟨hrt, a, v, V, hev, hs, hv, hR, hV, hT⟩ => ⟨hrt, a, v, V, hev, hs, ?_,
+    hR.mono_sigs hW.sigs, hV.mono_sigs hW.sigs, fun T hT' => ?_⟩⟩
+  all_goals obtain ⟨ρ', hρ'⟩ := hW.val
+  · rw [← hρ']; exact Term.eval_frame_ρ _ hv
+  · rw [← hρ']; exact Term.eval_frame_ρ _ (hT T hT')
+
+/-- A `print` keeps the invariant and adds what it shows, justified in the world after it. -/
+theorem print_step {st st' : TopState} {ρ : List Value} {hw : st.Runs} {p : Pos} {e : Expr} (hI : TopInv st ρ)
+    (h : topItem st hw (.print p e) = .ok st') : ∃ ρ', (st.world ρ).Le (st'.world (ρ ++ ρ')) ∧ TopInv st' (ρ ++ ρ') ∧
+      ∃ s, st'.prints = st.prints ++ [(p, s)] ∧ PrintJust (st'.world (ρ ++ ρ')) st e s := by
+  have hsound := print_sound hI h
+  simp only [topItem] at h
+  obtain ⟨⟨o, ho₀⟩, -, h⟩ := bind_eq_ok.1 h
+  obtain ⟨⟨r, hr⟩, -, h⟩ := bind_eq_ok.1 h
+  simp only [pure, Except.pure, Except.ok.injEq] at h
+  generalize hv' : TopState.eval st o.tree r.tainted _ = v' at h
+  generalize hsv : (v'.map showValue).getD "sorry" = sv at h
+  subst h
+  by_cases hrt : r.tainted = true
+  · obtain ⟨ρ', hle, hI'⟩ := hsound
+    refine ⟨ρ', hle, hI', _, rfl, o, r, ho₀, hr, .inl ⟨hrt, ?_⟩⟩
+    rw [← hsv, ← hv']; simp [TopState.eval, hrt]
+  · obtain ⟨ρ₁, a, v, V, hI₁, -, hv, hev, hR, hV, hT, -, heval⟩ := hI.eval_ok (.inl rfl) ho₀ hr (by simpa using hrt)
+    have ho := ho₀
+    rw [closed_eq hI.holes fun o h => (Expr.shape e _ _ _ o hI.solving hI.holes h).2.2.1] at ho
+    obtain ⟨hsig, hnm, hh, hpre, htnt⟩ := Expr.shape e _ st.sc none o hI.solving hI.holes ho
+    have hw : ({ st with sc := o.sc, prints := st.prints ++ [(p, sv)], snaps := st.snaps ++ o.snaps } :
+        TopState).world (ρ ++ ρ₁) = { st.world ρ with ρ := ρ ++ ρ₁ } := TopStmt.world_eq ρ₁ hI hsig rfl rfl
+    obtain ⟨hle, hI'⟩ := TopStmt.step (ρ' := ρ₁)
+      (st' := { st with sc := o.sc, prints := st.prints ++ [(p, sv)], snaps := st.snaps ++ o.snaps }) hI hsig
+      rfl rfl rfl rfl rfl hh hI₁.sat.1.1
+      (fun v hv => hI₁.sat.noRemoved v (List.mem_append_right _ hv)) htnt (TopStmt.keepProved hI rfl rfl rfl rfl)
+      fun _ ht => ⟨⟨_, _, _, hI₁⟩, EnvRel.extend ρ₁ (hI.live ht).env hnm hpre hI.len⟩
+    refine ⟨ρ₁, hle, hI', _, rfl, o, r, ho₀, hr,
+      .inr ⟨by simpa using hrt, a, v, V, hev, by simp [← hsv, ← hv', heval], ?_⟩⟩
+    rw [hw]
+    exact ⟨hv, hR, hV, hT⟩
+
+/-- Only a `print` adds to what the top level shows. -/
+theorem topItem_prints {st st' : TopState} {hw : st.Runs} {t : Top} (h : topItem st hw t = .ok st')
+    (ht : ∀ p e, t ≠ .print p e) : st'.prints = st.prints := by
+  unfold topItem at h
+  split at h
+  · obtain ⟨_, hgr⟩ := dataGroup_group h
+    rw [hgr.eq]
+  · obtain ⟨_, hgr⟩ := dataGroup_group h
+    rw [hgr.eq]
+  · exact (fnGroup_keeps h).2.2.2
+  · exact (fnGroup_keeps h).2.2.2
+  · unfold comptimeLet at h
+    unwind_ok h
+    all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h])
+  · unwind_ok h
+    all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h])
+  · exact absurd rfl (ht _ _)
+  · obtain ⟨-, goal, rfl, -⟩ := goal_spec (hw := hw) (by unfold topItem; exact h)
+    rfl
+  · unwind_ok h
+    all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h])
+    all_goals dsimp only
+    all_goals first
+      | (obtain ⟨_, _, _, -, -, -, -, rfl⟩ := qedFnGoal_spec (by assumption); rfl)
+      | (simp only [pure, Except.pure, Except.ok.injEq] at *; subst_vars; rfl)
+
+/-- Each item keeps the top level's invariant, and adds to what the top level shows exactly what a `print` shows,
+justified in the world after it. -/
+theorem topItem_step {st st' : TopState} {ρ : List Value} {hw : st.Runs} {t : Top} (hI : TopInv st ρ)
+    (h : topItem st hw t = .ok st') : ∃ ρ', (st.world ρ).Le (st'.world (ρ ++ ρ')) ∧ TopInv st' (ρ ++ ρ') ∧
+      ((∃ p e s, t = .print p e ∧ st'.prints = st.prints ++ [(p, s)] ∧ PrintJust (st'.world (ρ ++ ρ')) st e s) ∨
+        (∀ p e, t ≠ .print p e) ∧ st'.prints = st.prints) := by
+  cases t with
+  | print p e =>
+    obtain ⟨ρ', h1, h2, s, h3, h4⟩ := print_step hI h
+    exact ⟨ρ', h1, h2, .inl ⟨p, e, s, rfl, h3, h4⟩⟩
+  | _ =>
+    obtain ⟨ρ', h1, h2⟩ := topItem_sound hI h
+    exact ⟨ρ', h1, h2, .inr ⟨nofun, topItem_prints h nofun⟩⟩
 
 /-- What the top level evaluates outside the solving pass has an evaluation (§11): by `Expr.sound` and `Stmt.sound`,
 in the scope the invariant says is untainted whenever a result or the scope after a statement is. -/
 theorem TopInv.runs {st : TopState} {ρ : List Value} (hI : TopInv st ρ) : st.Runs := by
   refine ⟨fun _ pl e o r ho hr hrt => ?_, fun _ s o ho hto => ?_⟩
-  · obtain ⟨a, -, -, -, ha, -⟩ := hI.eval_ok (.inl rfl) ho hr hrt
+  · obtain ⟨_, a, _, _, -, -, -, ha, -⟩ := hI.eval_ok (.inl rfl) ho hr hrt
     exact ⟨a, ha⟩
   · obtain ⟨-, -, -, htnt⟩ := Stmt.shape s st.ctx st.sc o hI.solving hI.holes ho
     obtain ⟨_, -, hrun⟩ := Stmt.sound s _ _ _ _ _ _ _ (hI.inv (TopStmt.none_of htnt hto) rfl rfl rfl) ho hto

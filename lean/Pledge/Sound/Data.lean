@@ -712,7 +712,8 @@ theorem goalItem_sound {st st' : TopState} {ρ : List Value} {hw : st.Runs} {p :
 
 /-- A group of functions keeps the phase, whether `_` is being solved, the goal and whether it is proved. -/
 theorem fnGroup_keeps {st st' : TopState} {fs : List Fn} (h : fnGroup st fs = .ok st') :
-    (st'.phase = st.phase ∧ st'.solving = st.solving) ∧ st'.goal = st.goal ∧ st'.proved = st.proved := by
+    (st'.phase = st.phase ∧ st'.solving = st.solving) ∧ st'.goal = st.goal ∧ st'.proved = st.proved ∧
+      st'.prints = st.prints := by
   unfold fnGroup at h
   obtain ⟨st0, h0, h⟩ := bind_eq_ok.1 h
   obtain ⟨⟨st1, heads⟩, h1, h⟩ := bind_eq_ok.1 h
@@ -720,13 +721,13 @@ theorem fnGroup_keeps {st st' : TopState} {fs : List Fn} (h : fnGroup st fs = .o
   simp only [pure, Except.pure, Except.ok.injEq] at h
   subst h
   have e0 := foldlM_induct (fun _ s => (s.phase = st.phase ∧ s.solving = st.solving) ∧ s.goal = st.goal ∧
-    s.proved = st.proved) fs []
+    s.proved = st.proved ∧ s.prints = st.prints) fs []
     (fun q x b b' _ hb hf => by
       obtain ⟨_, -, hf⟩ := bind_eq_ok.1 hf
       simp only [pure, Except.pure, Except.ok.injEq] at hf
-      rw [← hf]; exact hb) ⟨⟨rfl, rfl⟩, rfl, rfl⟩ h0
+      rw [← hf]; exact hb) ⟨⟨rfl, rfl⟩, rfl, rfl, rfl⟩ h0
   exact foldlM_induct (fun _ p => (p.1.phase = st.phase ∧ p.1.solving = st.solving) ∧ p.1.goal = st.goal ∧
-    p.1.proved = st.proved) fs []
+    p.1.proved = st.proved ∧ p.1.prints = st.prints) fs []
     (fun q x b b' _ hb hf => by
       obtain ⟨⟨s, hd⟩, hh, hf⟩ := bind_eq_ok.1 hf
       simp only [pure, Except.pure, Except.ok.injEq] at hf
@@ -788,8 +789,8 @@ theorem topItem_proved {st st' : TopState} {hw : st.Runs} {t : Top} (h : topItem
     rw [hgr.eq] at hp; exact .inl hp
   · obtain ⟨_, hgr⟩ := dataGroup_group h
     rw [hgr.eq] at hp; exact .inl hp
-  · rw [(fnGroup_keeps h).2.2] at hp; exact .inl hp
-  · rw [(fnGroup_keeps h).2.2] at hp; exact .inl hp
+  · rw [(fnGroup_keeps h).2.2.1] at hp; exact .inl hp
+  · rw [(fnGroup_keeps h).2.2.1] at hp; exact .inl hp
   · unfold comptimeLet at h
     unwind_ok h
     all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h] at hp; exact .inl hp)

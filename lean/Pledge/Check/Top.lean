@@ -289,6 +289,8 @@ def qedFnGoal (st : TopState) (ps rs : Telescope) (e : Expr) : CheckM TopState :
       "position by position, binder names aside (§12)"
   pure { st with qedFn := some n, proved := !sig.tainted }
 
+def printPlace : String := "the expression of a `print`"
+
 /-- One top-level item (§8, §11, §12). -/
 def topItem (st : TopState) (hw : st.Runs) : Top → CheckM TopState
   | .data d => dataGroup st [d]
@@ -298,7 +300,7 @@ def topItem (st : TopState) (hw : st.Runs) : Top → CheckM TopState
   | .stmt (.patlet p true m pat rhs) => comptimeLet st hw p m pat rhs
   | .stmt s => topStmt st hw s
   | .print p e => do
-    let ⟨o, ho⟩ ← certify (closed st.sc (checkExpr { st.ctx with place := "the expression of a `print`" } · none e))
+    let ⟨o, ho⟩ ← certify (closed st.sc (checkExpr { st.ctx with place := printPlace } · none e))
     let ⟨r, hr⟩ ← keep o.snaps (certify (single e.pos o.res))
     let v := st.eval o.tree r.tainted fun hs => hw.expr hs _ e o r ho hr
     let prints := st.prints ++ [(p, (v.map showValue).getD "sorry")]
