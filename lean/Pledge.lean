@@ -24,3 +24,4 @@ import Pledge.Sound.Top
 import Pledge.Sound.Wf
 import Pledge.Sound.Internal
 import Pledge.Sound.InternalTop
+import Pledge.ParserSound

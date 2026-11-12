@@ -16,3 +16,5 @@ open Pledge
 #print axioms checkItems_noInternal
 #print axioms runProgramWith_noInternal
 #print axioms runProgram_noInternal
+#print axioms parse_shaped
+#print axioms run_noInternal

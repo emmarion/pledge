@@ -649,26 +649,25 @@ theorem runProgramWith_noInternal (phase : Nat) (table : Table) (prog : Program)
     simp only [hc, Option.map_some, Option.orElse_some, Option.some.injEq] at h
     exact ⟨e, t, n, rfl, h.symm, checkItems_noInternal phase table prog hok e t n hc⟩
 
-/-- What `runProgram` reports with no syntax error is the error of an item, and is not internal: the checking pass's
-by `checkItems_noInternal`, or one the solver meets that is not internal (`report`). -/
-theorem runProgram_noInternal (phase : Nat) (prog : Program) (has : String → Bool)
-    (hok : ∀ t ∈ prog, t.shaped = true) {err : Pos × String}
-    (h : (runProgram phase prog has).error = some err) :
-    ∃ e t n, (checkItems phase (solution phase prog) prog).2.map
-        (report (checkItems phase (solution phase prog) prog).1) = some (e, t, n) ∧
-      err = (e.pos, e.msg ()) ∧ e.internal = false := by
-  simp only [runProgram, outcome] at h
+/-- The error `runProgram` reports for an item, which it reports whatever the syntax error, is not internal: the
+checking pass's, by `checkItems_noInternal`, or one the solver meets that is not internal (`report`). -/
+theorem runProgram_noInternal (phase : Nat) (prog : Program) (has : String → Bool) (err : Option (Pos × String))
+    (hok : ∀ t ∈ prog, t.shaped = true) :
+    ∀ e t n, (checkItems phase (solution phase prog) prog).2.map
+        (report (checkItems phase (solution phase prog) prog).1) = some (e, t, n) →
+      e.internal = false ∧ (runProgram phase prog has err).error = some (e.pos, e.msg ()) := by
+  intro e t n h
   cases hc : (checkItems phase (solution phase prog) prog).2 with
   | none => simp [hc] at h
   | some s =>
+    rw [hc] at h
+    simp only [Option.map_some, Option.some.injEq] at h
+    refine ⟨?_, by simp [runProgram, outcome, hc, h]⟩
     have hi := checkItems_noInternal phase (solution phase prog) prog hok s.1 s.2.1 s.2.2 hc
     obtain ⟨-, hr⟩ := report_spec (checkItems phase (solution phase prog) prog).1 s
-    simp only [hc, Option.map_some, Option.orElse_some, Option.some.injEq] at h
-    refine ⟨(report (checkItems phase (solution phase prog) prog).1 s).1,
-      (report (checkItems phase (solution phase prog) prog).1 s).2.1,
-      (report (checkItems phase (solution phase prog) prog).1 s).2.2, rfl, h.symm, ?_⟩
+    rw [h] at hr
     rcases hr with hr | ⟨-, hr, -⟩
-    · rw [hr]; exact hi
+    · simp only at hr; rw [hr]; exact hi
     · exact hr
 
 end Pledge

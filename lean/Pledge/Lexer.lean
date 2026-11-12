@@ -70,6 +70,19 @@ termination_by _ cs => cs.length
 def lex (source : String) (phase : Nat) : List Token :=
   lexFrom (keywords phase) none false 0 source.toList
 
+private theorem lexFrom_name (reserved : List String) (word : Option (Pos × String)) (comment : Bool) (p : Pos)
+    (cs : List Char) : ∀ t ∈ lexFrom reserved word comment p cs, t.kind = .name → reserved.contains t.text = false := by
+  fun_induction lexFrom reserved word comment p cs <;> intro t ht hk <;>
+    (try simp only [List.mem_cons, List.mem_nil_iff, or_false] at ht) <;> (try rcases ht with rfl | ht) <;>
+    first | (simp_all; done) | (revert hk; simp only [wordKind]; repeat' split) <;> simp_all
+
+/-- A name token is not a keyword, `sorry` among them. -/
+theorem lex_name (source : String) (phase : Nat) : ∀ t ∈ lex source phase, t.kind = .name → t.text ≠ "sorry" :=
+  fun t ht hk he => by
+    have := lexFrom_name _ _ _ _ _ t ht hk
+    rw [he] at this
+    simp [keywords] at this
+
 def hasKeyword (source : String) (phase : Nat) (word : String) : Bool :=
   (lex source phase).any fun t => t.kind == .keyword && t.text == word
 

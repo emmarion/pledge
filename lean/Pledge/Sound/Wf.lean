@@ -499,16 +499,4 @@ theorem force_not_stuck {S : Sigs} {Γ : Entries} {scrut : Term} {ctor : Sig} {m
     (hs : scrut.wf S Γ.length 0 = true) : force S Γ scrut ctor mk ≠ .stuck msg := fun h => by
   have := force_wf mk hΓ hS hc hs; rw [h] at this; exact this
 
-/-- `unify` on well-formed terms never reports an internal error, and keeps the scope well-formed. -/
-theorem unify_wf {S : Sigs} {Γ : Entries} {lhs rhs : Term} {hole : Nat → Bool} (hΓ : Entries.Wf S Γ)
-    (hS : Sigs.Wf S Γ.length) (hl : lhs.wf S Γ.length 0 = true) (hr : rhs.wf S Γ.length 0 = true) :
-    ∃ Γ' st, unify S Γ lhs rhs hole = .ok (Γ', st) ∧ Entries.Wf S Γ' ∧ Γ'.length = Γ.length := by
-  have a := Term.canon_wf hΓ _ hl
-  have b := Term.canon_wf hΓ _ hr
-  have hq := solve_wf (may := hole) (log := []) hΓ hS (eqs := [⟨lhs.canon Γ, rhs.canon Γ, .given⟩])
-    (by simp only [List.mem_singleton]; rintro q rfl; exact ⟨a.1, b.1, a.2, b.2⟩)
-  simp only [unify]
-  split <;> rename_i h <;> rw [h] at hq
-  all_goals first | exact ⟨_, _, rfl, hq.1, hq.2.1⟩ | exact ⟨_, _, rfl, hq⟩ | exact hq.elim
-
 end Pledge
