@@ -70,7 +70,9 @@ requests that touch `lean/` or `src/`.
   `solveFrom`, `runProgram` and `run`. It comes after the proofs it
   needs (`Sound/Item.lean`, below): each state `topItems` passes to
   `topItem` carries the fact (`TopOk`) from which what the item
-  evaluates has an evaluation (`TopState.Runs`).
+  evaluates has an evaluation (`TopState.Runs`). When checking stops at
+  an error, `topItems` returns it with its item and the number of items
+  after it (`Stop`).
 - `Main.lean`: the command line.
 - `Pledge/CoreLemmas.lean`, `UnifySound.lean`, `Pledge/Sound/`: the
   proofs. `Sound/Defs.lean` worlds, the invariants, the function
@@ -84,9 +86,11 @@ requests that touch `lean/` or `src/`.
   `Sound/Fn.lean` and `Data.lean` the declaration groups, and
   `Data.lean` the `goal` item; `Sound/Stmt.lean` the other top-level
   statements; `Sound/Item.lean` that each item keeps the top level's
-  invariant (`topItem_sound`) and that, outside the solving pass, what
-  the top level evaluates has an evaluation (`TopInv.runs`); and
-  `Sound/Top.lean` the headline theorems.
+  invariant (`topItem_sound`), what a `print` shows (`PrintJust`,
+  `topItem_step`), and that, outside the solving pass, what the top
+  level evaluates has an evaluation (`TopInv.runs`); and
+  `Sound/Top.lean` the invariant of checking a program item by item
+  (`checkItems_inv`) and the headline theorems.
 - `Pledge/ParserTest.lean`, `EvalTest.lean`, `UnifyTest.lean`,
   `SolveTest.lean`: `#guard` tests; `EvalTest.lean` runs programs
   through `run`. `SolveTest.lean` holds tests of `_`
@@ -105,13 +109,17 @@ made for a `_` and every written term, `_` in it or not, is checked by
 table that is a well-formed term of the scope there (`coreType`), of
 the `_`'s type, meeting its parameter's `is` clause and §16's rule on
 erased names, and it computes the `_`'s taint from that term. A `_`
-with no term in the table is an error. `runProgram` runs the two, and
-reports an error met by `runProgramWith` that was found by evaluating
-(`CheckError.evaluated`, as for a `comptime` pattern `let` whose value
-has another head), or else an error met by `solveFrom`; any other error met
-only by `runProgramWith` is reported as internal. The soundness theorems are
-meant not to depend on `solveFrom`: they hold for `runProgramWith` with
-any table.
+with no term in the table is an error. `runProgram` runs the two and
+reports what `runProgramWith` reports with the table `solveFrom` found:
+an error exactly when it meets one, and every other field of the
+outcome. `solveFrom` gives only the position and text of an error: those
+of the error it met at the same item, if `runProgramWith`'s was not
+found by evaluating (`CheckError.evaluated`, as for a `comptime`
+pattern `let` whose value has another head); an error found by
+evaluating is reported as is, and one `solveFrom` did not meet at that
+item is reported as internal. The soundness theorems are meant not to
+depend on `solveFrom`: they hold for `runProgramWith` with any table,
+and `runProgram_eq` states the above.
 
 `solveFrom` checks the program with the table found so far; a `_` the
 table does not cover gets an entry of the scope, solved by unification
@@ -190,26 +198,39 @@ no default, which `run` reads off the tokens) and any syntax error
 `err`, writing `out` for
 `runProgram phase prog has err`, Lean checks:
 
-- `runProgram_sound`: there is a world `W` whose evaluator's view of
-  the program `W.P` is that of the final top-level state of
-  `runProgramWith` with the table `solution phase prog` that
-  `solveFrom` finds, whose closed
-  signatures `W.Sc` are `out.sigs.map (Sig.close W.ρ)`, whose functions
-  are `out.fns`, and whose valuation `W.ρ` has one value per entry of
-  `out.entries`; if the final top-level scope is untainted
+- `runProgram_sound`: there is a world `W` of which `OutcomeSound`
+  holds for `out`, with the table `solution phase prog` that
+  `solveFrom` finds: the evaluator's view of the program `W.P` is that
+  of the final top-level state of `runProgramWith` with that table,
+  the closed signatures `W.Sc` are `out.sigs.map (Sig.close W.ρ)`, the
+  functions are `out.fns`, and the valuation `W.ρ` has one value per
+  entry of `out.entries`; if the final top-level scope is untainted
   (`out.tainted = false`), `W.ρ` satisfies it
-  (`Sat W.Sc out.entries W.ρ`); and if `out.goalProved =
-  some true`, the goal `out.goal` holds in `W` (`GoalHolds`), and
-  `ProvedAt` holds of it: `prog` has a `qed` up to which checking stops
-  at no error, the state just after it has the goal proved, an
-  untainted scope and the goal `out.goal`, whose entries are all in
-  that scope (`GoalBelow`), and the first values of `W.ρ` satisfy that
-  scope, typed by its signatures closed by them (`Sat`). The goal is so
-  tied to a valuation satisfying the scope as it stood when the goal
-  was proved, whatever later items do to the scope.
+  (`Sat W.Sc out.entries W.ρ`); if `out.goalProved = some true`, the
+  goal `out.goal` holds in `W` (`GoalHolds`), and `ProvedAt` holds of
+  it: `prog` has a `qed` up to which checking stops at no error, the
+  state just after it has the goal proved, an untainted scope and the
+  goal `out.goal`, whose entries are all in that scope (`GoalBelow`),
+  and the first values of `W.ρ` satisfy that scope, typed by its
+  signatures closed by them (`Sat`); so the goal is tied to a valuation
+  satisfying the scope as it stood when the goal was proved, whatever
+  later items do to the scope. And the prints (`PrintsShown`): the
+  `i`-th entry `(p, s)` of `out.prints` comes from the `i`-th item of
+  `prog` that is a `print`, `print e;` at `p`, after items at which
+  checking stops at no error; at the state they leave, `e` checks with
+  one result, and `s` is `sorry` if that result is tainted, and
+  otherwise `showValue a` for the run-time value `a` that the checked
+  tree of `e` evaluates to (`Eval`, unique by `Eval.det`), related by
+  `Rel` to the result's ideal value under `W.ρ`, which has the type
+  `typeOf` gives the result, both read in `W` (`PrintJust`). With no
+  error, `out.prints` has one entry per `print` of `prog`.
   `runProgramWith_sound` states the same of `runProgramWith` with any
-  table (nothing about `solveFrom` is used), and `outcome_sound` of any report whose error is set whenever
-  `runProgramWith`'s is.
+  table (nothing about `solveFrom` is used).
+- `runProgram_eq`: `out` is `runProgramWith` with the table
+  `solution phase prog`, but for its error, which is set exactly when
+  that one's is, and is the same one when checking stopped at an error
+  found by evaluating. So no field of `out` but the text and position
+  of an error comes from the solving pass.
 - `type_goal_inhabited`: if the goal is proved and is the type `t`,
   there is a valuation `ρ` with one value per entry of `out.entries`,
   satisfying the final scope if it is untainted and, by its first
@@ -228,17 +249,25 @@ no default, which `run` reads off the tokens) and any syntax error
   reported proved.
 - `run_sound` and `run_no_empty_goal`: `runProgram_sound` and
   `no_empty_goal` for `run source phase`.
-- `reached_eval_ok` and `reached_run_ok`: at any state that checking a
-  program reaches with any table (`checkItems`), an expression checked
-  there as `print`, a `comptime` pattern `let` and `qed` against a type
-  goal check theirs (`closed`, `checkExpr` under `TopState.ctx` with
-  the item's `place`, given nothing or the goal's type), with one
-  untainted result, has an evaluation by the relation (`Eval`) to one
-  run-time value, related by `Rel` to an ideal value that has a type
-  under a valuation satisfying the state's scope, and the top level's
-  evaluation (`TopState.eval`) returns that value. A statement checked
-  there as the top level checks one, leaving the scope untainted, has
-  a run (`EvalStmt`), the one `TopState.run` gives.
+- `reached_stmt`, `reached_comptime` and `reached_qed`, for each item
+  that checking a program reaches with any table, after items at which
+  it stops at no error, at the state they leave. A top-level `let` or
+  `inspect;` that passes has the checked statement's scope, and, unless
+  that scope is tainted, the new values of the top-level names are
+  those its run (`EvalStmt`) gives; otherwise they are unchanged. For
+  a `comptime` pattern `let C(...) = rhs;` whose right-hand side
+  checks with one untainted result, its checked tree evaluates (`Eval`)
+  to a run-time value `a` related by `Rel` to an ideal value that has a
+  type, under a valuation satisfying the scope, and `TopState.eval`
+  returns `a`; if the item passes, `a` is headed by `C`, and, unless
+  the scope after it is tainted, the new values are `a`'s fields
+  (`bindPattern`); if `a` is not headed by `C`, then, once its checks
+  before evaluating pass, the item fails with the error found by
+  evaluating that shows `showValue a`. A `qed` against a type goal `t`
+  that passes checks its expression given the goal; if the scope after
+  it is untainted, the expression has one result, and if that is
+  untainted, its checked tree evaluates to a run-time value related to
+  an ideal value of type `t`, which `TopState.eval` would return.
 
 The evaluator is defined only for what has an evaluation: `evalExpr`
 takes the fact that one exists and returns it, unique by determinism
@@ -249,7 +278,7 @@ main lemma applied to the item; the solving pass evaluates nothing.
 Every definition is total, by structural or well-founded recursion,
 with no fuel, which is what the gate checks, so checking and evaluating
 a program is meant to end, by Lean's acceptance of those definitions. The top level does not evaluate a `qed`'s expression:
-its value is shown nowhere, and `reached_eval_ok` says its evaluation
+its value is shown nowhere, and `reached_qed` says its evaluation
 exists and is what `TopState.eval` would return.
 
 `tests/Audit.lean` prints the axioms these use. `Sound/Top.lean` has
@@ -270,10 +299,13 @@ differential corpus, 45 report their goal proved.
 - The definitions the theorems are stated with: `Value`, `Term.eval`,
   `HasType`, `TeleSat`, `WType`, `WSat`, `Sat`, `junkHead`, `Approx`,
   `Sigs.erasedArg`, `Rel`, `MultRel`, `MultsRel`, `Sig.close`,
-  `GoalHolds`, `GoalBelow`, `ProvedAt`, `World`,
+  `GoalHolds`, `GoalBelow`, `ProvedAt`, `OutcomeSound`, `PrintsShown`,
+  `PrintJust`, `typeOf`, `showValue`, `World`,
   the evaluation relation `Eval` and its companions, `CallRel` among
-  them, and the meaning of `runProgram`, `run`, `checkItems`,
-  `topItems`, `TopState.eval`, `TopState.run` and `Outcome`'s fields. That `HasType` captures
+  them, `bindPattern`, and the meaning of `runProgram`,
+  `runProgramWith`, `run`, `checkItems`, `topItems`, `topItem` and the
+  checker functions the `reached_` theorems name, `TopState.eval`,
+  `TopState.run` and `Outcome`'s fields. That `HasType` captures
   what a value of a type is rests on SOUNDNESS.md part 2, which it
   follows; that `Rel` and `Approx` capture what erasure and taint may
   remove rests on a reading of §12 and §16.
@@ -328,20 +360,22 @@ items 69 to 75.
 ## What is not proved
 
 - Anything about `solveFrom`: that it finds a term for every `_`
-  DESIGN.md means to be solved, or the terms DESIGN.md means. The
-  theorems hold for `runProgramWith` with any table, so a wrong table
-  is believed to cost only completeness (a program rejected), not
-  soundness.
+  DESIGN.md means to be solved, or the terms DESIGN.md means, or that
+  the error text it gives belongs to the error `runProgramWith` meets
+  at that item (`runProgram_eq` pins down only whether there is an
+  error). The theorems hold for `runProgramWith` with any table, so a
+  wrong table is believed to cost only completeness (a program
+  rejected) or a misleading message, not soundness.
 - That the internal checks are unreachable on programs DESIGN.md
   accepts.
-- That `reached_eval_ok` and `reached_run_ok` describe every evaluation
-  the top level performs: they are about the checks `print`, a
-  `comptime` pattern `let` and the other top-level statements perform
-  before evaluating; the link to those items is by reading `topItem`.
-- That `runProgram` reports the error of the first item that fails:
-  it relies on `solveFrom`, which evaluates nothing, meeting the same
-  errors as `runProgramWith` up to the first error found by
-  evaluating.
+- That only a `comptime` pattern `let` whose value has another head
+  meets an error found by evaluating: `reached_comptime` says that such
+  an item meets that error, not that no other error is marked as found
+  by evaluating, and nothing proves unreachable the error a `comptime`
+  pattern `let` reports when binding the value's fields fails. The
+  mark decides only which text `runProgram` reports.
+- That every `print` checked before an error is listed: with an error,
+  `OutcomeSound` says only that each listed print is justified.
 - That the Lean checker implements DESIGN.md, that the parser reads
   the source as DESIGN.md means it, and anything about the TypeScript
   code (see above).
