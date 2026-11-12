@@ -15,6 +15,9 @@ const keepN = page("erased-positions").solution.replace("erased m is n", "m is n
 
 test("erased: the start fails at VCons's field n in vcons; the solution prints erased fields as _ and Local entries tags A and n", () => {
   assert.match(errorAt("erased", page("erased").initial, "n, x, v)", "VCons(A"), /`n` is erased/);
+  const onlyN = page("erased").initial.replace("VCons(A : Type(), n", "VCons(A : Type(), erased n")
+    .replace("vhead(A : Type(), n", "vhead(A : Type(), erased n");
+  assert.equal(run("erased", onlyN).r.error, null);
   const { source, r } = run("erased", page("erased").solution);
   assert.deepEqual(r.prints.map(p => p.value), ["Succ(Zero())", "VCons(_, _, Zero(), VCons(_, _, Succ(Zero()), VNil(_)))"]);
   assert.deepEqual(namedOf(r.infoAt(source.indexOf("vhead(A, n, rest)"))).slice(0, 2), ["A : Type()", "n : Nat()"]);

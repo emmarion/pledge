@@ -260,7 +260,7 @@ against a type goal and against a function goal; a program with
 program with `sorry` and erased fields. Its `#guard`s also show that,
 in phases 1 and 2, a goal tainted through its type, a goal after a
 top-level pattern `let` on `sorry`, and an empty type's goal met by
-`qed sorry(_);` are not proved. Of the 448 programs of the
+`qed sorry(_);` are not proved. Of the 449 programs of the
 differential corpus, 45 report their goal proved.
 
 ## What has to be trusted
