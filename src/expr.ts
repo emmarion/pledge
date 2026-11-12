@@ -549,7 +549,7 @@ function letWants(ctx: Ctx, site: Local, binders: readonly LetBinder[],
       late: false, binder }]) : []);
   const wants = binders.map((b, i) => {
     const id = ids[i]!;
-    return id >= 0 ? abstracted(local.scope, b, id, ids) : untypedWant(b);
+    return id >= 0 ? abstracted(local.scope, b, id, ids.slice(0, i)) : untypedWant(b);
   });
   return { wants, scope: holed ? forget(local.scope, site.scope, named) : site.scope };
 }

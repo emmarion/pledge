@@ -758,11 +758,14 @@ def letWant (Γ : Entries) (ids : List Nat) : LetBinder × Option Opening → Ch
 /-- What a tuple `let` gives its right-hand side (§8): its binders as a telescope, an unannotated binder taking
 any result, and the scope the right-hand side is checked in. When an annotation has `_` (§16), every annotation
 is checked with its `_` left as holes, which are `late`, and that scope keeps the binders' entries and the holes,
-without the binders' names. -/
+without the binders' names; a binder's type or `is` term is abstracted only over the binders before it, so a `_` may
+take a later binder's entry, which stands for the result it names. -/
 def letWants (C : Ctx) (sc : Scope) (bs : List LetBinder) : CheckM (List Want × Scope) := do
   let holed := bs.any (·.ann.any (·.term.holed))
   let (sc', opens) ← go holed sc [] [] bs
-  let ws ← (bs.zip opens).mapM (letWant sc'.Γ (opens.map fun o => (o.map (·.id)).getD sc'.Γ.length))
+  let ids := opens.map fun o => (o.map (·.id)).getD sc'.Γ.length
+  let ws ← if holed then (bs.zip opens).zipIdx.mapM fun (p, i) => letWant sc'.Γ (ids.take i) p
+    else (bs.zip opens).mapM (letWant sc'.Γ ids)
   let placeholders := (opens.zipIdx.zip bs).filterMap fun ((o, i), b) =>
     o.map fun o => ({ id := o.id, pos := b.name.pos, is := none, binder := some i } : Hole)
   let late := sc.holes ++ (sc'.holes.drop sc.holes.length).map ({ · with late := true }) ++ placeholders

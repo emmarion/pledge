@@ -48,6 +48,14 @@ def has (s frag : String) : Bool := (s.splitOn frag).length > 1
   fn t(k : Nat()) -> (r : Nat()) { g(_, { let (r, e) = h(k); let ReflE(_, _) = e; r }, ReflE(_, _)) }
   print t(Zero());"
 
+#guard accepts "let (v : Vec(Nat(), _), n : Nat(), p : EqE(Vec(Nat(), n), v, v)) = (VNil(Nat()), Zero(), ReflE(_, _));"
+#guard accepts "fn mk() -> (n : Nat(), v : Vec(Nat(), n)) { (Zero(), VNil(Nat())) }
+  let (v : Vec(Nat(), _), n : Nat(), p : EqE(Vec(Nat(), n), v, v)) = { let (a, b) = mk(); (b, a, ReflE(_, _)) };"
+#guard rejects "let (v : Vec(Nat(), _), n : Nat(), p : EqE(Vec(Nat(), n), v, v)) =
+  (VNil(Nat()), Succ(Zero()), ReflE(_, _));"
+#guard rejects "fn mk() -> (n : Nat(), v : Vec(Nat(), n)) { (Zero(), VNil(Nat())) }
+  let (v : Vec(Nat(), _), n : Nat(), p : EqE(Vec(Nat(), n), v, v)) = { let (a, b) = mk(); (b, Zero(), ReflE(_, _)) };"
+
 #guard rejects "fn g(erased n : Nat(), m : Nat(), e : EqE(Nat(), n, m)) -> (r : Nat()) { m }
   print g(_, mkn(), ReflE(_, _));"
 #guard rejects "fn g() -> (a : Any(), p : EqE(Any(), a, a), m : Nat()) {

@@ -138,5 +138,17 @@ test("a _ with no solution among the terms that exist before it, or with several
   two.err(`${all}fn f(erased n : Nat(), e : EqE(Nat(), Succ(n), n)) -> (r : Nat()) {\n  Zero()\n}\nfn g(m : Nat(), e : EqE(Nat(), m, Succ(m))) -> (r : Nat()) {\n  f(_, e)\n}\n`, "_", /it would need `Succ\(_@\d+:\d+\)` and `m` to be equal/, "f(_");
   one.err(`${base}let p : Eq(Nat(), Zero(), Zero()) = Refl(_, _);\n`, "_", noneOfThese, "_);");
   one.err(`${base}let (A : Type(), x : A, p : Eq(A, x, _)) = sorry(_);\n`, "_", /none is given here/, "sorry(");
-  two.err(`${all}let (v : Vec(Nat(), _), n : Nat(), p : Eq(Vec(Nat(), n), v, v)) = (VNil(Nat()), Zero(), Refl(_, _));\n`, "VNil(Nat())", /binder `v` has a `_` in its type that would be a binder after it/, "= (");
+});
+
+test("a _ in a tuple let binder stands for the result a later binder names", () => {
+  const p = "p : EqE(Vec(Nat(), n), v, v)", mk = "fn mk() -> (n : Nat(), v : Vec(Nat(), n)) {\n  (Zero(), VNil(Nat()))\n}\n";
+  const later = `${all}let (v : Vec(Nat(), _), n : Nat(), ${p}) = (VNil(Nat()), Zero(), ReflE(_, _));\nprint n;\n`;
+  assert.equal(solvedTo(two.ok(later), later, "_), n :"), "Zero()");
+  two.ok(`${all}let (v : Vec(Nat(), _), n : Nat()) = (VNil(Nat()), Zero());\n`);
+  const opaque = `${all}${mk}let (v : Vec(Nat(), _), n : Nat(), ${p}) = { let (a, b) = mk(); (b, a, ReflE(_, _)) };\n`;
+  assert.match(solvedTo(two.ok(opaque), opaque, "_), n :") ?? "", /^\?1@\d+:\d+$/);
+  assert.deepEqual(prints(two.ok(`${all}${mk}fn t() -> (r : Nat()) {\n  let (v : Vec(Nat(), _), n : Nat(), ${p}) = ` +
+    "{ let (a, b) = mk(); (b, a, ReflE(_, _)) };\n  n\n}\nprint t();\n")), ["Zero()"]);
+  two.err(`${all}let (v : Vec(Nat(), _), n : Nat(), ${p}) = (VNil(Nat()), Succ(Zero()), ReflE(_, _));\n`, "_", /it must have type `Vec\(Nat\(\), Succ\(Zero\(\)\)\)`/, ", _));");
+  two.err(`${all}${mk}let (v : Vec(Nat(), _), n : Nat(), ${p}) = { let (a, b) = mk(); (b, Zero(), ReflE(_, _)) };\n`, "_", /it must have type `Vec\(Nat\(\), Zero\(\)\)`/, ", _)) }");
 });

@@ -123,7 +123,12 @@ placeholder a tuple `let` binder gets while solving: a number counts
 only the entries before it that are neither. The terms offered for a
 `_` are, in order, one built from untainted entries that exist before
 it wherever canonicalization allows, the term unification first gave
-it, and its canonical form when its boundary ends. A tuple `let` whose
+it, and its canonical form when its boundary ends. While solving, a
+tuple `let` whose binders have a `_` gives its right-hand side each
+binder's type or `is` clause abstracted only over the binders before
+it, so a `_` there can be unified with a later binder's placeholder,
+which the end of the statement unifies with the result that binder
+names. A tuple `let` whose
 binders have a `_` is checked by `runProgramWith` right-hand side
 first, given only its binders' multiplicities, and then each binder's
 type or `is` clause, with the binders before it naming their results,
@@ -255,7 +260,7 @@ against a type goal and against a function goal; a program with
 program with `sorry` and erased fields. Its `#guard`s also show that,
 in phases 1 and 2, a goal tainted through its type, a goal after a
 top-level pattern `let` on `sorry`, and an empty type's goal met by
-`qed sorry(_);` are not proved. Of the 432 programs of the
+`qed sorry(_);` are not proved. Of the 448 programs of the
 differential corpus, 45 report their goal proved.
 
 ## What has to be trusted
