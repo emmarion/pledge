@@ -307,6 +307,9 @@ and never renumbered (rule 15); a removed item leaves a gap.
     any erased result: a name bound erased, a call's result for an
     erased return, a match's result for an erased annotation entry,
     and a `_`. Each is allowed only where its position is erased.
+    §16's exemption of a name whose type is `Type()` is read of a name
+    bound erased and of the term a `_` stands for, and of no other
+    erased result.
 46. **Erasure flows down per result.** A position's result is erased
     when what the position is given has an erased entry there, and
     for every argument of a type constructor. A tuple passes it to

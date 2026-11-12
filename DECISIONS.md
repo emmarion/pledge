@@ -28,23 +28,7 @@ D61. Tentatively: the global entries are in creation order.
 
 ## Approved rules awaiting wording
 
-D66. A program with a `_` for an argument or inside a type (§20) checks
-     as if each `_` were replaced by a written term, except that the
-     term is allowed to refer to entries that have no name. A `_` is
-     solved only when its solution is unique up to canonicalization.
-D67. §16's restriction, that an erased name is allowed only in an
-     erased position, does not apply to an entry whose type is
-     `Type()`.
-D68. Where canonicalization makes several terms identical, a `_` is
-     the untainted one whenever one of them is untainted.
-D69. §20 is to change for a tuple `let` whose binders contain a `_`:
-     its right-hand side is checked first, and then each binder
-     against the result it names.
-D70. A `_` in a tuple `let` binder is allowed to stand for the result
-     a later binder names, as in
-     `let (v : Vec(Nat(), _), n : Nat()) = (VNil(Nat()), Zero());`.
-D71. D66's "unique up to canonicalization" is judged with the facts in
-     force at the end of what the `_` must be solved by (§20).
+None at present.
 
 ## Proposals, not approved
 
