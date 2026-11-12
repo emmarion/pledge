@@ -21,7 +21,8 @@ const eqFalse = "data Eq(A : Type(), x : A, y : A) : Type() {\n  Refl(A : Type()
   "data False() : Type() {}\n";
 const box = "data Box() : Type() {\n  B(x : Nat()) : Box();\n}\n";
 const rule = "an erased value is allowed only in an erased position: a type, an argument for an erased parameter " +
-  "or field, or the result for an erased return or binder (§16)";
+  "or field, or the result for an erased return or binder; an erased name whose type is `Type()` is allowed anywhere " +
+  "(§16)";
 
 test("a refutation's derivation lists the equation that gave each rule it was rewritten by", () => {
   const source = `${nat}${eqFalse}fn zeroNotOne(e : Eq(Nat(), Zero(), Succ(Zero()))) -> (f : False()) {

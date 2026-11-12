@@ -99,6 +99,16 @@ def one : Term := .app ⟨.ctor, "Succ"⟩ [zero]
 def erasedΓ : Entries := [{ type := .TYPE, erased := true }, { type := .app ⟨.type, "Nat"⟩ [], erased := true }]
 #guard !(Term.entry 0).erasedUse [] erasedΓ 2 && (Term.entry 1).erasedUse [] erasedΓ 2
 #guard !(Term.app ⟨.type, "Vec"⟩ [.entry 0, .entry 1]).erasedUse [] erasedΓ 2
+#guard !Sigs.restricted [] erasedΓ 2 true (.entry 0) && Sigs.restricted [] erasedΓ 2 true (.entry 1) &&
+  !Sigs.restricted [] erasedΓ 2 false (.entry 1)
+
+#guard accepts "fn h(erased B : Type()) -> (b : Box(Type())) { MkBox(Type(), B) }"
+#guard accepts "let erased U = Nat(); let b = MkBox(Type(), U); print U;"
+#guard rejects "fn F(n : Nat()) -> (T : Type()) { Nat() }
+  fn h(erased n : Nat()) -> (b : Box(Type())) { MkBox(Type(), F(n)) }"
+#guard rejects "fn g(erased A : Type(), erased x : A) -> (y : A) { x }"
+#guard rejects "fn F(n : Nat()) -> (erased T : Type()) { Nat() }
+  let U = F(Zero());"
 
 /-- A table term numbers only real entries, so a `_` solved after a restart, inside another `_`'s boundary or a tuple
 `let` whose binders have `_`, reads it by counting them. -/

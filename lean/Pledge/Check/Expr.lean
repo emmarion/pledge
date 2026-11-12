@@ -57,7 +57,8 @@ mutual
     | .var x => match x.name with
       | none => failAt x.pos fun _ => "`_` stands only for a whole argument or inside a type (§16)"
       | some n => match sc.lookup n with
-        | some r => produced sc g x.pos [{ r with erased := r.erased || sc.erasedEntry r.term }] (.var x)
+        | some r => produced sc g x.pos
+          [{ r with erased := sc.sigs.restricted sc.Γ C.phase (r.erased || sc.erasedEntry r.term) r.term }] (.var x)
         | none => notValue C sc ⟨n, x.pos⟩
     | .app h args => match C.global h.name with
       | some (.fn _ sig) => do

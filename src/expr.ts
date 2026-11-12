@@ -52,7 +52,8 @@ export function expr(ctx: Ctx, local: Local, e: Expr, given: Given | null, where
     (e.kind === "var" ? code(e.name.name) : out.results.length === 1 ? "this value" : `value ${leak + 1} of this`) +
     ` is erased, and ${g?.label?.(leak) ?? (g ? ELSEWHERE : where)} is not; ` +
     "an erased value is allowed only in an erased position: a type, " +
-    "an argument for an erased parameter or field, or the result for an erased return or binder (§16)");
+    "an argument for an erased parameter or field, or the result for an erased return or binder; " +
+    "an erased name whose type is `Type()` is allowed anywhere (§16)");
   return whole || out.results.every(r => r.tainted) ? { ...out, tree: { kind: "removed", span: e.span } } : out;
 }
 
@@ -158,8 +159,11 @@ export function closed(ctx: Ctx, local: Local, e: Expr, given: Given | null, whe
 const erasedArg = (ctx: Ctx, scope: Scope, head: Head, k: number): boolean =>
   head.kind === "type" && ctx.st.phase >= 2 || signature(scope, head.name)?.params[k]?.mult === "erased";
 
+const restricted = (scope: Scope, erased: boolean, t: Term): boolean =>
+  erased && !identical(scope, typeOf(scope, t), TYPE);
+
 const erasedUse = (ctx: Ctx, scope: Scope, t: Term): boolean => t.tag === "entry"
-  ? entry(scope, t.id).erased && !identical(scope, entry(scope, t.id).type, TYPE)
+  ? restricted(scope, entry(scope, t.id).erased, t)
   : t.args.some((a, k) => !erasedArg(ctx, scope, t.head, k) && erasedUse(ctx, scope, a));
 
 type Made = { local: Local; result: Result };
@@ -203,7 +207,7 @@ function build(ctx: Ctx, local: Local, e: Expr, given: Given | null, snap: Snaps
       occur(ctx, e.name.span, local, found.id, local.boundAt.get(name) ?? null);
       point(ctx, local.scope, e.span, ref(found.id));
       return produced(ctx, local, given, [{ id: found.id, tainted: local.tainted.has(name),
-        erased: found.erased || local.erased.has(name) }], e.span, e);
+        erased: restricted(local.scope, found.erased || local.erased.has(name), ref(found.id)) }], e.span, e);
     }
     case "app": {
       const name = e.head.name, g = global(ctx, name);

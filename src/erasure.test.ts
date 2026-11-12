@@ -53,6 +53,25 @@ test("an erased name is an error outside an erased position, at the name", () =>
   err(`${nat}fn f(n : Nat()) -> (erased a : Nat(), b : Nat()) { (n, n) }\nlet (x, y) = f(Zero());\n`, "f(Zero())", /value 1 of this is erased/, "let (x");
 });
 
+test("an erased name whose type is Type() is allowed outside an erased position, an erased result of that type is not", () => {
+  const box = "data Box(A : Type()) : Type() {\n  MkBox(A : Type(), x : A) : Box(A);\n}\n";
+  const tag = "data Tag(A : Type()) : Type() {\n  C() : Tag(Type());\n  D(A : Type()) : Tag(A);\n}\n";
+  assert.deepEqual(prints(ok(`${nat}${box}fn h(erased B : Type()) -> (b : Box(Type())) { MkBox(Type(), B) }\nprint h(Nat());\n`)), ["MkBox(_, _)"]);
+  assert.deepEqual(prints(ok(`${nat}${box}fn h(erased B : Type()) -> (b : Box(Type())) { MkBox(_, B) }\nprint h(Nat());\n`)), ["MkBox(_, _)"]);
+  assert.deepEqual(prints(ok(`${nat}${box}let erased U = Nat();\nprint U;\nlet b = MkBox(Type(), U);\nprint b;\n`)), ["_", "MkBox(_, _)"]);
+  assert.deepEqual(prints(ok(`${nat}fn g(erased A : Type()) -> (y : Type()) { let B = A; B }\n` +
+    "fn k(erased A : Type()) -> (y : Type(), z : Nat()) { (A, Zero()) }\nprint g(Nat());\nlet (p, q) = k(Nat());\nprint q;\n")), ["_", "Zero()"]);
+  assert.deepEqual(prints(ok(`${nat}${box}${tag}fn g(A : Type(), t : Tag(A), erased x : A) -> (y : Box(Type())) {\n` +
+    "  match t : (y : Box(Type())) {\n    C() => MkBox(Type(), x);\n    D(_) => MkBox(Type(), Nat());\n  }\n}\nprint g(Type(), C(), Nat());\n")), ["MkBox(_, _)"]);
+  assert.deepEqual(prints(ok(`${nat}${box}let erased U = sorry(U : Type());\nlet b = MkBox(Type(), U);\nprint b;\n`)), ["sorry"]);
+  err(`${nat}${box}fn F(n : Nat()) -> (T : Type()) { Nat() }\nfn h(erased n : Nat()) -> (b : Box(Type())) { MkBox(Type(), F(n)) }\n`, "n", leak, "F(n)");
+  err(`${nat}fn g(erased A : Type(), erased x : A) -> (y : A) { x }\n`, "x", leak, "{ x");
+  err(`${nat}fn g(erased A : Type()) -> (y : Nat()) { match A : (y : Nat()) {} }\n`, "A", /cannot be the scrutinee/, "match A");
+  err(`${nat}fn F(n : Nat()) -> (erased T : Type()) { Nat() }\nlet U = F(Zero());\n`, "F(Zero())", /this value is erased/, "let U");
+  err(`${nat}fn f(erased n : Nat()) -> (T : Type()) {\n  match erased n : (erased U : Type()) {\n    Zero() => Nat();\n    Succ(_) => Nat();\n  }\n}\n`,
+    "match erased n : (erased U : Type()) {\n    Zero() => Nat();\n    Succ(_) => Nat();\n  }", /this value is erased/);
+});
+
 test("erased positions: types, erased parameters, fields and returns, and everything inside them", () => {
   const r = ok(`${nat}${vec}${eq}
 fn f(erased n : Nat(), v : Vec(Nat(), n), erased w is Succ(n)) -> (erased m : Nat(), u : Vec(Nat(), n), p : Eq(Nat(), w, Succ(n))) {

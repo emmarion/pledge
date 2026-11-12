@@ -183,4 +183,36 @@ theorem removed_rel_type {S : Sigs} {phase : Nat} {v : Value} (hT : TypeHeads S)
   obtain ⟨hd, ws, sig, rfl, hs, -, hr⟩ := h.inv
   exact .type (hT hd sig ws hs hr)
 
+/-- From phase 2 on, every argument of a type constructor is erased, so a run-time value approximating a value of
+type `Type()` is related to it. -/
+theorem approx_rel_type {S : Sigs} {phase : Nat} {a v : Value} (hT : TypeHeads S) (hp : 2 ≤ phase)
+    (h : HasType S v Value.TYPE) (ha : Approx a v) : Rel S phase a v := by
+  obtain ⟨hd, ws, sig, rfl, hs, -, hr⟩ := h.inv
+  have hk := hT hd sig ws hs hr
+  cases ha with
+  | removed => exact .type hk
+  | app hl hA =>
+    refine .app hl (fun k a i ha hi _ => hA k a i ha hi) fun k a i _ _ he => ?_
+    simp [Sigs.erasedArg, hk, hp] at he
+
+/-- An erased term that `Sigs.restricted` lets into a position that is not erased has a type `Type()`, so its
+run-time value, approximating its ideal one, is related to it. -/
+theorem rel_of_unrestricted {S Sc : Sigs} {Γ : Entries} {ρ : List Value} {phase : Nat} {t : Term} {a v : Value}
+    (hΓ : Sat Sc Γ ρ) (hS : SigsClose S ρ Sc) (hJ : Sc.find junkHead = none) (hT : TypeHeads Sc)
+    (hr : S.restricted Γ phase true t = false) (hv : t.eval ρ [] = some v) (hty : ∃ V, HasType Sc v V)
+    (ha : Approx a v) : Rel Sc phase a v := by
+  simp only [Sigs.restricted, Bool.true_and, Bool.not_eq_false', Bool.and_eq_true, decide_eq_true_eq,
+    Option.any_eq_true] at hr
+  obtain ⟨hp, T, hT', hid⟩ := hr
+  obtain ⟨V, hV⟩ := hty
+  have hTV := typeOf_sound hΓ.1 hS hJ hv hV hT'
+  rw [hΓ.eval_eq_of_identical hid] at hTV
+  obtain rfl : V = Value.TYPE := by simpa [Term.TYPE, Value.TYPE, Term.eval, Term.evalList] using hTV.symm
+  exact approx_rel_type hT hp hV ha
+
+theorem Inv.rel_of_unrestricted {C : Ctx} {sc : Scope} {n0 : Nat} {W : World} {ρ : List Value} {act : Act}
+    {t : Term} {a v : Value} (hI : Inv C sc n0 W ρ act) (hr : sc.sigs.restricted sc.Γ C.phase true t = false)
+    (hv : t.eval ρ [] = some v) (hty : ∃ V, HasType W.Sc v V) (ha : Approx a v) : Rel W.Sc C.phase a v :=
+  Pledge.rel_of_unrestricted hI.sat (hI.sigs ρ hI.agree) hI.noJunk hI.typeHeads hr hv hty ha
+
 end Pledge

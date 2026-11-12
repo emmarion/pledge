@@ -285,6 +285,11 @@ def single (pos : Pos) : List Res → CheckM Res
   | [r] => pure r
   | rs => miscount pos 1 s!"produces {rs.length}"
 
+/-- Whether an erased name, or the term it stands for, is allowed only in an erased position (§16): unless, from
+phase 2 on, its type is `Type()`. -/
+def Sigs.restricted (S : Sigs) (Γ : Entries) (phase : Nat) (erased : Bool) (t : Term) : Bool :=
+  erased && !(2 ≤ phase && (typeOf S Γ t).any (identical Γ · .TYPE))
+
 /-- After an expression is checked (§12, §16): taint from a tainted scope, the rule that an erased result is
 only in an erased position, and removal of an expression that is wholly erased or whose results are all tainted. -/
 def finish (C : Ctx) (whole : Bool) (g : Option Given) (e : Expr) (o : Out) : CheckM Out := do
@@ -302,7 +307,7 @@ def finish (C : Ctx) (whole : Bool) (g : Option Given) (e : Expr) (o : Out) : Ch
           | none => C.place
         s!"{what} is erased, and {place} is not; an erased value " ++
         "is allowed only in an erased position: a type, an argument for an erased parameter or field, " ++
-        "or the result for an erased return or binder (§16)"
+        "or the result for an erased return or binder; an erased name whose type is `Type()` is allowed anywhere (§16)"
   pure { o with res, tree := if whole || res.all (·.tainted) then .removed else o.tree }
 
 /-- Solves the `_` being solved (§16) from an equation, only their entries taking rules; nothing when there are none. -/
@@ -494,7 +499,7 @@ def argGiven (p : TBinder) (prev : List Res) (role owner : String) (erased : Boo
 
 mutual
   def Term.erasedUse (S : Sigs) (Γ : Entries) (phase : Nat) : Term → Bool
-    | .entry i => (Γ[i]?).any fun en => en.erased && !identical Γ en.type .TYPE
+    | .entry i => S.restricted Γ phase ((Γ[i]?).any (·.erased)) (.entry i)
     | .bound _ => false
     | .app h as => Term.erasedUseList S Γ phase h 0 as
   def Term.erasedUseList (S : Sigs) (Γ : Entries) (phase : Nat) (h : Head) (k : Nat) : List Term → Bool

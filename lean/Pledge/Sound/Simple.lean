@@ -117,13 +117,16 @@ theorem given_length {C : Ctx} {S : Sigs} {ρ : List Value} {g : Option Given} {
 theorem var_post {C : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : World} {ρ : List Value} {act : Act}
     {o₀ o : Out} {x : Id} {n : String} {r : Res} (hI : Inv C sc n0 W ρ act)
     (hg : ∀ g', g = some g' → g'.Ok W.Sc ρ) (hx : x.name = some n) (hl : sc.lookup n = some r)
-    (h₀ : produced sc (given C g) x.pos [{ r with erased := r.erased || sc.erasedEntry r.term }] (.var x) = .ok o₀)
+    (h₀ : produced sc (given C g) x.pos
+      [{ r with erased := sc.sigs.restricted sc.Γ C.phase (r.erased || sc.erasedEntry r.term) r.term }] (.var x) =
+        .ok o₀)
     (hf : finish (C.enter (whole C g)) (whole C g) (given C g) (.var x) o₀ = .ok o) :
     ExprPost C sc g n0 W ρ act o := by
   intro _
   obtain ⟨v, hv, hok⟩ := hI.names n r hl
-  have hvs : Term.evalList ρ [] ([({ r with erased := r.erased || sc.erasedEntry r.term } : Res)].map (·.term)) =
-      some [v] := by simp [Term.evalList, hv]
+  have hvs : Term.evalList ρ []
+      ([({ r with erased := sc.sigs.restricted sc.Γ C.phase (r.erased || sc.erasedEntry r.term) r.term } : Res)].map
+        (·.term)) = some [v] := by simp [Term.evalList, hv]
   obtain ⟨rfl, hw⟩ := produced_sound hI.sat.1 (hI.sigs ρ hI.agree) hI.noJunk hI.holes hvs ⟨hok, trivial⟩
     (fun g' h => (given_ok hg g' h).env) h₀
   obtain ⟨hsc, hres, -, -⟩ := finish_untainted hf hI.untainted
@@ -150,12 +153,13 @@ theorem var_post {C : Ctx} {sc : Scope} {g : Option Given} {n0 : Nat} {W : World
       · have he := her 0 _ rfl
         simp only [whole, Bool.or_eq_false_iff] at hwh
         simp only [Ctx.posMult, hwh.1, Bool.false_or] at hp
-        have hmo : sc.multOf r = .many := by
-          simp only [Scope.multOf]
-          split
-          · rename_i hre; simp [hre] at he; simp [he] at hp
-          · rfl
-        rw [hmo] at hm; exact hm
+        simp only [Scope.multOf] at hm
+        split at hm
+        · rename_i hre
+          cases hR : sc.sigs.restricted sc.Γ C.phase true r.term
+          · exact hI.rel_of_unrestricted hR hv (hok.2.2 hrt) hm
+          · simp [hre, hR] at he; simp [he] at hp
+        · exact hm
       · exact hm.approx
 
 theorem wantsSat_resOk {S : Sigs} {ρ : List Value} :
