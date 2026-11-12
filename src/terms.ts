@@ -114,9 +114,6 @@ export const forget = (inner: Scope, outer: Scope, named: readonly { name: strin
   named.reduce((s, { name, id }) => put(s, { ...entry(s, id), names: entry(s, id).names.filter(n => n !== name) }),
     { ...inner, names: outer.names });
 
-export const mark = (scope: Scope, id: EntryId, flags: { erased?: boolean; tainted?: boolean }): Scope =>
-  put(scope, { ...entry(scope, id), ...flags });
-
 export const addRule = (scope: Scope, id: EntryId, term: Term, at: Span, how?: (view: Scope) => Rendered[]): Scope =>
   put(scope, { ...entry(scope, id), rule: { term, at, ...how ? { how } : {} } });
 
@@ -162,7 +159,19 @@ export function same(a: OpenTerm, b: OpenTerm): boolean {
 
 export const identical = (scope: Scope, a: OpenTerm, b: OpenTerm): boolean => same(canon(scope, a), canon(scope, b));
 
-export const mentions = (t: OpenTerm, which: (id: EntryId) => boolean): boolean =>
+export function coreType(scope: Scope, t: Term): Term | null {
+  if (t.tag === "entry") return known(scope, t.id) ? entry(scope, t.id).type : null;
+  const sig = signature(scope, t.head.name), { args } = t;
+  const fit = (p: Binder, i: number): boolean => {
+    const a = args[i]!, has = coreType(scope, a), prev = args.slice(0, i);
+    return has !== null && identical(scope, subst(p.type, prev), has)
+      && (!p.is || identical(scope, subst(p.is, prev), a));
+  };
+  return sig && sameHead(sig.head, t.head) && sig.params.length === args.length && sig.params.every(fit)
+    ? subst(sig.ret, args) : null;
+}
+
+export const mentions =(t: OpenTerm, which: (id: EntryId) => boolean): boolean =>
   t.tag === "app" ? t.args.some(a => mentions(a, which)) : t.tag === "entry" && which(t.id);
 
 export const occurs = (id: EntryId, t: OpenTerm): boolean => mentions(t, x => x === id);

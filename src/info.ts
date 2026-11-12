@@ -102,8 +102,8 @@ export function queries(st: State, fallback: (offset: number) => Snapshot):
       if ("error" in parsed) return parsed;
       const snap = at(offset);
       return attempt(() => {
-        const out = closed({ st: { ...st, record: false }, fn: snap.fn, skeleton: false, limit: snap.limit,
-          erased: true, inType: false, holes: [], decl: snap.decl }, snap.local, parsed.expr, null);
+        const out = closed({ st: { ...st, record: false, table: new Map() }, fn: snap.fn, skeleton: false,
+          limit: snap.limit, erased: true, inType: false, holes: [], decl: snap.decl }, snap.local, parsed.expr, null);
         const scope = out.local.scope, e = entry(scope, single(out, parsed.expr.span).id);
         const both = (t: Term): [Rendered, Rendered] => [render(scope, written(scope, t), { canonical: false }),
           render(scope, t)];

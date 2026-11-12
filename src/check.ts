@@ -6,7 +6,8 @@ import { TYPE, abstract, declare, emptyScope, ref, signature } from "./terms.ts"
 import { position } from "./position.ts";
 import { bindPattern, evalOne, evalStmt, showValue } from "./eval.ts";
 import type { Env, FnDef, Value } from "./eval.ts";
-import { Failure, attempt, code, declareGlobal, erases, fail, labelled, newName, occur, record } from "./context.ts";
+import { Failure, attempt, code, declareGlobal, erases, fail, labelled, newName, occur, record, rewind }
+  from "./context.ts";
 import type { Ctx, Declared, FnCtx, FnSig, Given, Global, Local, Snapshot, State } from "./context.ts";
 import { annotate, closed, header, single, stmt, telescope, term } from "./expr.ts";
 import { goalGiven, qedFn, rejectFn } from "./goal.ts";
@@ -35,7 +36,7 @@ export const check: Check = (source, phase, where = position(source)) => {
   let top: Local = { scope: emptyScope(where), tainted: new Set(), erased: new Set(), boundAt: new Map(),
     taintedBy: null };
   const st: State = { phase, globals: [], index: new Map(), snapshots: [], explains: [], occurrences: [],
-    erased: [], record: true };
+    erased: [], record: true, table: new Map() };
   declareGlobal(st, { kind: "type", name: "Type", sig: signature(top.scope, "Type")!, ctors: null, done: true });
   const ctx: Ctx = { st, fn: null, skeleton: false, limit: null, erased: false, inType: false, holes: [], decl: null };
   const prints: CheckResult["prints"] = [], gaps: Snapshot[] = [];
@@ -107,9 +108,9 @@ export const check: Check = (source, phase, where = position(source)) => {
       globals[i]!.sig = sig;
       return { f, c, sig, local: params.local, env: params.ids.map(ref) };
     });
-    const logs = [st.snapshots, st.explains, st.occurrences, st.erased], marks = logs.map(log => log.length);
+    const reset = rewind(st);
     for (;;) {
-      logs.forEach((log, i) => { log.length = marks[i]!; });
+      reset();
       const bodies = heads.map((h, i) => closed(h.c, h.local, h.f.body, { wants: h.sig.returns, env: h.env, whole: true,
         label: j => labelled("return", h.sig.returns[j]?.name ?? null, j, names[i]) }));
       const now = bodies.map(b => b.results.some(r => r.tainted));

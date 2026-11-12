@@ -75,7 +75,8 @@ function solve(scope: Scope, eqs: Eq[], at: Span, may: (id: EntryId) => boolean,
 export function unify(scope: Scope, lhs: Term, rhs: Term, at: Span,
     hole: (id: EntryId) => boolean): { scope: Scope; stuck: readonly [Term, Term] | null } {
   const { scope: now, failed } = solve(scope, [{ lhs, rhs, why: "hole", parent: null }], at, hole, null);
-  return { scope: now, stuck: failed && "rigid" in failed.failure ? failed.failure.rigid : null };
+  return { scope: now, stuck: !failed ? null : "x" in failed.failure ? [ref(failed.failure.x), failed.failure.e]
+    : [failed.eq.l, failed.eq.r] };
 }
 
 export function force(scope: Scope, scrutinee: EntryId, ctor: Signature, at: Span, site: string,

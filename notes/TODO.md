@@ -19,15 +19,3 @@ Its prose argument predates §11's rule that no type is evaluated: claim
 (P), that every evaluation produces values of the types, would need to
 cover the blank that stands for a type. It also says nothing about
 solving a `_`.
-
-## 3. The likely bugs in notes/BUGS.md
-
-Both are deferred by the owner.
-
-## 4. Lean coverage of `_`
-
-The Lean theorems cover only programs with no `_` for an argument or
-inside a type. One way to extend them, proposed but not decided, is
-for the checker to re-check the program with each `_` written out as
-its solution, so that the existing theorems apply without any proof
-about the solver. This seems the largest item, and the most proof-heavy.

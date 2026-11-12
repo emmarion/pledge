@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { CheckResult } from "./api.ts";
-import { harness, nat, vecBy, verdicts } from "../tests/helpers.ts";
+import { explainTerm, harness, nat, vecBy, verdicts } from "../tests/helpers.ts";
 
 const one = harness(1), two = harness(2);
 const vec = vecBy(""), erasedVec = vecBy("erased ");
@@ -31,7 +31,7 @@ test("phase 1: _ inside a type, at any depth and as a whole type", () => {
   one.err(`${nat}${vec}print Vec(Nat(), Succ(_));\n`, "_", unsolved);
   one.err(`${nat}fn f(n : _) -> (r : Nat()) {\n  Zero()\n}\n`, "_", unsolved);
   one.err(`${nat}let x is _ = Zero();\n`, "_", /stands only for a whole argument or inside a type/);
-  one.err(`${nat}${vec}let v : Vec(_, Succ(_)) = VNil(Nat());\n`, "VNil(Nat())", /binder `v` must have type `Vec\(Nat\(\), Succ\(_@\d+:\d+\)\)`/);
+  one.err(`${nat}${vec}let v : Vec(_, Succ(_)) = VNil(Nat());\n`, "_", /it would need `Succ\(_@\d+:\d+\)` and `Zero\(\)` to be equal/, "Succ(_");
   assert.deepEqual(prints(one.ok(`${nat}${vec}let (v : Vec(_, Zero()), w : Vec(Nat(), Zero()), e is v) = (VNil(Nat()), VNil(Nat()), VNil(Nat()));\nprint e;\n`)), ["VNil(_)"]);
   const pair = `${nat}${vec}fn pair() -> (m : Nat(), v : Vec(Nat(), m)) {\n  (Zero(), VNil(_))\n}\n`;
   assert.deepEqual(prints(one.ok(`${pair}let (m : Nat(), v : Vec(Nat(), _)) = pair();\nlet (k, u : Vec(_, _)) = pair();\nprint u;\n`)), ["VNil(_)"]);
@@ -89,4 +89,54 @@ test("explainAt works at a _ in a let binder solved to what the right-hand side 
   const source = `${nat}${vec}fn pair() -> (m : Nat(), v : Vec(Nat(), m)) {\n  (Zero(), VNil(Nat()))\n}\nlet (k, u : Vec(_, _)) = pair();\n`;
   const r = one.ok(source);
   for (let at = source.indexOf("let (k"); at < source.length; at++) r.explainAt(at);
+});
+
+const eqE = "data EqE(A : Type(), a : A, b : A) : Type() {\n  ReflE(erased A : Type(), erased a : A) : EqE(A, a, a);\n}\n";
+const isS = "data IsS(n : Nat()) : Type() {\n  MkIsS(erased m : Nat()) : IsS(Succ(m));\n}\n";
+const pt = "data Pt(A : Type(), a : A) : Type() {\n  MkPt(A : Type(), a : A) : Pt(A, a);\n}\n";
+const any = "data Any() : Type() {\n  MkAny(erased n : Nat()) : Any();\n}\nfn mkn() -> (r : Nat()) {\n  Zero()\n}\n";
+const base = `${nat}${eq}${vec}${pt}`, all = `${base}${eqE}${isS}${box}${any}`;
+const solvedTo = (r: CheckResult, source: string, at: string): string | undefined =>
+  explainTerm(r, source.indexOf(at))?.canonical.text;
+
+test("a _ in a tuple let binder is checked against the results the binders before it name (notes/BUGS.md 1)", () => {
+  const bug = `${base}let (A : Type(), x : A, p : Eq(A, x, _)) = (Nat(), Zero(), Refl(Nat(), Zero()));\n`;
+  assert.equal(solvedTo(one.ok(bug), bug, "_)) ="), "Zero()");
+  for (const s of [
+    "let (n : Nat(), v : Vec(Nat(), n), e : Eq(Vec(Nat(), n), v, _)) =\n  (Zero(), VNil(Nat()), Refl(Vec(Nat(), Zero()), VNil(Nat())));\n",
+    "let (A : Type(), b : Pt(A, _)) = (Nat(), MkPt(Nat(), Zero()));\n",
+    "let (n : Nat(), v : Vec(Nat(), _)) = (Succ(Zero()), VNil(Nat()));\n",
+  ]) one.ok(`${base}${s}`);
+  two.ok(`${all}let (n : Nat(), e is Refl(Nat(), _)) = (Zero(), Refl(Nat(), Zero()));\n`);
+  two.ok(`${all}let (A : Type(), x : A, p : EqE(EqE(A, x, x), _, _)) = (Nat(), Zero(), ReflE(_, ReflE(_, _)));\n`);
+  two.ok(`${all}fn f(s : IsS(Succ(Zero()))) -> (r : Nat()) {\n  let (v : Vec(Nat(), _), m : Nat()) = (VNil(Nat()), { let MkIsS(a) = s; Zero() });\n  m\n}\n`);
+});
+
+test("a _ is solved to an entry that exists before it, whatever a later pattern let makes it (notes/BUGS.md 2)", () => {
+  const bug = `${all}fn f(erased n : Nat(), q : IsS(n), k : Nat()) -> (r : Nat()) {\n  k\n}\nfn g(k : Nat(), z : IsS(k)) -> (r : Nat()) {\n  f(_, z, { let MkIsS(a) = z; k })\n}\n`;
+  assert.equal(solvedTo(two.ok(bug), bug, "_, z,"), "k");
+  two.ok(`${all}fn f(erased n : Nat(), m : Nat(), e : EqE(Nat(), n, m)) -> (r : Nat()) {\n  m\n}\nfn g(k : Nat(), z : IsS(k)) -> (r : Nat()) {\n  f(_, { let MkIsS(a) = z; k }, ReflE(_, _))\n}\n`);
+  two.ok(`${all}fn g(k : Nat(), z : IsS(k)) -> (e : EqE(Nat(), k, k), r : Nat()) {\n  (ReflE(_, _), { let MkIsS(a) = z; Zero() })\n}\n`);
+  const t = `${all}fn h(k : Nat()) -> (r : Nat(), e : EqE(Nat(), r, k)) {\n  (k, ReflE(Nat(), k))\n}\nfn g(erased n : Nat(), m : Nat(), e : EqE(Nat(), n, m)) -> (r : Nat()) {\n  m\n}\nfn t(k : Nat()) -> (r : Nat()) {\n  g(_, { let (r, e) = h(k); let ReflE(_, _) = e; r }, ReflE(_, _))\n}\nprint t(Zero());\n`;
+  assert.deepEqual(prints(two.ok(t)), ["Zero()"]);
+});
+
+test("a _ is untainted when an untainted term is canonically identical to what it is solved to (§12)", () => {
+  const source = `${all}let s = sorry(p : Nat());\nfn use(erased n : Nat(), e : EqE(Nat(), n, Zero())) -> (r : Nat()) {\n  Zero()\n}\nfn g(k : Nat(), e : EqE(Nat(), k, s), e2 : EqE(Nat(), k, Zero())) -> (r : Nat()) {\n  let ReflE(_, _) = e;\n  let r1 = use(_, e2);\n  let r2 = use(k, e2);\n  let r3 = use(s, e2);\n  inspect;\n  r1\n}\n`;
+  const r = two.ok(source), scope = r.inspects[0]!.info.scope;
+  assert.deepEqual(["r1", "r2", "r3"].map(n => scope.find(e => e.names.includes(n))?.tainted), [[], [], ["r3"]]);
+  assert.equal(solvedTo(r, source, "_, e2)"), "s");
+  const goal = `${all}let s = sorry(p is Zero());\nfn use(erased n : Nat(), e : EqE(Nat(), n, Zero())) -> (r : Nat()) {\n  Zero()\n}\nfn g(e : EqE(Nat(), s, Zero())) -> (r : Nat()) {\n  use(_, e)\n}\ngoal fn (e : EqE(Nat(), Zero(), Zero())) -> (r : Nat());\nqed g;\n`;
+  assert.deepEqual(verdicts(two.ok(goal)), [true, true, true]);
+  two.ok(`${all}fn f(erased A : Type(), x : A) -> (b : Box(A)) {\n  MkBox(_, x)\n}\n`);
+});
+
+test("a _ with no solution among the terms that exist before it, or with several, is still an error", () => {
+  two.err(`${all}fn g(erased n : Nat(), m : Nat(), e : EqE(Nat(), n, m)) -> (r : Nat()) {\n  m\n}\nprint g(_, mkn(), ReflE(_, _));\n`, "_", /mentions what is produced only after it/, "g(_");
+  two.err(`${all}fn g() -> (a : Any(), p : EqE(Any(), a, a), m : Nat()) {\n  (MkAny(_), { let k = mkn(); ReflE(_, MkAny(k)) }, Zero())\n}\n`, "_", /mentions what is produced only after it/, "MkAny(_)");
+  two.err(`${all}let (A : Type(), x : A, p : EqE(EqE(A, _, _), _, _)) = (Nat(), Zero(), ReflE(_, ReflE(_, _)));\n`, "_", unsolved, "EqE(A, _, ");
+  two.err(`${all}fn f(erased n : Nat(), e : EqE(Nat(), Succ(n), n)) -> (r : Nat()) {\n  Zero()\n}\nfn g(m : Nat(), e : EqE(Nat(), m, Succ(m))) -> (r : Nat()) {\n  f(_, e)\n}\n`, "_", /it would need `Succ\(_@\d+:\d+\)` and `m` to be equal/, "f(_");
+  one.err(`${base}let p : Eq(Nat(), Zero(), Zero()) = Refl(_, _);\n`, "_", noneOfThese, "_);");
+  one.err(`${base}let (A : Type(), x : A, p : Eq(A, x, _)) = sorry(_);\n`, "_", /none is given here/, "sorry(");
+  two.err(`${all}let (v : Vec(Nat(), _), n : Nat(), p : Eq(Vec(Nat(), n), v, v)) = (VNil(Nat()), Zero(), Refl(_, _));\n`, "VNil(Nat())", /binder `v` has a `_` in its type that would be a binder after it/, "= (");
 });

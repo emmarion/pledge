@@ -80,9 +80,9 @@ requests that touch `lean/` or `src/`.
   `Data.lean` the `goal` item; `Sound/Stmt.lean` the other top-level
   statements; and `Sound/Top.lean` the headline theorems.
 - `Pledge/ParserTest.lean`, `EvalTest.lean`, `UnifyTest.lean`,
-  `SolveTest.lean`: `#guard` tests. `SolveTest.lean` holds the tests of
-  `_` (§20) whose verdicts differ from the TypeScript checker's, so they
-  are not in `tests/extra/`.
+  `SolveTest.lean`: `#guard` tests. `SolveTest.lean` holds tests of `_`
+  (§20), among them tests of `solution` and of `runProgramWith` given a
+  table.
 
 ## How `_` is checked
 
@@ -240,8 +240,8 @@ against a type goal and against a function goal; a program with
 program with `sorry` and erased fields. Its `#guard`s also show that,
 in phases 1 and 2, a goal tainted through its type, a goal after a
 top-level pattern `let` on `sorry`, and an empty type's goal met by
-`qed sorry(_);` are not proved. Of the 411 programs of the
-differential corpus, 44 report their goal proved.
+`qed sorry(_);` are not proved. Of the 432 programs of the
+differential corpus, 45 report their goal proved.
 
 ## What has to be trusted
 

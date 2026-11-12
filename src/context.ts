@@ -74,9 +74,11 @@ export interface State {
   occurrences: Occurrence[];
   erased: Span[];
   record: boolean;
+  table: Map<number, Solved>;
 }
 
-export interface Hole { id: EntryId; span: Span; is: Term | null; from: number; late: boolean }
+export interface Solved { terms: readonly OpenTerm[]; how: (() => Rendered[]) | undefined }
+export interface Hole { id: EntryId; span: Span; is: Term | null; late: boolean; first?: Term; binder?: number }
 export interface Ctx {
   st: State;
   fn: FnCtx | null;
@@ -90,6 +92,7 @@ export interface Ctx {
 
 export const APP = "app";
 export const HOLE = "_";
+export const LET = "let";
 
 const visible = (ctx: Ctx): number => ctx.limit ?? ctx.st.globals.length;
 
@@ -121,6 +124,11 @@ export function record(ctx: Ctx, local: Local, span: Span, given: Given | null, 
     decl: ctx.decl };
   if (ctx.st.record) ctx.st.snapshots.push(snap);
   return snap;
+}
+
+export function rewind(st: State): () => void {
+  const logs = [st.snapshots, st.explains, st.occurrences, st.erased], marks = logs.map(log => log.length);
+  return () => logs.forEach((log, i) => { log.length = marks[i]!; });
 }
 
 export function point(ctx: Ctx, scope: Scope, span: Span, of: Term | Given): void {
