@@ -554,7 +554,8 @@ At any position in a program, the interface shows:
 
 - **Expected**: what the position is given (§8) and is still to be
   produced there, with an explicit indication wherever nothing has been
-  determined: where nothing is given, and for a tuple `let` binder with
+  determined: where nothing is given, at the right-hand side of a tuple
+  `let` with a `_` in a binder, and for a tuple `let` binder with
   neither a type nor an `is` clause.
 - **Termination**: the enclosing function's `subterm` parameters, in order,
   and the functions of its group.
@@ -716,7 +717,8 @@ tag.
 
 An erased name is allowed only in an erased position: a type, an
 argument for an erased parameter or field, the result for an erased
-return or binder, and everything inside these. A call whose results are
+return or binder, and everything inside these. A name whose type is
+`Type()` is exempt. A call whose results are
 all erased takes any arguments. Evaluation skips erased positions.
 
 `match erased e : (...)` and `let erased C(...) = e;` take their
@@ -799,20 +801,22 @@ telescope, where it stands for the telescope given at its position
 Each `_` in place of an argument or inside a type stands for a skeleton
 term (§3), found by unification alone. Where a result is checked
 against what its position is given (§8), a `_` on either side is solved
-to whatever makes the two identical.
+to whatever makes the two identical. The program is then checked as if
+that term were written in place of the `_`, except that the term is
+allowed to refer to entries that have no name.
 
 A `_` must be solved by the end of the innermost of these that it is
 written in: a call; a function body; a branch body; a scrutinee; a
 pattern `let`'s right-hand side; a tuple `let`; a `print`'s or `qed`'s
 expression; a type or `is` term written in a telescope. An application
-of a type constructor or value constructor does not end it.
+of a type constructor or value constructor does not end it. It is
+solved only when the facts in force there leave one term for it, up to
+canonicalization. Where canonicalization makes several terms identical,
+the `_` is an untainted one whenever one of them is (§12).
 
-The term must have the type of the `_`'s position and satisfy its
-parameter's `is` clause. It must also mention only entries that exist
-before the `_`.
-
-A tuple `let`'s binders are checked before its right-hand side, with
-their `_` unsolved, and the right-hand side is given them. A `_` in a
-binder is allowed to mention what the right-hand side produces.
+A tuple `let` with a `_` in a binder is checked right-hand side first,
+and then each binder against the result it names. Such a `_` is allowed
+to refer to any entry that exists after the right-hand side, the result
+a later binder names included.
 
 A `_` that is not solved so is an error.
