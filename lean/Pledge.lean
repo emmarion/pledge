@@ -17,4 +17,6 @@ import Pledge.Sound.Defs
 import Pledge.Sound.Basic
 import Pledge.Sound.Term
 import Pledge.Sound.Expr
+import Pledge.Sound.Item
+import Pledge.Run
 import Pledge.Sound.Top

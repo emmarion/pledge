@@ -1,5 +1,4 @@
 import Pledge
-import Pledge.Check.Top
 
 open Pledge
 

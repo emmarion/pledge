@@ -69,16 +69,6 @@ def annTake : Tele → List Value → Except String (List Value)
   | .binders bs, vs => take bs.length vs
   | .hole _, vs => pure vs
 
-theorem sizeOf_map_expr (args : List Arg) : sizeOf (args.map Arg.expr) ≤ sizeOf args := by
-  induction args with
-  | nil => simp
-  | cons a args ih => cases a; simp [Arg.expr]; omega
-
-theorem sizeOf_body_lt {b : Branch} {bs : List Branch} (h : b ∈ bs) : sizeOf b.body < sizeOf bs := by
-  have := List.sizeOf_lt_of_mem h
-  cases b; simp [Branch.body] at *; omega
-
-
 theorem ok_bind {ε α β} {a : α} {f : α → Except ε β} : (Except.ok a >>= f) = f a := rfl
 
 theorem error_bind {ε α β} {e : ε} {f : α → Except ε β} : (Except.error e >>= f) = .error e := rfl
@@ -238,76 +228,219 @@ def certify {ε α} : (x : Except ε α) → Except ε { a // x = .ok a }
   | .ok a => .ok ⟨a, rfl⟩
   | .error e => .error e
 
+/-- `x`'s result, given that it has one. -/
+def known {ε α} : (x : Except ε α) → (∃ a, x = .ok a) → { a // x = .ok a }
+  | .ok a, _ => ⟨a, rfl⟩
+  | .error _, h => False.elim (let ⟨_, h⟩ := h; nomatch h)
+
+/-- What the evaluator is asked for: an expression, expressions in order, a call, a block or a statement. -/
+inductive Cfg where
+  | expr (env : Env) (e : Expr)
+  | list (env : Env) (es : List Expr)
+  | call (d : FnDef) (vs : List Value)
+  | block (env : Env) (ss : List Stmt) (e : Expr)
+  | stmt (env : Env) (s : Stmt)
+
+/-- `Cfg.Sub P c' c`: evaluating `c` asks for `c'`, given the results `Eval` gives what it asks for before. -/
+inductive Cfg.Sub (P : Prog) : Cfg → Cfg → Prop where
+  | args {env : Env} {h : Name} {args : List Arg} : Cfg.Sub P (.list env (args.map Arg.expr)) (.expr env (.app h args))
+  | call {env : Env} {h : Name} {args : List Arg} {vs : List Value} {d : FnDef} :
+      EvalList P env (args.map Arg.expr) vs → P.fns.find h.name = some d →
+      Cfg.Sub P (.call d vs) (.expr env (.app h args))
+  | tuple {env : Env} {p : Pos} {es : List Expr} : Cfg.Sub P (.list env es) (.expr env (.tuple p es))
+  | block {env : Env} {ss : List Stmt} {e : Expr} : Cfg.Sub P (.block env ss e) (.expr env (.block ss e))
+  | scrut {env : Env} {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Branch} :
+      Cfg.Sub P (.expr env s) (.expr env (.match p m s ann bs))
+  | branch {env : Env} {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele} {bs : List Branch} {ws : List Value}
+      {v : Value} {br : Branch} {env' : Env} : Eval P env s ws → one ws = .ok v → pickBranch m v bs = .ok br →
+      bindPattern env m br.pat v = .ok env' → Cfg.Sub P (.expr env' br.body) (.expr env (.match p m s ann bs))
+  | head {env : Env} {e : Expr} {es : List Expr} : Cfg.Sub P (.expr env e) (.list env (e :: es))
+  | tail {env : Env} {e : Expr} {es : List Expr} : Cfg.Sub P (.list env es) (.list env (e :: es))
+  | body {d : FnDef} {vs : List Value} {env : Env} :
+      bindIds d.globals d.params vs = .ok env → Cfg.Sub P (.expr env d.body) (.call d vs)
+  | last {env : Env} {e : Expr} : Cfg.Sub P (.expr env e) (.block env [] e)
+  | first {env : Env} {s : Stmt} {ss : List Stmt} {e : Expr} : Cfg.Sub P (.stmt env s) (.block env (s :: ss) e)
+  | rest {env env' : Env} {s : Stmt} {ss : List Stmt} {e : Expr} :
+      EvalStmt P env s env' → Cfg.Sub P (.block env' ss e) (.block env (s :: ss) e)
+  | «let» {env : Env} {p : Pos} {bs : List LetBinder} {rhs : Expr} :
+      Cfg.Sub P (.expr env rhs) (.stmt env (.let p bs rhs))
+  | patlet {env : Env} {p : Pos} {c : Bool} {m : Option Mult} {pat : Pattern} {rhs : Expr} :
+      Cfg.Sub P (.expr env rhs) (.stmt env (.patlet p c m pat rhs))
+
 mutual
-  /-- Evaluates an expression (§11). It is `partial`: a result it returns is certified by its type to be what `Eval`
-  relates the expression to, but neither its termination nor the absence of an error result is established about
-  it. -/
-  partial def evalExpr (P : Prog) (env : Env) : (e : Expr) → Except String { vs // Eval P env e vs }
-    | .var x => match h : x.name.bind (List.lookup · env) with
-      | some v => pure ⟨[v], .var h⟩
-      | none => throw s!"unbound {x.name}"
-    | .app h args => do
-      let ⟨vs, hvs⟩ ← evalList P env (args.map Arg.expr)
-      match hd : P.fns.find h.name with
-      | some d => do
-        let ⟨rs, hr⟩ ← evalCall P d vs
-        pure ⟨rs, .call hvs hd hr⟩
-      | none => match hk : P.kind h.name with
-        | some _ => pure ⟨_, .ctor hvs hd hk⟩
-        | none => throw s!"unknown name {h.name}"
-    | .tuple _ es => do
-      let ⟨vs, h⟩ ← evalList P env es
-      pure ⟨vs, .tuple h⟩
-    | .block ss e => do
-      let ⟨vs, h⟩ ← evalBlock P env ss e
-      pure ⟨vs, .block h⟩
-    | .match _ m s ann bs => do
-      let ⟨ws, hs⟩ ← evalExpr P env s
-      let ⟨v, ho⟩ ← certify (one ws)
-      let ⟨br, hp⟩ ← certify (pickBranch m v bs)
-      let ⟨env', hb⟩ ← certify (bindPattern env m br.pat v)
-      let ⟨rs, he⟩ ← evalExpr P env' br.body
-      let ⟨rs', ha⟩ ← certify (annTake ann rs)
-      pure ⟨rs', .match hs ho hp hb he ha⟩
-    | .sorry _ _ => throw "sorry was reached"
-    | .removed => pure ⟨_, .removed⟩
-  /-- Evaluates expressions left to right, each to one value; `partial` as `evalExpr` is. -/
-  partial def evalList (P : Prog) (env : Env) : (es : List Expr) → Except String { vs // EvalList P env es vs }
-    | [] => pure ⟨[], .nil⟩
-    | e :: es => do
-      let ⟨ws, he⟩ ← evalExpr P env e
-      let ⟨v, ho⟩ ← certify (one ws)
-      let ⟨vs, hs⟩ ← evalList P env es
-      pure ⟨v :: vs, .cons he ho hs⟩
-  /-- Runs a call; `partial` as `evalExpr` is. -/
-  partial def evalCall (P : Prog) (d : FnDef) (vs : List Value) : Except String { rs // CallRel P d vs rs } := do
-    let ⟨env, hb⟩ ← certify (bindIds d.globals d.params vs)
-    let ⟨bs, he⟩ ← evalExpr P env d.body
-    let ⟨rs, ht⟩ ← certify (take d.returns bs)
-    pure ⟨rs, .mk hb he ht⟩
-  /-- Runs a block; `partial` as `evalExpr` is. -/
-  partial def evalBlock (P : Prog) (env : Env) :
-      (ss : List Stmt) → (e : Expr) → Except String { vs // EvalBlock P env ss e vs }
-    | [], e => do
-      let ⟨vs, h⟩ ← evalExpr P env e
-      pure ⟨vs, .nil h⟩
-    | s :: ss, e => do
-      let ⟨env', hs⟩ ← evalStmt P env s
-      let ⟨vs, hb⟩ ← evalBlock P env' ss e
-      pure ⟨vs, .cons hs hb⟩
-  /-- Runs a statement, giving the environment after it; `partial` as `evalExpr` is. -/
-  partial def evalStmt (P : Prog) (env : Env) : (s : Stmt) → Except String { env' // EvalStmt P env s env' }
-    | .let _ bs rhs => do
-      let ⟨ws, he⟩ ← evalExpr P env rhs
-      let ⟨vs, ht⟩ ← certify (take bs.length ws)
-      let ⟨env', hb⟩ ← certify (bindIds env (bs.map (·.name)) vs)
-      pure ⟨env', .let he ht hb⟩
-    | .patlet _ _ m pat rhs => do
-      let ⟨ws, he⟩ ← evalExpr P env rhs
-      let ⟨v, ho⟩ ← certify (one ws)
-      let ⟨env', hb⟩ ← certify (bindPattern env m pat v)
-      pure ⟨env', .patlet he ho hb⟩
-    | .inspect _ => pure ⟨env, .inspect⟩
+  /-- What has an evaluation asks for nothing without end: `Cfg.Sub` is well-founded below it. -/
+  theorem Eval.acc {P : Prog} {env : Env} {e : Expr} {vs : List Value} :
+      Eval P env e vs → Acc (Cfg.Sub P) (.expr env e)
+    | .var _ => ⟨_, fun _ h => by cases h⟩
+    | .call hl hd hc => ⟨_, fun _ h => by
+      cases h with
+      | args => exact EvalList.acc hl
+      | call hl' hd' => cases EvalList.det hl hl'; cases Option.some_inj' hd hd'; exact CallRel.acc hc⟩
+    | .ctor hl hd _ => ⟨_, fun _ h => by
+      cases h with
+      | args => exact EvalList.acc hl
+      | call _ hd' => rw [hd] at hd'; cases hd'⟩
+    | .tuple h => ⟨_, fun _ h' => by cases h'; exact EvalList.acc h⟩
+    | .block h => ⟨_, fun _ h' => by cases h'; exact EvalBlock.acc h⟩
+    | .match hs ho hp hb he _ => ⟨_, fun _ h => by
+      cases h with
+      | scrut => exact Eval.acc hs
+      | branch hs' ho' hp' hb' =>
+        cases Eval.det hs hs'; cases Except.ok_inj ho ho'; cases Except.ok_inj hp hp'; cases Except.ok_inj hb hb'
+        exact Eval.acc he⟩
+    | .removed => ⟨_, fun _ h => by cases h⟩
+  termination_by structural h => h
+  theorem EvalList.acc {P : Prog} {env : Env} {es : List Expr} {vs : List Value} :
+      EvalList P env es vs → Acc (Cfg.Sub P) (.list env es)
+    | .nil => ⟨_, fun _ h => by cases h⟩
+    | .cons he _ hs => ⟨_, fun _ h => by
+      cases h with
+      | head => exact Eval.acc he
+      | tail => exact EvalList.acc hs⟩
+  termination_by structural h => h
+  theorem CallRel.acc {P : Prog} {d : FnDef} {vs rs : List Value} : CallRel P d vs rs → Acc (Cfg.Sub P) (.call d vs)
+    | .mk hb he _ => ⟨_, fun _ h => by cases h with | body hb' => cases Except.ok_inj hb hb'; exact Eval.acc he⟩
+  termination_by structural h => h
+  theorem EvalBlock.acc {P : Prog} {env : Env} {ss : List Stmt} {e : Expr} {vs : List Value} :
+      EvalBlock P env ss e vs → Acc (Cfg.Sub P) (.block env ss e)
+    | .nil h => ⟨_, fun _ h' => by cases h'; exact Eval.acc h⟩
+    | .cons hs hb => ⟨_, fun _ h => by
+      cases h with
+      | first => exact EvalStmt.acc hs
+      | rest hs' => cases EvalStmt.det hs hs'; exact EvalBlock.acc hb⟩
+  termination_by structural h => h
+  theorem EvalStmt.acc {P : Prog} {env : Env} {s : Stmt} {env' : Env} :
+      EvalStmt P env s env' → Acc (Cfg.Sub P) (.stmt env s)
+    | .let he _ _ => ⟨_, fun _ h => by cases h; exact Eval.acc he⟩
+    | .patlet he _ _ => ⟨_, fun _ h => by cases h; exact Eval.acc he⟩
+    | .inspect => ⟨_, fun _ h => by cases h⟩
+  termination_by structural h => h
+end
+
+instance {α} {r : α → α → Prop} : WellFoundedRelation { a // Acc r a } where
+  rel x y := r x.1 y.1
+  wf := ⟨fun ⟨a, h⟩ => by
+    induction h with
+    | intro a _ ih => exact ⟨_, fun ⟨b, _⟩ hr => ih b hr⟩⟩
+
+/-- The match of an evaluation, once its scrutinee's values are known. -/
+theorem Eval.match_inv {P : Prog} {env : Env} {p : Pos} {m : Option Mult} {s : Expr} {ann : Tele}
+    {bs : List Branch} {ws : List Value} (h : ∃ rs, Eval P env (.match p m s ann bs) rs) (hs : Eval P env s ws) :
+    ∃ v br env' rs, one ws = .ok v ∧ pickBranch m v bs = .ok br ∧ bindPattern env m br.pat v = .ok env' ∧
+      Eval P env' br.body rs ∧ ∃ rs', annTake ann rs = .ok rs' := by
+  obtain ⟨_, h⟩ := h
+  cases h with
+  | «match» hs' ho hp hb he ha => cases Eval.det hs hs'; exact ⟨_, _, _, _, ho, hp, hb, he, _, ha⟩
+
+mutual
+  /-- Evaluates an expression that has an evaluation (§11), to the values `Eval` relates it to, which are unique
+  (`Eval.det`). It recurses on what it asks for (`Cfg.Sub`), well-founded below what has an evaluation
+  (`Eval.acc`). -/
+  def evalExpr (P : Prog) (env : Env) : (e : Expr) → (∃ vs, Eval P env e vs) → { vs // Eval P env e vs }
+    | .var x, h => match hv : x.name.bind (List.lookup · env) with
+      | some v => ⟨[v], .var hv⟩
+      | none => False.elim (by obtain ⟨_, h⟩ := h; cases h; simp_all)
+    | .app f args, h =>
+      let ⟨vs, hvs⟩ := evalList P env (args.map Arg.expr) (by obtain ⟨_, h⟩ := h; cases h <;> exact ⟨_, ‹_›⟩)
+      match hd : P.fns.find f.name with
+      | some d =>
+        let ⟨rs, hr⟩ := evalCall P d vs (by
+          obtain ⟨_, h⟩ := h
+          cases h with
+          | call hl hd' hc => cases EvalList.det hvs hl; cases Option.some_inj' hd hd'; exact ⟨_, hc⟩
+          | ctor _ hd' _ => rw [hd] at hd'; cases hd')
+        ⟨rs, .call hvs hd hr⟩
+      | none => match hk : P.kind f.name with
+        | some _ => ⟨_, .ctor hvs hd hk⟩
+        | none => False.elim (by obtain ⟨_, h⟩ := h; cases h <;> simp_all)
+    | .tuple _ es, h =>
+      let ⟨vs, hvs⟩ := evalList P env es (by obtain ⟨_, h⟩ := h; cases h; exact ⟨_, ‹_›⟩)
+      ⟨vs, .tuple hvs⟩
+    | .block ss e, h =>
+      let ⟨vs, hvs⟩ := evalBlock P env ss e (by obtain ⟨_, h⟩ := h; cases h; exact ⟨_, ‹_›⟩)
+      ⟨vs, .block hvs⟩
+    | .match _ m s ann bs, h =>
+      let ⟨ws, hs⟩ := evalExpr P env s (by obtain ⟨_, h⟩ := h; cases h; exact ⟨_, ‹Eval _ _ s _›⟩)
+      let ⟨v, ho⟩ := known (one ws) (by obtain ⟨_, _, _, _, ho, -⟩ := Eval.match_inv h hs; exact ⟨_, ho⟩)
+      let ⟨br, hp⟩ := known (pickBranch m v bs) (by
+        obtain ⟨_, _, _, _, ho', hp, -⟩ := Eval.match_inv h hs; cases Except.ok_inj ho ho'; exact ⟨_, hp⟩)
+      let ⟨env', hb⟩ := known (bindPattern env m br.pat v) (by
+        obtain ⟨_, _, _, _, ho', hp', hb, -⟩ := Eval.match_inv h hs
+        cases Except.ok_inj ho ho'; cases Except.ok_inj hp hp'; exact ⟨_, hb⟩)
+      let ⟨rs, he⟩ := evalExpr P env' br.body (by
+        obtain ⟨_, _, _, _, ho', hp', hb', he, -⟩ := Eval.match_inv h hs
+        cases Except.ok_inj ho ho'; cases Except.ok_inj hp hp'; cases Except.ok_inj hb hb'; exact ⟨_, he⟩)
+      let ⟨rs', ha⟩ := known (annTake ann rs) (by
+        obtain ⟨_, _, _, _, ho', hp', hb', he', ha⟩ := Eval.match_inv h hs
+        cases Except.ok_inj ho ho'; cases Except.ok_inj hp hp'; cases Except.ok_inj hb hb'; cases Eval.det he he'
+        exact ha)
+      ⟨rs', .match hs ho hp hb he ha⟩
+    | .sorry _ _, h => False.elim (by obtain ⟨_, h⟩ := h; cases h)
+    | .removed, _ => ⟨_, .removed⟩
+  termination_by e h => (⟨.expr env e, h.elim fun _ d => d.acc⟩ : { c // Acc (Cfg.Sub P) c })
+  decreasing_by
+    all_goals first
+      | exact .args | exact .call ‹_› ‹_› | exact .tuple | exact .block | exact .scrut
+      | exact .branch ‹_› ‹_› ‹_› ‹_›
+  /-- Evaluates expressions that have an evaluation, left to right, as `evalExpr` does. -/
+  def evalList (P : Prog) (env : Env) : (es : List Expr) → (∃ vs, EvalList P env es vs) →
+      { vs // EvalList P env es vs }
+    | [], _ => ⟨[], .nil⟩
+    | e :: es, h =>
+      let ⟨ws, he⟩ := evalExpr P env e (by obtain ⟨_, h⟩ := h; cases h; exact ⟨_, ‹_›⟩)
+      let ⟨v, ho⟩ := known (one ws) (by
+        obtain ⟨_, h⟩ := h; cases h with | cons he' ho _ => cases Eval.det he he'; exact ⟨_, ho⟩)
+      let ⟨vs, hs⟩ := evalList P env es (by obtain ⟨_, h⟩ := h; cases h; exact ⟨_, ‹_›⟩)
+      ⟨v :: vs, .cons he ho hs⟩
+  termination_by es h => (⟨.list env es, h.elim fun _ d => d.acc⟩ : { c // Acc (Cfg.Sub P) c })
+  decreasing_by all_goals first | exact .head | exact .tail
+  /-- Runs a call that has a run, as `evalExpr` does. -/
+  def evalCall (P : Prog) (d : FnDef) (vs : List Value) (h : ∃ rs, CallRel P d vs rs) :
+      { rs // CallRel P d vs rs } :=
+    let ⟨env, hb⟩ := known (bindIds d.globals d.params vs) (by obtain ⟨_, h⟩ := h; cases h; exact ⟨_, ‹_›⟩)
+    let ⟨bs, he⟩ := evalExpr P env d.body (by
+      obtain ⟨_, h⟩ := h; cases h with | mk hb' he _ => cases Except.ok_inj hb hb'; exact ⟨_, he⟩)
+    let ⟨rs, ht⟩ := known (take d.returns bs) (by
+      obtain ⟨_, h⟩ := h
+      cases h with | mk hb' he' ht => cases Except.ok_inj hb hb'; cases Eval.det he he'; exact ⟨_, ht⟩)
+    ⟨rs, .mk hb he ht⟩
+  termination_by (⟨.call d vs, h.elim fun _ d => d.acc⟩ : { c // Acc (Cfg.Sub P) c })
+  decreasing_by exact .body ‹_›
+  /-- Runs a block that has a run, as `evalExpr` does. -/
+  def evalBlock (P : Prog) (env : Env) : (ss : List Stmt) → (e : Expr) → (∃ vs, EvalBlock P env ss e vs) →
+      { vs // EvalBlock P env ss e vs }
+    | [], e, h =>
+      let ⟨vs, he⟩ := evalExpr P env e (by obtain ⟨_, h⟩ := h; cases h; exact ⟨_, ‹_›⟩)
+      ⟨vs, .nil he⟩
+    | s :: ss, e, h =>
+      let ⟨env', hs⟩ := evalStmt P env s (by obtain ⟨_, h⟩ := h; cases h; exact ⟨_, ‹_›⟩)
+      let ⟨vs, hb⟩ := evalBlock P env' ss e (by
+        obtain ⟨_, h⟩ := h; cases h with | cons hs' hb => cases EvalStmt.det hs hs'; exact ⟨_, hb⟩)
+      ⟨vs, .cons hs hb⟩
+  termination_by ss e h => (⟨.block env ss e, h.elim fun _ d => d.acc⟩ : { c // Acc (Cfg.Sub P) c })
+  decreasing_by all_goals first | exact .last | exact .first | exact .rest ‹_›
+  /-- Runs a statement that has a run, giving the environment after it, as `evalExpr` does. -/
+  def evalStmt (P : Prog) (env : Env) : (s : Stmt) → (∃ env', EvalStmt P env s env') →
+      { env' // EvalStmt P env s env' }
+    | .let _ bs rhs, h =>
+      let ⟨ws, he⟩ := evalExpr P env rhs (by obtain ⟨_, h⟩ := h; cases h; exact ⟨_, ‹_›⟩)
+      let ⟨vs, ht⟩ := known (take bs.length ws) (by
+        obtain ⟨_, h⟩ := h; cases h with | «let» he' ht _ => cases Eval.det he he'; exact ⟨_, ht⟩)
+      let ⟨env', hb⟩ := known (bindIds env (bs.map (·.name)) vs) (by
+        obtain ⟨_, h⟩ := h
+        cases h with | «let» he' ht' hb => cases Eval.det he he'; cases Except.ok_inj ht ht'; exact ⟨_, hb⟩)
+      ⟨env', .let he ht hb⟩
+    | .patlet _ _ m pat rhs, h =>
+      let ⟨ws, he⟩ := evalExpr P env rhs (by obtain ⟨_, h⟩ := h; cases h; exact ⟨_, ‹_›⟩)
+      let ⟨v, ho⟩ := known (one ws) (by
+        obtain ⟨_, h⟩ := h; cases h with | patlet he' ho _ => cases Eval.det he he'; exact ⟨_, ho⟩)
+      let ⟨env', hb⟩ := known (bindPattern env m pat v) (by
+        obtain ⟨_, h⟩ := h
+        cases h with | patlet he' ho' hb => cases Eval.det he he'; cases Except.ok_inj ho ho'; exact ⟨_, hb⟩)
+      ⟨env', .patlet he ho hb⟩
+    | .inspect _, _ => ⟨env, .inspect⟩
+  termination_by s h => (⟨.stmt env s, h.elim fun _ d => d.acc⟩ : { c // Acc (Cfg.Sub P) c })
+  decreasing_by all_goals first | exact .let | exact .patlet
 end
 
 end Pledge

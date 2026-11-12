@@ -36,9 +36,7 @@ message; fails if the sources under `Pledge/`, `Pledge.lean` or
 `Main.lean`, outside comments and string literals, contain `sorry` as a
 term or tactic, `axiom`, `partial`, `unsafe`, `implemented_by`,
 `extern`, `opaque`, `native_decide`, `sorryAx`, `admit`,
-`skipKernelTC` or anything named like fuel, `partial` being allowed
-only on the five declarations of the evaluator in `Pledge/Eval.lean`,
-which must all be there; runs `tests/Audit.lean`,
+`skipKernelTC` or anything named like fuel; runs `tests/Audit.lean`,
 which prints the axioms of the headline theorems, and fails unless
 each uses only `propext`, `Classical.choice` and `Quot.sound`; checks
 that `tests/corpus.json` is what `tests/gen-corpus.mjs` writes from
@@ -61,11 +59,18 @@ requests that touch `lean/` or `src/`.
 - `Pledge/Eval.lean`: evaluation (§11, §12, §16) as a big-step
   relation, `Eval` with `EvalList`, `CallRel`, `EvalBlock` and
   `EvalStmt`; its determinism (`Eval.det`) and monotonicity in the
-  program (`Eval.ext`); and the executable evaluator, `evalExpr` and
-  its companions, whose results carry a derivation of the relation.
+  program (`Eval.ext`); and the evaluator, `evalExpr` and its
+  companions, which take the fact that what they are given has an
+  evaluation and return its values with a derivation of the relation.
+  They recurse on what evaluating asks for first (`Cfg.Sub`), which is
+  well-founded below anything that has an evaluation (`Eval.acc`).
 - `Pledge/Check/Basic.lean`, `Expr.lean`, `Top.lean`: the checker;
-  `Top.lean` has `runProgramWith`, `solveFrom`, `runProgram`, `run` and
-  `Outcome`.
+  `Top.lean` has the top-level items, `topItem`, and `Outcome`.
+- `Pledge/Run.lean`: `topItems`, `checkItems`, `runProgramWith`,
+  `solveFrom`, `runProgram` and `run`. It comes after the proofs it
+  needs (`Sound/Item.lean`, below): each state `topItems` passes to
+  `topItem` carries the fact (`TopOk`) from which what the item
+  evaluates has an evaluation (`TopState.Runs`).
 - `Main.lean`: the command line.
 - `Pledge/CoreLemmas.lean`, `UnifySound.lean`, `Pledge/Sound/`: the
   proofs. `Sound/Defs.lean` worlds, the invariants, the function
@@ -78,9 +83,13 @@ requests that touch `lean/` or `src/`.
   `Sound/Simple.lean`, `Call.lean`, `Match.lean` and `Erased.lean`;
   `Sound/Fn.lean` and `Data.lean` the declaration groups, and
   `Data.lean` the `goal` item; `Sound/Stmt.lean` the other top-level
-  statements; and `Sound/Top.lean` the headline theorems.
+  statements; `Sound/Item.lean` that each item keeps the top level's
+  invariant (`topItem_sound`) and that, outside the solving pass, what
+  the top level evaluates has an evaluation (`TopInv.runs`); and
+  `Sound/Top.lean` the headline theorems.
 - `Pledge/ParserTest.lean`, `EvalTest.lean`, `UnifyTest.lean`,
-  `SolveTest.lean`: `#guard` tests. `SolveTest.lean` holds tests of `_`
+  `SolveTest.lean`: `#guard` tests; `EvalTest.lean` runs programs
+  through `run`. `SolveTest.lean` holds tests of `_`
   (§20), among them tests of `solution` and of `runProgramWith` given a
   table.
 
@@ -88,7 +97,8 @@ requests that touch `lean/` or `src/`.
 
 Checking is split in two. `solveFrom` finds, by unification, a table
 from the position of each `_` for an argument or inside a type (§20)
-to the terms it may stand for; `runProgramWith` then checks the program
+to the terms it may stand for, evaluating nothing; `runProgramWith`
+then checks and evaluates the program
 with no unification for `_` (`Ctx.solving` is false, so no entry is
 made for a `_` and every written term, `_` in it or not, is checked by
 `checkTerm`): at each `_` it takes the first term of the
@@ -96,8 +106,10 @@ table that is a well-formed term of the scope there (`coreType`), of
 the `_`'s type, meeting its parameter's `is` clause and §16's rule on
 erased names, and it computes the `_`'s taint from that term. A `_`
 with no term in the table is an error. `runProgram` runs the two, and
-reports an error met by `solveFrom`; an error met only by
-`runProgramWith` is reported as internal. The soundness theorems are
+reports an error met by `runProgramWith` that was found by evaluating
+(`CheckError.evaluated`, as for a `comptime` pattern `let` whose value
+has another head), or else an error met by `solveFrom`; any other error met
+only by `runProgramWith` is reported as internal. The soundness theorems are
 meant not to depend on `solveFrom`: they hold for `runProgramWith` with
 any table.
 
@@ -211,26 +223,29 @@ no default, which `run` reads off the tokens) and any syntax error
   reported proved.
 - `run_sound` and `run_no_empty_goal`: `runProgram_sound` and
   `no_empty_goal` for `run source phase`.
-- `reached_eval_ok` and `reached_run_ok`: at any state the checker
-  reaches, while its scope is untainted, an
-  expression checked there at the top level, outside an erased
-  position, with `solving` off and outside a type constructor's
-  argument (as `TopState.ctx` has it), with an untainted result, and given nothing or closed types
-  of multiplicity `many` with no `is` clause, as `print`, `qed` against
-  a type goal and a `comptime` pattern `let` check theirs, has an
-  evaluation by the relation (`Eval`) to one run-time value, related
-  by `Rel` to an ideal
-  value that has a type under a valuation satisfying the state's scope;
-  any value the top level's evaluation (`TopState.eval`) returns for it
-  is that one. A statement checked there that leaves the scope
-  untainted has a run (`EvalStmt`).
+- `reached_eval_ok` and `reached_run_ok`: at any state that checking a
+  program reaches with any table (`checkItems`), an expression checked
+  there as `print`, a `comptime` pattern `let` and `qed` against a type
+  goal check theirs (`closed`, `checkExpr` under `TopState.ctx` with
+  the item's `place`, given nothing or the goal's type), with one
+  untainted result, has an evaluation by the relation (`Eval`) to one
+  run-time value, related by `Rel` to an ideal value that has a type
+  under a valuation satisfying the state's scope, and the top level's
+  evaluation (`TopState.eval`) returns that value. A statement checked
+  there as the top level checks one, leaving the scope untainted, has
+  a run (`EvalStmt`), the one `TopState.run` gives.
 
-The theorems speak of evaluation as the relation. The executable
-evaluator is `partial`, so no theorem can say what it does; what links
-it to the theorems is its result type: each value or environment it
-returns comes with a derivation of the relation, which
-`TopState.eval_cert` and `TopState.run_cert` extract, and by
-determinism (`Eval.det`) that is the result the theorems describe.
+The evaluator is defined only for what has an evaluation: `evalExpr`
+takes the fact that one exists and returns it, unique by determinism
+(`Eval.det`), so it neither fails nor runs without end. Outside the
+solving pass, `topItem` evaluates with that fact from `TopState.Runs`,
+which holds at every state `topItems` reaches by `TopInv.runs`, the
+main lemma applied to the item; the solving pass evaluates nothing.
+Every definition is total, by structural or well-founded recursion,
+with no fuel, which is what the gate checks, so checking and evaluating
+a program is meant to end, by Lean's acceptance of those definitions. The top level does not evaluate a `qed`'s expression:
+its value is shown nowhere, and `reached_eval_ok` says its evaluation
+exists and is what `TopState.eval` would return.
 
 `tests/Audit.lean` prints the axioms these use. `Sound/Top.lean` has
 `#guard`s showing that the goal clause is reached by small
@@ -252,8 +267,8 @@ differential corpus, 45 report their goal proved.
   `Sigs.erasedArg`, `Rel`, `MultRel`, `MultsRel`, `Sig.close`,
   `GoalHolds`, `GoalBelow`, `ProvedAt`, `World`,
   the evaluation relation `Eval` and its companions, `CallRel` among
-  them, and the meaning of `runProgram`, `run`, `topItems` and
-  `Outcome`'s fields. That `HasType` captures
+  them, and the meaning of `runProgram`, `run`, `checkItems`,
+  `topItems`, `TopState.eval`, `TopState.run` and `Outcome`'s fields. That `HasType` captures
   what a value of a type is rests on SOUNDNESS.md part 2, which it
   follows; that `Rel` and `Approx` capture what erasure and taint may
   remove rests on a reading of §12 and §16.
@@ -278,14 +293,11 @@ items 69 to 75.
 - **Results are terms.** An application written in an expression gets
   no entry of its own; its result is the application term, which §7's
   entry would canonicalize to.
-- **The evaluator is partial, its results certified.** Evaluation is
-  the relation `Eval`, with no measure and no termination check; the
-  executable evaluator follows it, is `partial`, and returns each
-  result with a derivation of the relation. It fails, and the top level
-  reports "evaluation stopped", where no rule applies (an unbound name,
-  no branch, a `removed` value inspected, `sorry` reached, a count
-  mismatch); a run that does not end leaves checking without an end.
-  There is no fuel.
+- **Evaluation is a relation, run where it has a derivation.**
+  Evaluation is the relation `Eval`, with no measure and no
+  termination check. The evaluator follows it and is defined only for
+  what has an evaluation, which the top level knows from the soundness
+  proof; the pass that solves `_` evaluates nothing. There is no fuel.
 - **Internal checks.** Where the TypeScript checker relies on
   invariants of its data, the Lean checker tests them and rejects the
   program with an error starting "internal:", so that the proofs need
@@ -317,20 +329,14 @@ items 69 to 75.
   soundness.
 - That the internal checks are unreachable on programs DESIGN.md
   accepts.
-- Anything about the executable evaluator beyond its results'
-  certificates: that it terminates, and that it does not fail, on the
-  programs the theorems cover. The theorems say that an evaluation by
-  the relation exists; that the `partial` function finds it is not
-  established.
-- That checking terminates: every definition other than the evaluator's
-  five is total, defined by structural or well-founded recursion, with
-  no fuel, which is what the gate checks; checking a program ends if
-  each evaluation it performs does.
-- That `reached_eval_ok` and `reached_run_ok` cover every evaluation:
-  they are about evaluations after an item's checking succeeds, as
-  `print`, `qed`, `let` and `comptime` pattern `let` perform them; the
-  link to those items is by reading `topItem`, not by a theorem about
-  `Outcome.error`.
+- That `reached_eval_ok` and `reached_run_ok` describe every evaluation
+  the top level performs: they are about the checks `print`, a
+  `comptime` pattern `let` and the other top-level statements perform
+  before evaluating; the link to those items is by reading `topItem`.
+- That `runProgram` reports the error of the first item that fails:
+  it relies on `solveFrom`, which evaluates nothing, meeting the same
+  errors as `runProgramWith` up to the first error found by
+  evaluating.
 - That the Lean checker implements DESIGN.md, that the parser reads
   the source as DESIGN.md means it, and anything about the TypeScript
   code (see above).

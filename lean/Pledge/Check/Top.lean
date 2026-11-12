@@ -46,39 +46,55 @@ def TopState.ctx (st : TopState) (inDecl : Bool := false) : Ctx :=
 /-- The evaluator's view of the program at the top level. -/
 def TopState.prog (st : TopState) : Prog := ⟨st.fns, kindOf st.globals⟩
 
-/-- Evaluates a checked tree at the top level (§11); nothing for a tainted result (§12). -/
-def TopState.eval (st : TopState) (pos : Pos) (tree : Expr) (tainted : Bool) : CheckM (Option Value) :=
-  if tainted then pure none
-  else match evalExpr st.prog st.env tree >>= fun r => one r.1 with
-    | .ok v => pure (some v)
-    | .error msg => failAt pos fun _ => s!"evaluation stopped: {msg}"
+/-- What evaluating at the top level needs, outside the solving pass (§20): each tree it evaluates has an
+evaluation. -/
+structure TopState.Runs (st : TopState) : Prop where
+  expr : st.solving = false → ∀ pl e o r, closed st.sc (checkExpr { st.ctx with place := pl } · none e) = .ok o →
+    single e.pos o.res = .ok r → r.tainted = false → ∃ v, Eval st.prog st.env o.tree [v]
+  stmt : st.solving = false → ∀ s o, checkStmt st.ctx st.sc s = .ok o → o.sc.taintedBy = none →
+    ∃ env, EvalStmt st.prog st.env o.tree env
 
-def TopState.run (st : TopState) (s : Stmt) : CheckM Env :=
-  match evalStmt st.prog st.env s with
-  | .ok env => pure env.1
-  | .error msg => failAt s.pos fun _ => s!"evaluation stopped: {msg}"
+/-- Evaluates a checked tree that has an evaluation to one value (§11); nothing while solving `_` (§20) or for a
+tainted result (§12). -/
+def TopState.eval (st : TopState) (tree : Expr) (tainted : Bool)
+    (h : st.solving = false → tainted = false → ∃ v, Eval st.prog st.env tree [v]) : Option Value :=
+  if hs : st.solving || tainted then none
+  else (evalExpr st.prog st.env tree ((h (by simp_all) (by simp_all)).elim fun _ hv => ⟨_, hv⟩)).1.head?
 
-/-- `TopState.eval` on an untainted result either fails or returns the value `Eval` relates the tree to. -/
-theorem TopState.eval_cert {st : TopState} {pos : Pos} {tree : Expr} {o : Option Value}
-    (h : st.eval pos tree false = .ok o) : ∃ v, o = some v ∧ Eval st.prog st.env tree [v] := by
-  simp only [TopState.eval, Bool.false_eq_true, ↓reduceIte] at h
-  split at h
-  · rename_i v hv
-    cases h
-    obtain ⟨⟨vs, hvs⟩, -, ho⟩ := bind_eq_ok.1 hv
-    obtain rfl : vs = [v] := one_eq_ok ho
-    exact ⟨v, rfl, hvs⟩
-  · cases h
+/-- Runs a checked statement that has a run (§11); nothing while solving `_` (§20). -/
+def TopState.run (st : TopState) (s : Stmt) (h : st.solving = false → ∃ env, EvalStmt st.prog st.env s env) : Env :=
+  if hs : st.solving then st.env else (evalStmt st.prog st.env s (h (by simpa using hs))).1
 
-/-- An environment `TopState.run` returns is the one `EvalStmt` relates the statement to. -/
-theorem TopState.run_cert {st : TopState} {s : Stmt} {env : Env} (h : st.run s = .ok env) :
-    EvalStmt st.prog st.env s env := by
-  unfold TopState.run at h
-  split at h
-  · rename_i r _
-    cases h
-    exact r.2
-  · cases h
+/-- `TopState.eval` returns the value `Eval` relates the tree to, unless solving or tainted. -/
+theorem TopState.eval_spec {st : TopState} {tree : Expr} {tainted : Bool}
+    {h : st.solving = false → tainted = false → ∃ v, Eval st.prog st.env tree [v]} :
+    (st.solving || tainted) = false → ∃ v, st.eval tree tainted h = some v ∧ Eval st.prog st.env tree [v] := by
+  intro hs
+  obtain ⟨v, hv⟩ := h (by simp_all) (by simp_all)
+  refine ⟨v, ?_, hv⟩
+  simp only [TopState.eval, hs, Bool.false_eq_true, ↓reduceDIte]
+  generalize evalExpr st.prog st.env tree _ = r
+  rw [Eval.det r.2 hv]
+  rfl
+
+theorem TopState.eval_some {st : TopState} {tree : Expr} {tainted : Bool}
+    {h : st.solving = false → tainted = false → ∃ v, Eval st.prog st.env tree [v]} {v : Value}
+    (hv : st.eval tree tainted h = some v) : (st.solving || tainted) = false ∧ Eval st.prog st.env tree [v] := by
+  cases hs : (st.solving || tainted)
+  · obtain ⟨w, hw, he⟩ := eval_spec (h := h) hs
+    rw [hv] at hw
+    cases hw
+    exact ⟨rfl, he⟩
+  · simp [TopState.eval, hs] at hv
+
+/-- `TopState.run` gives the environment `EvalStmt` relates the statement to, unless solving. -/
+theorem TopState.run_cert {st : TopState} {s : Stmt} {h : st.solving = false → ∃ env, EvalStmt st.prog st.env s env}
+    (hs : st.solving = false) : EvalStmt st.prog st.env s (st.run s h) := by
+  simp only [TopState.run, hs, Bool.false_eq_true, ↓reduceDIte]
+  exact (evalStmt _ _ _ _).2
+
+/-- An error found by evaluating (§11), which the solving pass (§20), evaluating nothing, does not meet. -/
+def evalFail (pos : Pos) (msg : Unit → String) : CheckM α := throw { pos, msg, evaluated := true }
 
 def addSig (st : TopState) (s : Sig) (g : Global) : TopState :=
   { st with sc := { st.sc with sigs := st.sc.sigs ++ [s] }, globals := st.globals ++ [g] }
@@ -220,26 +236,35 @@ def Value.headName : Value → String
   | .removed => "_"
 
 /-- A `comptime` pattern `let` (§11): checked as a pattern `let`, its right-hand side evaluated in between. -/
-def comptimeLet (st : TopState) (p : Pos) (m : Option Mult) (pat : Pattern) (rhs : Expr) : CheckM TopState := do
+def comptimeLet (st : TopState) (hw : st.Runs) (p : Pos) (m : Option Mult) (pat : Pattern) (rhs : Expr) :
+    CheckM TopState := do
   let C := st.ctx
   if m == some .erased then failAt p fun _ =>
     "a `comptime` pattern `let` evaluates its right-hand side (§11), so it cannot be erased (§16)"
   freshAll C st.sc pat.fields
-  let o ← closed st.sc (checkExpr C · none rhs)
+  let ⟨o, ho⟩ ← certify (closed st.sc (checkExpr C · none rhs))
   keep o.snaps do
-  let r ← single rhs.pos o.res
+  let ⟨r, hr⟩ ← certify (single rhs.pos o.res)
   let fs ← forcings C o.sc r.term rhs.pos [pat] p false
-  let v ← st.eval rhs.pos o.tree r.tainted
+  let v := st.eval o.tree r.tainted fun hs => hw.expr hs _ rhs o r ho hr
   if let some v := v then
-    if v.headName != pat.ctor.name then failAt rhs.pos fun _ =>
+    if v.headName != pat.ctor.name then evalFail rhs.pos fun _ =>
       s!"this evaluates to {code (showValue v)}, which is not headed by {code pat.ctor.name} (§11)"
   let sc ← patBind o.sc r rhs.pos true pat fs
   let env ← if sc.taintedBy.isSome then pure st.env else match v with
     | some v => match bindPattern st.env m pat v with
       | .ok env => pure env
-      | .error msg => failAt p fun _ => s!"evaluation stopped: {msg}"
-    | none => st.run (.patlet p true m pat o.tree)
+      | .error msg => evalFail p fun _ => s!"evaluation stopped: {msg}"
+    | none => pure st.env
   pure { st with sc := sc, env := env, snaps := st.snaps ++ o.snaps }
+
+/-- A top-level statement other than a `comptime` pattern `let` (§11): checked, then run unless the scope after it
+is tainted (§12). -/
+def topStmt (st : TopState) (hw : st.Runs) (s : Stmt) : CheckM TopState := do
+  let ⟨o, ho⟩ ← certify (checkStmt st.ctx st.sc s)
+  let env := if ht : o.sc.taintedBy.isSome then st.env
+    else st.run o.tree fun hs => hw.stmt hs s o ho (by simpa using ht)
+  pure { st with sc := o.sc, env := env, snaps := st.snaps ++ o.snaps }
 
 def qedFnGoal (st : TopState) (ps rs : Telescope) (e : Expr) : CheckM TopState := do
   let wrong {α} : CheckM α := failAt e.pos fun _ =>
@@ -265,20 +290,17 @@ def qedFnGoal (st : TopState) (ps rs : Telescope) (e : Expr) : CheckM TopState :
   pure { st with qedFn := some n, proved := !sig.tainted }
 
 /-- One top-level item (§8, §11, §12). -/
-def topItem (st : TopState) : Top → CheckM TopState
+def topItem (st : TopState) (hw : st.Runs) : Top → CheckM TopState
   | .data d => dataGroup st [d]
   | .mutualData _ ds => dataGroup st ds
   | .fn f => fnGroup st [f]
   | .mutualFn _ fs => fnGroup st fs
-  | .stmt (.patlet p true m pat rhs) => comptimeLet st p m pat rhs
-  | .stmt s => do
-    let o ← checkStmt st.ctx st.sc s
-    let env ← keep o.snaps (if o.sc.taintedBy.isSome then pure st.env else st.run o.tree)
-    pure { st with sc := o.sc, env := env, snaps := st.snaps ++ o.snaps }
+  | .stmt (.patlet p true m pat rhs) => comptimeLet st hw p m pat rhs
+  | .stmt s => topStmt st hw s
   | .print p e => do
-    let C := { st.ctx with place := "the expression of a `print`" }
-    let o ← closed st.sc (checkExpr C · none e)
-    let v ← keep o.snaps do st.eval p o.tree (← single e.pos o.res).tainted
+    let ⟨o, ho⟩ ← certify (closed st.sc (checkExpr { st.ctx with place := "the expression of a `print`" } · none e))
+    let ⟨r, hr⟩ ← keep o.snaps (certify (single e.pos o.res))
+    let v := st.eval o.tree r.tainted fun hs => hw.expr hs _ e o r ho hr
     let prints := st.prints ++ [(p, (v.map showValue).getD "sorry")]
     pure { st with sc := o.sc, prints := prints, snaps := st.snaps ++ o.snaps }
   | .goal p g => do
@@ -305,17 +327,8 @@ def topItem (st : TopState) : Top → CheckM TopState
             s!"{code n} is a function, and naming a function proves only a function goal, " ++
             "`goal fn (...) -> (...);`; this goal is a type"
         let o ← closed st.sc (checkExpr st.ctx · (some goal.given) e)
-        let tainted := o.res.any (·.tainted)
-        let _ ← keep o.snaps (st.eval p o.tree tainted)
-        pure { st with sc := o.sc, proved := !tainted, snaps := st.snaps ++ o.snaps }
+        pure { st with sc := o.sc, proved := !o.res.any (·.tainted), snaps := st.snaps ++ o.snaps }
     pure { st with qedChecks := true, proved := st.proved && st.sc.taintedBy.isNone && !goal.tainted }
-
-/-- Checks the items in order, stopping at the first error: the state before it, and the error with its item. -/
-def topItems (st : TopState) : List Top → TopState × Option (CheckError × Top)
-  | [] => (st, none)
-  | t :: ts => match topItem st t with
-    | .ok st => topItems st ts
-    | .error e => ({ st with snaps := st.snaps ++ e.snaps }, some (e, t))
 
 /-- The `inspect;` text (§13): Expected, Termination and Scope. -/
 def Snapshot.render (s : Snapshot) : String :=
@@ -381,11 +394,6 @@ def outcome (has : String → Bool) (st : TopState) (failed : Option (CheckError
     sigs := st.sc.sigs, entries := st.sc.Γ, fns := st.fns, env := st.env, goal := st.goal, qedFn := st.qedFn,
     tainted := st.sc.taintedBy.isSome }
 
-def runProgramWith (phase : Nat) (table : Table) (prog : Program) (has : String → Bool)
-    (syntaxError : Option (Pos × String) := none) : Outcome :=
-  let (st, failed) := topItems (.init phase table) prog
-  outcome has st failed syntaxError
-
 mutual
   def Expr.holes : Expr → List Pos
     | .var ⟨none, p⟩ => [p]
@@ -432,31 +440,5 @@ def Top.holes : Top → List Pos
 
 def unsolved (prog : Program) (table : Table) : Nat :=
   ((prog.flatMap Top.holes).filter fun p => (table.lookup p).isNone).length
-
-def solveFrom (phase : Nat) (prog : Program) (table : Table) : Table × Option (CheckError × Top) :=
-  match topItems (.init phase table true) prog with
-  | (_, some (e, t)) =>
-    if e.solved.isEmpty then (table, some (e, t))
-    else if _h : unsolved prog (table ++ e.solved) < unsolved prog table then solveFrom phase prog (table ++ e.solved)
-    else (table, some ({ e with msg := fun _ => "internal: a `_` was solved again; the checker rejects the program" },
-      t))
-  | (_, none) => (table, none)
-termination_by unsolved prog table
-
-def solution (phase : Nat) (prog : Program) : Table := (solveFrom phase prog []).1
-
-/-- Checks and evaluates a parsed program: finds the solutions of its `_` (§20), then checks it with them. An error
-met while solving is reported; one met only after is reported as internal. -/
-def runProgram (phase : Nat) (prog : Program) (has : String → Bool)
-    (syntaxError : Option (Pos × String) := none) : Outcome :=
-  let (table, solving) := solveFrom phase prog []
-  let (st, failed) := topItems (.init phase table) prog
-  outcome has st (solving.orElse fun _ => failed.map fun (e, t) =>
-    ({ e with msg := fun _ => s!"internal: the solutions found for `_` do not check: {e.msg ()}" }, t)) syntaxError
-
-/-- Parses, checks and evaluates a program under a phase. -/
-def run (source : String) (phase : Nat) : Outcome :=
-  let (prog, err) := parse source phase
-  runProgram phase prog (hasKeyword source phase) err
 
 end Pledge

@@ -622,7 +622,7 @@ theorem Group.topInv (hI : TopInv st ρ) (hg : Group st ts cs new true st')
 end
 
 /-- What a `goal` statement does: it sets the goal, when none is set, to its checked type or telescopes. -/
-theorem goal_spec {st st' : TopState} {p : Pos} {g : Goal} (h : topItem st (.goal p g) = .ok st') :
+theorem goal_spec {st st' : TopState} {hw : st.Runs} {p : Pos} {g : Goal} (h : topItem st hw (.goal p g) = .ok st') :
     st.goal = none ∧ ∃ goal : CheckedGoal, st' = { st with goal := some goal } ∧ match g with
       | .fn hdr => ∃ ps rs u, header (st.ctx true) st.sc hdr = .ok (ps, rs) ∧
           topLevel st p (ps.tele ++ rs.tele) = .ok u ∧
@@ -678,8 +678,8 @@ end DataTop
 /-- A `goal` statement keeps the top level's invariant: the goal it sets mentions only top-level entries (§12), and,
 in an untainted scope, a type goal's type is closed and, if untainted, has a value of type `Type()` in every later
 world. -/
-theorem goalItem_sound {st st' : TopState} {ρ : List Value} {p : Pos} {g : Goal} (hI : TopInv st ρ)
-    (h : topItem st (.goal p g) = .ok st') :
+theorem goalItem_sound {st st' : TopState} {ρ : List Value} {hw : st.Runs} {p : Pos} {g : Goal} (hI : TopInv st ρ)
+    (h : topItem st hw (.goal p g) = .ok st') :
     (st.world ρ).Le (st'.world ρ) ∧ TopInv st' ρ := by
   obtain ⟨hnone, goal, rfl, hgoal⟩ := goal_spec h
   refine ⟨World.Le.refl _, ⟨hI.len, hI.noRemoved, hI.holes, hI.sigsOk, hI.noJunk, hI.rets, hI.sigNames, hI.fnNames,
@@ -710,21 +710,23 @@ theorem goalItem_sound {st st' : TopState} {ρ : List Value} {p : Pos} {g : Goal
     rw [hnone] at hg'
     cases hg'
 
-/-- A group of functions keeps the phase, the goal and whether it is proved. -/
+/-- A group of functions keeps the phase, whether `_` is being solved, the goal and whether it is proved. -/
 theorem fnGroup_keeps {st st' : TopState} {fs : List Fn} (h : fnGroup st fs = .ok st') :
-    st'.phase = st.phase ∧ st'.goal = st.goal ∧ st'.proved = st.proved := by
+    (st'.phase = st.phase ∧ st'.solving = st.solving) ∧ st'.goal = st.goal ∧ st'.proved = st.proved := by
   unfold fnGroup at h
   obtain ⟨st0, h0, h⟩ := bind_eq_ok.1 h
   obtain ⟨⟨st1, heads⟩, h1, h⟩ := bind_eq_ok.1 h
   obtain ⟨⟨taint, bodies⟩, -, h⟩ := bind_eq_ok.1 h
   simp only [pure, Except.pure, Except.ok.injEq] at h
   subst h
-  have e0 := foldlM_induct (fun _ s => s.phase = st.phase ∧ s.goal = st.goal ∧ s.proved = st.proved) fs []
+  have e0 := foldlM_induct (fun _ s => (s.phase = st.phase ∧ s.solving = st.solving) ∧ s.goal = st.goal ∧
+    s.proved = st.proved) fs []
     (fun q x b b' _ hb hf => by
       obtain ⟨_, -, hf⟩ := bind_eq_ok.1 hf
       simp only [pure, Except.pure, Except.ok.injEq] at hf
-      rw [← hf]; exact hb) ⟨rfl, rfl, rfl⟩ h0
-  exact foldlM_induct (fun _ p => p.1.phase = st.phase ∧ p.1.goal = st.goal ∧ p.1.proved = st.proved) fs []
+      rw [← hf]; exact hb) ⟨⟨rfl, rfl⟩, rfl, rfl⟩ h0
+  exact foldlM_induct (fun _ p => (p.1.phase = st.phase ∧ p.1.solving = st.solving) ∧ p.1.goal = st.goal ∧
+    p.1.proved = st.proved) fs []
     (fun q x b b' _ hb hf => by
       obtain ⟨⟨s, hd⟩, hh, hf⟩ := bind_eq_ok.1 hf
       simp only [pure, Except.pure, Except.ok.injEq] at hf
@@ -737,7 +739,7 @@ theorem fnGroup_keeps {st st' : TopState} {fs : List Fn} (h : fnGroup st fs = .o
 
 /-- Takes apart a hypothesis `h : x = .ok r` about checking code down to its successful paths. -/
 macro "unwind_ok " h:ident : tactic => `(tactic| repeat' (first
-  | (simp [failAt_eq, bind, Except.bind] at $h:ident; done)
+  | (simp [failAt_eq, evalFail_eq, bind, Except.bind] at $h:ident; done)
   | (rw [keep_ok] at $h:ident)
   | (obtain ⟨_, hx, $h:ident⟩ := bind_eq_ok.1 $h:ident; try (simp [failAt_eq] at hx; done))
   | (dsimp only at $h:ident)
@@ -750,8 +752,8 @@ theorem qedFnGoal_goal {st st' : TopState} {ps rs : Telescope} {e : Expr} (h : q
   all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h])
 
 /-- No item but a `goal` statement changes the goal once it is set. -/
-theorem topItem_goal {st st' : TopState} {t : Top} {g : CheckedGoal}
-    (h : topItem st t = .ok st') (hg : st.goal = some g) : st'.goal = some g := by
+theorem topItem_goal {st st' : TopState} {hw : st.Runs} {t : Top} {g : CheckedGoal}
+    (h : topItem st hw t = .ok st') (hg : st.goal = some g) : st'.goal = some g := by
   unfold topItem at h
   split at h
   · obtain ⟨_, hgr⟩ := dataGroup_group h
@@ -767,7 +769,7 @@ theorem topItem_goal {st st' : TopState} {t : Top} {g : CheckedGoal}
     all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h]; exact hg)
   · unwind_ok h
     all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h]; exact hg)
-  · have := (goal_spec (by unfold topItem; exact h)).1
+  · have := (goal_spec (hw := hw) (by unfold topItem; exact h)).1
     rw [hg] at this; cases this
   · unwind_ok h
     all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h])
@@ -777,7 +779,8 @@ theorem topItem_goal {st st' : TopState} {t : Top} {g : CheckedGoal}
       | (simp only [pure, Except.pure, Except.ok.injEq] at *; subst_vars; exact hg)
 
 /-- Only a `qed` proves the goal, and only in a scope it leaves untainted. -/
-theorem topItem_proved {st st' : TopState} {t : Top} (h : topItem st t = .ok st') (hp : st'.proved = true) :
+theorem topItem_proved {st st' : TopState} {hw : st.Runs} {t : Top} (h : topItem st hw t = .ok st')
+    (hp : st'.proved = true) :
     st.proved = true ∨ (∃ p e, t = .qed p e) ∧ st'.sc.taintedBy = none := by
   unfold topItem at h
   split at h
@@ -794,70 +797,12 @@ theorem topItem_proved {st st' : TopState} {t : Top} (h : topItem st t = .ok st'
     all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h] at hp; exact .inl hp)
   · unwind_ok h
     all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h] at hp; exact .inl hp)
-  · obtain ⟨-, goal, rfl, -⟩ := goal_spec (by unfold topItem; exact h)
+  · obtain ⟨-, goal, rfl, -⟩ := goal_spec (hw := hw) (by unfold topItem; exact h)
     exact .inl hp
   · refine .inr ⟨⟨_, _, rfl⟩, ?_⟩
     unwind_ok h
     all_goals (simp only [pure, Except.pure, Except.ok.injEq] at h; rw [← h] at hp ⊢)
     all_goals (simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hp; exact hp.1.2)
-
-/-- Checking items that stop at no error, then more items, is checking them all. -/
-theorem topItems_append : ∀ {st : TopState} {pre : List Top} (post : List Top), (topItems st pre).2 = none →
-    topItems st (pre ++ post) = topItems (topItems st pre).1 post
-  | st, [], post, _ => rfl
-  | st, t :: pre, post, h => by
-    simp only [List.cons_append, topItems] at h ⊢
-    split at h
-    · exact topItems_append post h
-    · simp at h
-
-/-- When checking a program stops at no error with the goal proved, from a state where it was not, some `qed` proved
-it, and checking stopped at no error up to it, in a scope it left untainted. -/
-theorem topItems_proved : ∀ {st : TopState} {prog : Program}, (topItems st prog).2 = none →
-    (topItems st prog).1.proved = true → st.proved = true ∨ ∃ pre p e post, prog = pre ++ .qed p e :: post ∧
-      (topItems st (pre ++ [.qed p e])).2 = none ∧ (topItems st (pre ++ [.qed p e])).1.proved = true ∧
-      (topItems st (pre ++ [.qed p e])).1.sc.taintedBy = none
-  | st, [], _, hp => .inl (by simpa [topItems] using hp)
-  | st, t :: ts, h, hp => by
-    simp only [topItems] at h hp
-    split at h
-    · rename_i st' hs
-      simp only [hs] at hp
-      rcases topItems_proved h hp with hp' | ⟨pre, p, e, post, rfl, h1, h2, h3⟩
-      · rcases topItem_proved hs hp' with hp'' | ⟨⟨p, e, rfl⟩, ht⟩
-        · exact .inl hp''
-        · exact .inr ⟨[], p, e, ts, rfl, by simp [topItems, hs], by simpa [topItems, hs] using hp',
-            by simpa [topItems, hs] using ht⟩
-      · exact .inr ⟨t :: pre, p, e, post, rfl, by simpa [topItems, hs] using h1, by simpa [topItems, hs] using h2,
-          by simpa [topItems, hs] using h3⟩
-    · simp at h
-
-/-- When checking a program stops at no error, each item was checked, from the state the items before it left. -/
-theorem topItems_split : ∀ {st : TopState} {pre post : List Top} {t : Top},
-    (topItems st (pre ++ t :: post)).2 = none → ∃ s', (topItems st pre).2 = none ∧
-      topItem (topItems st pre).1 t = .ok s' ∧ topItems s' post = topItems st (pre ++ t :: post)
-  | st, [], post, t, h => by
-    simp only [List.nil_append, topItems] at h ⊢
-    split at h
-    · rename_i s' hs
-      refine ⟨s', ?_, hs, ?_⟩ <;> simp
-    · simp at h
-  | st, a :: pre, post, t, h => by
-    simp only [List.cons_append, topItems] at h ⊢
-    split at h
-    · rename_i s1 hs1
-      exact topItems_split h
-    · simp at h
-
-theorem topItems_goal : ∀ {st : TopState} {l : List Top} {g : CheckedGoal},
-    (topItems st l).2 = none → st.goal = some g → (topItems st l).1.goal = some g
-  | st, [], g, _, hg => by simpa [topItems] using hg
-  | st, t :: l, g, h, hg => by
-    simp only [topItems] at h ⊢
-    split at h
-    · rename_i s' hs
-      exact topItems_goal h (topItem_goal hs hg)
-    · simp at h
 
 theorem List.eq_of_nodup_map {α β : Type} {f : α → β} : ∀ {l : List α}, (l.map f).Nodup → ∀ {a b : α}, a ∈ l → b ∈ l →
     f a = f b → a = b

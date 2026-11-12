@@ -241,6 +241,7 @@ structure CheckError where
   msg : Unit → String
   snaps : List Snapshot := []
   solved : Table := []
+  evaluated : Bool := false
 
 abbrev CheckM := Except CheckError
 

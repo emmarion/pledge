@@ -37,6 +37,14 @@ D67. §16's restriction, that an erased name is allowed only in an
      `Type()`.
 D68. Where canonicalization makes several terms identical, a `_` is
      the untainted one whenever one of them is untainted.
+D69. §20 is to change for a tuple `let` whose binders contain a `_`:
+     its right-hand side is checked first, and then each binder
+     against the result it names.
+D70. A `_` in a tuple `let` binder is allowed to stand for the result
+     a later binder names, as in
+     `let (v : Vec(Nat(), _), n : Nat()) = (VNil(Nat()), Zero());`.
+D71. D66's "unique up to canonicalization" is judged with the facts in
+     force at the end of what the `_` must be solved by (§20).
 
 ## Proposals, not approved
 

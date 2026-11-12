@@ -165,7 +165,10 @@ theorem Value.StrictSub.lt {v w : Value} (h : v.StrictSub w) : v.lt w := by
   | deep hm _ ih => exact Value.isSubList_of_mem_sub hm ih
 
 theorem failAt_eq {α : Type} {pos : Pos} {m : Unit → String} :
-    (failAt pos m : CheckM α) = .error ⟨pos, m, [], []⟩ := rfl
+    (failAt pos m : CheckM α) = .error { pos, msg := m } := rfl
+
+theorem evalFail_eq {α : Type} {pos : Pos} {m : Unit → String} :
+    (evalFail pos m : CheckM α) = .error { pos, msg := m, evaluated := true } := rfl
 
 theorem solveHoles_nil {sc : Scope} (h : sc.holes = []) (l r : Term) (pos : Pos) :
     solveHoles sc l r pos = .ok sc := by
