@@ -120,33 +120,6 @@ theorem topItems_final (phase : Nat) (table : Table) (prog : Program) :
   · obtain ⟨ρ, -, hI⟩ := topItems_sound (h := .init _ _ false) (ρ := []) (prog := prog) (TopInv.init phase table)
     exact ⟨ρ, by simpa using hI, fun hn hpr => absurd ⟨hn, hpr⟩ hc⟩
 
-theorem outcome_sound (phase : Nat) (table : Table) (prog : Program) (has : String → Bool)
-    (err : Option (Pos × String)) (failed : Option (CheckError × Top))
-    (hf : failed = none → (checkItems phase table prog).2 = none) :
-    ∃ W : World, W.P = (checkItems phase table prog).1.prog ∧
-      W.Sc = (outcome has (checkItems phase table prog).1 failed err).sigs.map (Sig.close W.ρ) ∧
-      W.P.fns = (outcome has (checkItems phase table prog).1 failed err).fns ∧
-      W.ρ.length = (outcome has (checkItems phase table prog).1 failed err).entries.length ∧
-      ((outcome has (checkItems phase table prog).1 failed err).tainted = false →
-        Sat W.Sc (outcome has (checkItems phase table prog).1 failed err).entries W.ρ) ∧
-      ((outcome has (checkItems phase table prog).1 failed err).goalProved = some true → ∃ g,
-        (outcome has (checkItems phase table prog).1 failed err).goal = some g ∧
-        ProvedAt phase table prog g W.ρ ∧
-        GoalHolds W phase g (outcome has (checkItems phase table prog).1 failed err).qedFn) := by
-  obtain ⟨ρ, hI, hat⟩ := topItems_final phase table prog
-  refine ⟨(checkItems phase table prog).1.world ρ, rfl, rfl, rfl, hI.len,
-    fun ht => (hI.live (by simpa [outcome] using ht)).sat, fun hg => ?_⟩
-  simp only [outcome] at hg ⊢
-  split at hg
-  · simp only [Option.some.injEq, Bool.and_eq_true] at hg
-    have hn : (checkItems phase table prog).2 = none := hf (by
-      cases hfl : failed with
-      | none => rfl
-      | some _ => simp [hfl] at hg)
-    obtain ⟨g, hg', hW⟩ := hI.proved hg.2
-    exact ⟨g, hg', hat hn hg.2 g hg', by simpa [topItems_phase] using hW _ (World.Le.refl _)⟩
-  · cases hg
-
 theorem runProgramWith_sound (phase : Nat) (table : Table) (prog : Program) (has : String → Bool)
     (err : Option (Pos × String)) :
     ∃ W : World, W.P = (checkItems phase table prog).1.prog ∧
@@ -157,12 +130,39 @@ theorem runProgramWith_sound (phase : Nat) (table : Table) (prog : Program) (has
         Sat W.Sc (runProgramWith phase table prog has err).entries W.ρ) ∧
       ((runProgramWith phase table prog has err).goalProved = some true → ∃ g,
         (runProgramWith phase table prog has err).goal = some g ∧ ProvedAt phase table prog g W.ρ ∧
-        GoalHolds W phase g (runProgramWith phase table prog has err).qedFn) :=
-  outcome_sound phase table prog has err _ id
+        GoalHolds W phase g (runProgramWith phase table prog has err).qedFn) := by
+  obtain ⟨ρ, hI, hat⟩ := topItems_final phase table prog
+  refine ⟨(checkItems phase table prog).1.world ρ, rfl, rfl, rfl, hI.len,
+    fun ht => (hI.live (by simpa [runProgramWith, outcome] using ht)).sat, fun hg => ?_⟩
+  simp only [runProgramWith, outcome] at hg ⊢
+  split at hg
+  · simp only [Option.some.injEq, Bool.and_eq_true, Option.isNone_iff_eq_none] at hg
+    obtain ⟨g, hg', hW⟩ := hI.proved hg.2
+    exact ⟨g, hg', hat hg.1.1 hg.2 g hg', by simpa [topItems_phase] using hW _ (World.Le.refl _)⟩
+  · cases hg
 
-theorem runProgram_failed {α : Type} {a b : Option α} {p : α → Bool} {f : α → α} :
-    ((a.filter p).orElse fun _ => b.orElse fun _ => a.map f) = none → a = none := by
-  cases a <;> simp
+/-- An outcome's fields other than its error do not depend on how the error is reported. -/
+theorem outcome_text (has : String → Bool) (st : TopState) (failed : Option Stop) (err : Option (Pos × String))
+    (text : Stop → Pos × String) :
+    outcome has st failed err text = { outcome has st failed err with error := (failed.map text).orElse fun _ => err } :=
+  rfl
+
+/-- `runProgram` reports what checking with the table solving finds reports (`runProgramWith`), except for the text
+and position of an error: it reports an error exactly when that does, the same one when it was found by evaluating,
+and every other field is that of `runProgramWith`, none taken from solving. -/
+theorem runProgram_eq (phase : Nat) (prog : Program) (has : String → Bool) (err : Option (Pos × String)) :
+    ∃ error : Option (Pos × String),
+      error.isSome = (runProgramWith phase (solution phase prog) prog has err).error.isSome ∧
+      (∀ e t n, (checkItems phase (solution phase prog) prog).2 = some (e, t, n) → e.evaluated = true →
+        error = some (e.pos, e.msg ())) ∧
+      runProgram phase prog has err = { runProgramWith phase (solution phase prog) prog has err with error } := by
+  refine ⟨(runProgram phase prog has err).error, ?_, fun e t n hf he => ?_, outcome_text _ _ _ _ _⟩
+  · simp only [runProgram, runProgramWith, solution, outcome]
+    cases (checkItems phase (solveFrom phase prog []).1 prog).2 <;> simp
+  · simp only [runProgram, outcome]
+    simp only [solution] at hf
+    rw [hf]
+    simp [he]
 
 /-- Soundness of the checker and evaluator, for every program (`_`, `sorry` and multiplicities included), under any
 phase: there is an ideal valuation `W.ρ` of the final top-level entries, the
@@ -179,21 +179,21 @@ theorem runProgram_sound (phase : Nat) (prog : Program) (has : String → Bool) 
       ((runProgram phase prog has err).tainted = false → Sat W.Sc (runProgram phase prog has err).entries W.ρ) ∧
       ((runProgram phase prog has err).goalProved = some true → ∃ g, (runProgram phase prog has err).goal = some g ∧
         ProvedAt phase (solution phase prog) prog g W.ρ ∧
-        GoalHolds W phase g (runProgram phase prog has err).qedFn) :=
-  outcome_sound phase (solution phase prog) prog has err _ runProgram_failed
+        GoalHolds W phase g (runProgram phase prog has err).qedFn) := by
+  obtain ⟨_, -, -, h⟩ := runProgram_eq phase prog has err
+  rw [h]
+  exact runProgramWith_sound phase _ prog has err
 
 theorem runProgram_proved {phase : Nat} {prog : Program} {has : String → Bool} {err : Option (Pos × String)}
     (h : (runProgram phase prog has err).goalProved = some true) :
     (checkItems phase (solution phase prog) prog).2 = none ∧
       (checkItems phase (solution phase prog) prog).1.proved = true := by
-  simp only [runProgram, outcome] at h
+  obtain ⟨_, -, -, he⟩ := runProgram_eq phase prog has err
+  rw [he] at h
+  simp only [runProgramWith, outcome] at h
   split at h
-  · simp only [Option.some.injEq, Bool.and_eq_true] at h
-    refine ⟨?_, h.2⟩
-    have h1 := h.1
-    revert h1
-    simp only [checkItems, solution]
-    cases (topItems (.init phase (solveFrom phase prog []).1) (.init _ _ false) prog).2 <;> simp
+  · simp only [Option.some.injEq, Bool.and_eq_true, Option.isNone_iff_eq_none] at h
+    exact ⟨h.1.1, h.2⟩
   · cases h
 
 /-- A proved type goal has a value: there is a valuation `ρ` of the final top-level entries, satisfying the final

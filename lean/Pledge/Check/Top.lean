@@ -383,14 +383,20 @@ structure Outcome where
   qedFn : Option String
   tainted : Bool
 
-def outcome (has : String → Bool) (st : TopState) (failed : Option (CheckError × Top))
-    (syntaxError : Option (Pos × String)) : Outcome :=
-  let error := (failed.map fun (e, _) => (e.pos, e.msg ())).orElse fun _ => syntaxError
+/-- The first error checking meets: the error, its item and the number of items after it. -/
+abbrev Stop := CheckError × Top × Nat
+
+/-- The outcome of checking that stopped at `st`, after `failed` if checking failed, whose error is reported as
+`text` gives it. -/
+def outcome (has : String → Bool) (st : TopState) (failed : Option Stop) (syntaxError : Option (Pos × String))
+    (text : Stop → Pos × String := fun (e, _) => (e.pos, e.msg ())) : Outcome :=
+  let error := (failed.map text).orElse fun _ => syntaxError
   let qed := if !has "qed" then "none"
-    else if failed.any fun (_, t) => t matches .qed .. then "fails"
+    else if failed.any fun (_, t, _) => t matches .qed .. then "fails"
     else if st.qedChecks then "checks" else "unreached"
   { error := error, prints := st.prints, inspects := st.snaps.map fun s => (s.pos, s.render), qed := qed,
-    goalProved := if has "goal" then some (error.isNone && st.proved) else none, containsSorry := has "sorry",
+    goalProved := if has "goal" then some (failed.isNone && syntaxError.isNone && st.proved) else none,
+    containsSorry := has "sorry",
     sigs := st.sc.sigs, entries := st.sc.Γ, fns := st.fns, env := st.env, goal := st.goal, qedFn := st.qedFn,
     tainted := st.sc.taintedBy.isSome }
 
